@@ -9,7 +9,7 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 - Keep a list of every device on your network, and check any one in depth.
 - Gather CVEs and zero-days from 11 feeds and show which apply to your devices, including the one you are reading on.
 
-**Status: M0 (foundation).** The app shell, sign-in, job runner, audit log and Appearance settings work. Every other screen exists and says which milestone fills it.
+**Status: M1 (indicators).** On top of M0 (sign-in, jobs, audit log, Appearance), the Indicators screen holds zero-breach's AdFection / Candiru set: where it came from and how it was verified, updates waiting for review, and exports for DNS filters, MVT and MISP. Other screens say which milestone fills them.
 
 ## Run it
 
@@ -37,6 +37,7 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_BRAND_NAME` / `TS_BRAND_TAGLINE` | `TheySpy` / empty | Name and tagline shown in the app. |
 | `TS_ACCENT` | empty | Accent colour such as `#39c6ff`. |
 | `TS_COOKIE_SECURE` | `false` | Set `true` when served over HTTPS. |
+| `TS_IOC_AUTOCHECK` | `true` | Look for a newer indicator set once a day. Updates are only offered for review, never applied by themselves. |
 
 ## Develop
 
@@ -58,7 +59,7 @@ The UI runs on 5173 and hands `/api` to the server on 8797. `npm run check` buil
 
 - `server/` Node 24 + Express 5 + `node:sqlite`: config, migrations, auth, jobs, audit, appearance.
 - `src/` React 19 UI. `shared/` holds the look tokens and screen list both sides read.
-- `boxpilot/` the BoxPilot catalog manifest. `agent/` and `third_party/zero-breach/` fill in at M7 and M1.
+- `boxpilot/` the BoxPilot catalog manifest. `third_party/zero-breach/` is the vendored indicator set, signatures and reference exports (see its README). `agent/` fills in at M7.
 - `docs/` the plan and the 13 mockups.
 
 ## Licence

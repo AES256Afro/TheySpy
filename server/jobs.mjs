@@ -2,11 +2,16 @@
  * Job kinds. Every action that does work (a scan, a feed sync, a Pi-hole push) is a job: queued,
  * run one at a time, logged line by line, and recorded in the audit log when it starts and ends.
  * Later milestones add kinds here; the runner does not change.
- * @type {Record<string, { title: string, run: (context: { log: (line: string) => void, params: any }) => Promise<unknown> }>}
+ * @typedef {{ title: string, direct?: boolean, run: (context: { log: (line: string) => void, params: any, actor: string }) => Promise<unknown> }} JobKind
+ *
+ * `direct` kinds take no parameters and may be started from the API by anyone signed in; the rest
+ * are started by the feature that owns them (for example "ioc.apply" from the review screen).
+ * @type {Record<string, JobKind>}
  */
 export const jobKinds = {
   noop: {
     title: "Check the job runner",
+    direct: true,
     async run({ log }) {
       log("Nothing to do. The job runner, its log and the audit trail are working.");
       return { ok: true };
@@ -27,7 +32,7 @@ export function createJobRunner({ db, audit, kinds = jobKinds, now = () => new D
   const start = db.prepare("UPDATE jobs SET status = 'running', started_at = ? WHERE id = ?");
   const appendLog = db.prepare("UPDATE jobs SET log = log || ? WHERE id = ?");
   const finish = db.prepare("UPDATE jobs SET status = ?, result = ?, finished_at = ? WHERE id = ?");
-  const nextQueued = db.prepare("SELECT id, kind, params FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1");
+  const nextQueued = db.prepare("SELECT id, kind, params, actor FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1");
   const byId = db.prepare("SELECT * FROM jobs WHERE id = ?");
   const recent = db.prepare("SELECT id, kind, title, status, actor, created_at, started_at, finished_at FROM jobs ORDER BY id DESC LIMIT ?");
 
@@ -49,7 +54,7 @@ export function createJobRunner({ db, audit, kinds = jobKinds, now = () => new D
     const log = (line) => appendLog.run(`${now().toISOString()} ${line}\n`, id);
     try {
       if (!kind) throw new Error(`Unknown job kind "${row.kind}"`);
-      const result = await kind.run({ log, params: JSON.parse(row.params) });
+      const result = await kind.run({ log, params: JSON.parse(row.params), actor: row.actor });
       finish.run("succeeded", JSON.stringify(result ?? null), now().toISOString(), id);
       audit.record(`job:${id}`, "job.succeeded", row.kind);
     } catch (error) {
@@ -75,7 +80,7 @@ export function createJobRunner({ db, audit, kinds = jobKinds, now = () => new D
   }
 
   return {
-    kinds: Object.entries(kinds).map(([id, kind]) => ({ id, title: kind.title })),
+    kinds: Object.entries(kinds).map(([id, kind]) => ({ id, title: kind.title, direct: Boolean(kind.direct) })),
     /**
      * @param {string} kind
      * @param {{ actor: string, params?: object }} options

@@ -21,6 +21,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY server ./server
 COPY shared ./shared
+# The bundled zero-breach indicator set, its signed manifest and the key the updater pins.
+COPY third_party ./third_party
 COPY --from=build /app/dist ./dist
 
 # /data holds the database; BoxPilot mounts its volume here and backs it up.
