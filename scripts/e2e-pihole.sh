@@ -40,8 +40,13 @@ lookup() {
   done
   echo "Pi-hole never answered $2 from $1: $out" >&2; exit 1
 }
-# The API answers before the DNS server is ready; wait for a real answer first.
+# The API answers before the DNS server is ready, and before Pi-hole has written its versions file
+# (GET /api/info/version fails until then); wait for both.
 lookup 172.29.53.13 ready.theyspy.test
+i=0
+until docker exec theyspy-e2e-pihole test -s /etc/pihole/versions; do
+  i=$((i + 1)); [ "$i" -gt 60 ] && { echo "Pi-hole never wrote /etc/pihole/versions" >&2; exit 1; }; sleep 1
+done
 sent_at=$(date +%s)
 lookup 172.29.53.10 ads-sync.theyspy.test
 lookup 172.29.53.10 deep.ads-sync.theyspy.test

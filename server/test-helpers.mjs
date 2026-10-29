@@ -9,6 +9,8 @@ import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.mjs";
 import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
+import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
+import { createFleet } from "./fleet/registry.mjs";
 
 /** A clock tests can move. */
 export function testClock(start = "2026-10-29T12:00:00.000Z") {
@@ -52,11 +54,12 @@ export function fakeGitHub(files = {}) {
  * A Pi-hole 6 API stand-in, behaving as a live FTL v6.7 did when probed: X-FTL-SID sessions,
  * newest-first paging with a fixed cursor and a `start` offset, `*name` as a plain suffix match,
  * search over exact and regex entries plus adlist (gravity) names, and regex deny entries.
- * @param {{ password?: string, queries?: any[], gravity?: Record<string, string> }} [options]
- *   gravity maps an exact name to the address of the adlist that blocks it
+ * @param {{ password?: string, queries?: any[], gravity?: Record<string, string>, network?: any[] }} [options]
+ *   gravity maps an exact name to the address of the adlist that blocks it; network is the network
+ *   table in the API's shape
  */
-export function fakePihole({ password = "pihole-pass", queries = [], gravity = {} } = {}) {
-  const state = { queries: [...queries], gravity: { ...gravity }, domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [], groups: [{ id: 0, name: "Default", comment: "The default group", enabled: true }], clients: [], adlists: [], gravityEntries: 3 };
+export function fakePihole({ password = "pihole-pass", queries = [], gravity = {}, network = [] } = {}) {
+  const state = { queries: [...queries], gravity: { ...gravity }, network: [...network], domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [], groups: [{ id: 0, name: "Default", comment: "The default group", enabled: true }], clients: [], adlists: [], gravityEntries: 3 };
   const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const listed = (type, kind) => state.domains.filter((d) => d.type === type && d.kind === kind);
   const fetchImpl = async (input, init = {}) => {
@@ -96,6 +99,7 @@ export function fakePihole({ password = "pihole-pass", queries = [], gravity = {
       const lists = state.gravity[name] ? [{ domain: name, address: state.gravity[name], type: "block", enabled: true }] : [];
       return json(200, { search: { domains, gravity: lists, results: { domains: { exact: domains.filter((d) => d.kind === "exact").length, regex: domains.filter((d) => d.kind === "regex").length }, gravity: { allow: 0, block: lists.length }, total: domains.length + lists.length } } });
     }
+    if (path === "network/devices") return json(200, { devices: state.network, took: 0 });
     if (path === "stats/top_clients") {
       const byClient = new Map();
       for (const q of state.queries) { const e = byClient.get(q.client.ip) ?? { ip: q.client.ip, name: q.client.name ?? "", count: 0 }; e.count += 1; byClient.set(q.client.ip, e); }
@@ -158,9 +162,9 @@ export function fakeWeb(files = {}) {
 
 /**
  * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]> }} [options]
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
  */
-export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular } = {}) {
+export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] } = {}) {
   const settings = createSettingsStore(db, { now });
   const audit = createAuditLog(db, { now });
   const auth = createAuth({ db, settings, audit, adminPassword, sessionSecret, now });
@@ -171,6 +175,9 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const library = createBlocklistLibrary({ db, settings, audit, iocStore, fetchImpl: webFetch, popular, now });
   library.seed();
   const baselines = createBaselines({ db, library, sentinel, settings, audit, now });
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, now };
+  const fleet = createFleet({ db, audit, now });
+  // No real network in tests: no neighbours, nothing answers, no names, unless a test says so.
+  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...network });
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, now };
 }
