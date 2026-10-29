@@ -5,6 +5,7 @@ import express from "express";
 import { appearanceOptions, effectiveAppearance, validateAppearance } from "./appearance.mjs";
 import { sessionCookie } from "./auth.mjs";
 import { iocRoutes } from "./iocs/routes.mjs";
+import { piholeRoutes } from "./pihole/routes.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -26,10 +27,11 @@ function readCookie(header, name) {
  *   auth: ReturnType<typeof import("./auth.mjs").createAuth>,
  *   jobs: ReturnType<typeof import("./jobs.mjs").createJobRunner>,
  *   iocStore: ReturnType<typeof import("./iocs/store.mjs").createIocStore>,
+ *   sentinel: ReturnType<typeof import("./pihole/sentinel.mjs").createSentinel>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -116,6 +118,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, stati
   });
 
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
+  app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 

@@ -7,6 +7,8 @@ import { createSettingsStore, openDatabase } from "./db.mjs";
 import { createIocStore } from "./iocs/store.mjs";
 import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
+import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
+import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
 
 const config = readConfig();
@@ -16,14 +18,15 @@ const audit = createAuditLog(db);
 const auth = createAuth({ db, settings, audit, adminPassword: config.adminPassword, sessionSecret: config.sessionSecret });
 const iocStore = createIocStore({ db, audit });
 iocStore.seedBundled();
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }) } });
+const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -37,8 +40,12 @@ const dailyCheck = setInterval(scheduleCheck, day);
 firstCheck.unref();
 dailyCheck.unref();
 
+// Watch Pi-hole's new queries every 30 seconds once it is connected (the loop idles until then).
+sentinel.watch.start();
+
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
+    sentinel.watch.stop();
     server.close(() => {
       db.close();
       process.exit(0);
