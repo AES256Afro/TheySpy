@@ -164,6 +164,41 @@ export const migrations = [
      last_at TEXT NOT NULL,
      PRIMARY KEY (scope, domain)
    );`,
+  // M4: the device registry. A device is one MAC address, or one IP address while no MAC is known
+  // for it (merged into the MAC's device when one turns up). Addresses and events keep its history.
+  `CREATE TABLE devices (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     mac TEXT UNIQUE,
+     ip TEXT,
+     hostname TEXT,
+     vendor TEXT,
+     label TEXT,
+     owner TEXT,
+     kind TEXT,
+     tags TEXT NOT NULL DEFAULT '[]',
+     notes TEXT,
+     trusted INTEGER NOT NULL DEFAULT 0,
+     acknowledged INTEGER NOT NULL DEFAULT 0,
+     sources TEXT NOT NULL DEFAULT '{}',
+     first_seen TEXT NOT NULL,
+     last_seen TEXT NOT NULL
+   );
+   CREATE INDEX devices_ip ON devices (ip);
+   CREATE TABLE device_addresses (
+     device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+     ip TEXT NOT NULL,
+     first_seen TEXT NOT NULL,
+     last_seen TEXT NOT NULL,
+     PRIMARY KEY (device_id, ip)
+   );
+   CREATE TABLE device_events (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+     at TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     detail TEXT NOT NULL DEFAULT '{}'
+   );
+   CREATE INDEX device_events_device ON device_events (device_id, at);`,
 ];
 
 /**

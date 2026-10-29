@@ -69,6 +69,8 @@ export function apiSource({ url, password, fetchImpl }) {
       });
     },
     /** Everything since `from` in the in-memory log, for the live watch. */
+    /** Pi-hole's network table, in the API's shape. */
+    async networkDevices() { return client().session((c) => c.networkDevices()); },
     /**
      * New queries since `from`: indicator hits, and each query to `observe`.
      * @param {any} matcher @param {number} from @param {(query: any) => void} [observe]
@@ -160,6 +162,24 @@ export function databaseSource({ path }) {
         const rows = db.prepare(`SELECT domain, COUNT(*) AS n, SUM(CASE WHEN status IN (${blocked}) THEN 1 ELSE 0 END) AS b FROM queries WHERE ${where} GROUP BY domain ORDER BY n DESC LIMIT 20000`)
           .all(...[Math.floor(from), Math.ceil(until), ...(ip ? [ip] : [])]).map((r) => ({ domain: String(/** @type {any} */ (r).domain).toLowerCase(), queries: Number(/** @type {any} */ (r).n), blocked: Number(/** @type {any} */ (r).b) }));
         return { rows, basis: ip ? `every lookup ${ip} made` : "every lookup on the network" };
+      } finally { db.close(); }
+    },
+    /** Pi-hole's network table (tables `network` and `network_addresses`), in the API's shape. */
+    async networkDevices() {
+      const db = open();
+      try {
+        const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => /** @type {any} */ (r).name));
+        if (!tables.has("network") || !tables.has("network_addresses")) return [];
+        const addresses = new Map();
+        for (const raw of db.prepare("SELECT network_id, ip, lastSeen, name FROM network_addresses").all()) {
+          const a = /** @type {any} */ (raw);
+          if (!addresses.has(a.network_id)) addresses.set(a.network_id, []);
+          addresses.get(a.network_id).push({ ip: String(a.ip), name: a.name || null, lastSeen: Number(a.lastSeen) });
+        }
+        return db.prepare("SELECT id, hwaddr, interface, firstSeen, lastQuery, macVendor FROM network").all().map((raw) => {
+          const d = /** @type {any} */ (raw);
+          return { id: Number(d.id), hwaddr: String(d.hwaddr), interface: d.interface, firstSeen: Number(d.firstSeen), lastQuery: Number(d.lastQuery), macVendor: d.macVendor ?? "", ips: addresses.get(d.id) ?? [] };
+        });
       } finally { db.close(); }
     },
     /** @param {any} matcher @param {number} from @param {(query: any) => void} [observe] */

@@ -161,6 +161,11 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
       ];
     },
 
+    /** Pi-hole's network table: every device it has seen (by MAC, or "ip-<address>" without one) and its addresses. */
+    async networkDevices() {
+      return (await call("GET", "network/devices?max_devices=1000&max_addresses=25"))?.devices ?? [];
+    },
+
     async listGroups() { return (await call("GET", "groups"))?.groups ?? []; },
     async addGroup(name, comment) {
       const data = await call("POST", "groups", { name, comment, enabled: true });

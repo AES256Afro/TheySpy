@@ -10,6 +10,8 @@ import { createJobRunner, jobKinds } from "./jobs.mjs";
 import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
 import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.mjs";
 import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
+import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
+import { createFleet } from "./fleet/registry.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
 
@@ -24,14 +26,16 @@ const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: crea
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
 const baselines = createBaselines({ db, library, sentinel, settings, audit });
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
+const fleet = createFleet({ db, audit });
+const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -58,6 +62,24 @@ if (config.blocklistsAuto) {
 // The library's per-category counts take a few seconds with multi-million-name lists; work them
 // out shortly after start so the first visit to the screen is quick.
 setTimeout(() => library.counts(), 5000).unref();
+
+// Fleet: read Pi-hole's network table every 5 minutes (once Pi-hole is connected), and sweep the
+// networks the owner chose every 30 minutes. Nothing is swept until the owner picks networks. These
+// run quietly, outside the job log (which would fill with them); new devices are still audited.
+if (config.fleetAuto) {
+  const quietly = (name, work) => {
+    let running = false;
+    return () => {
+      if (running) return;
+      running = true;
+      work().catch((error) => settings.set(`fleet_last_${name}_error`, { at: new Date().toISOString(), error: error.message })).finally(() => { running = false; });
+    };
+  };
+  const sync = quietly("sync", async () => { if (sentinel.effective().mode) await discovery.sync(); });
+  const sweep = quietly("sweep", async () => { if (discovery.targets().length) await discovery.sweep(); });
+  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000)];
+  for (const t of timers) t.unref();
+}
 
 // Watch Pi-hole's new queries every 30 seconds once it is connected (the loop idles until then).
 sentinel.watch.start();

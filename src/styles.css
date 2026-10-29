@@ -41,6 +41,7 @@ main { padding: 22px 26px 40px; min-width: 0; }
 .grid { display: grid; gap: 14px; }
 .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
@@ -151,13 +152,25 @@ button.tier:hover { border-color: var(--muted); }
 tr.kept td { opacity: .45; }
 tr.kept td:last-child { opacity: 1; }
 
+/* Fleet */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .5; vertical-align: middle; }
+.dot.on { background: var(--ok); opacity: 1; }
+.linkish { all: unset; cursor: pointer; color: var(--text); }
+.linkish:hover b { text-decoration: underline; }
+.linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.src { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.src i { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: var(--panel-2); color: var(--muted); }
+tr.sel td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.compact-fields .field { grid-template-columns: 64px minmax(0, 1fr); padding: 7px 0; }
+.compact-fields .field .hint { grid-column: 2; }
+
 /* Compact density */
 [data-density="compact"] main { padding: 14px 18px 30px; }
 [data-density="compact"] .card { padding: 11px 12px; }
 [data-density="compact"] .grid, [data-density="compact"] .stack { gap: 10px; }
 [data-density="compact"] td, [data-density="compact"] th { padding: 6px 8px; }
 
-@media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } .sticky { position: static; } .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .two-col { grid-template-columns: 1fr; } .sticky { position: static; } .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .side { position: static; height: auto; flex-direction: row; align-items: center; overflow-x: auto; padding: 10px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -166,7 +179,7 @@ tr.kept td:last-child { opacity: 1; }
   .brand { padding: 4px 10px; }
   .side a.nav { white-space: nowrap; }
   main { padding: 16px; }
-  .g2, .g3, .tiers { grid-template-columns: 1fr; }
+  .g2, .g3, .g4, .tiers { grid-template-columns: 1fr; }
   .field { grid-template-columns: 1fr; }
   .field .hint { grid-column: 1; }
 }

@@ -15,6 +15,8 @@ import express from "express";
 import { createBlocklistLibrary } from "../server/blocklists/library.mjs";
 import { publicListRoutes } from "../server/blocklists/routes.mjs";
 import { createBaselines } from "../server/blocklists/baselines.mjs";
+import { createDiscovery } from "../server/fleet/discovery.mjs";
+import { createFleet } from "../server/fleet/registry.mjs";
 
 const url = process.env.PIHOLE_URL ?? "http://127.0.0.1:18053";
 const password = process.env.PIHOLE_PASSWORD ?? "";
@@ -178,5 +180,33 @@ if (process.env.E2E_LISTS_HOST) {
   await baselines.remove({ client: "172.29.53.17" }, "e2e");
   step(`shadow mode counted ${shadowed.queries} lookups Essential would have blocked from 172.29.53.17, and changed nothing in Pi-hole`);
   listServer.close();
+}
+
+// M4: Pi-hole's network table feeds the device registry, merged by MAC; on Linux (CI), where the
+// host can reach the test network, a sweep finds Pi-hole itself with the MAC Docker gave it.
+{
+  const fleet = createFleet({ db, audit });
+  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: ["172.29.53.0/24"] });
+  // FTL adds clients to its network table about once a minute.
+  let known = [];
+  for (let attempt = 1; attempt <= 18 && known.length < 2; attempt += 1) {
+    await discovery.sync();
+    known = fleet.list().filter((d) => d.mac && ["172.29.53.10", "172.29.53.11", "172.29.53.12"].includes(d.ip));
+    if (known.length < 2) await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  assert.ok(known.length >= 1, `Pi-hole's network table gave devices with MACs (${JSON.stringify(fleet.list())})`);
+  assert.ok(fleet.list().every((d) => d.ip?.startsWith("172.29.53.")), "nothing outside the scan range was recorded");
+  step(`fleet: Pi-hole's network table gave ${fleet.list().length} devices, ${known.length} of the test clients with their MACs`);
+  assert.throws(() => discovery.checkTarget("8.8.8.0/24"), /outside the ranges/);
+  if (process.platform === "linux") {
+    const piholeMac = execFileSync("docker", ["inspect", "-f", "{{(index .NetworkSettings.Networks \"" + process.env.E2E_DOCKER_NETWORK + "\").MacAddress}}", "theyspy-e2e-pihole"]).toString().trim();
+    const swept = await discovery.sweep({ targets: ["172.29.53.0/24"] });
+    const pihole = fleet.list().find((d) => d.ip === "172.29.53.2");
+    assert.ok(swept.alive >= 1 && pihole, `the sweep found Pi-hole (${JSON.stringify(swept)})`);
+    assert.equal(pihole.mac, piholeMac, "with the MAC Docker gave it, from the neighbour table");
+    step(`sweep of 172.29.53.0/24: ${swept.alive} hosts answered; Pi-hole found at .2 with its MAC`);
+  } else {
+    step("sweep skipped: this host cannot reach Docker's networks directly (it runs in CI on Linux)");
+  }
 }
 console.log("E2E OK");
