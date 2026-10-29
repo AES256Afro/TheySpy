@@ -168,6 +168,25 @@ describe("HTTP API", () => {
     expect((await request("DELETE", "/api/blocklists/baselines/shadow", { client: "192.168.1.42" })).body).toEqual({ removed: true, shadow: true });
   });
 
+  it("serves the fleet only to the owner, and refuses sweeps outside the scan ranges", async () => {
+    const { request, fleet, jobs } = await start();
+    expect((await request("GET", "/api/fleet")).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "macbook", seenAt: "2026-10-29T11:59:00.000Z" }], "pihole");
+    const overview = (await request("GET", "/api/fleet")).body;
+    expect(overview).toMatchObject({ counts: { total: 1, online: 1, isNew: 0 }, targets: [], suggestions: [{ cidr: "192.168.1.0/24", devices: 1 }] });
+    const id = overview.devices[0].id;
+    expect((await request("PUT", `/api/fleet/devices/${id}`, { label: "Work laptop", trusted: true })).body.device).toMatchObject({ name: "Work laptop", trusted: true });
+    expect((await request("GET", "/api/fleet/devices/999")).status).toBe(404);
+    expect((await request("POST", "/api/fleet/sweep")).status).toBe(400);
+    expect((await request("POST", "/api/fleet/sweep", { targets: ["8.8.8.0/24"] })).status).toBe(403);
+    expect((await request("PUT", "/api/fleet/targets", { targets: ["10.0.0.0/8"] })).status).toBe(400);
+    expect((await request("PUT", "/api/fleet/targets", { targets: ["192.168.1.0/24"] })).body).toEqual({ targets: ["192.168.1.0/24"] });
+    expect((await request("POST", "/api/fleet/sweep")).status).toBe(202);
+    await jobs.idle();
+    expect((await request("GET", "/api/fleet")).body.lastSweep).toMatchObject({ networks: ["192.168.1.0/24"], alive: 0 });
+  });
+
   it("serves the app shell for client-side routes", async () => {
     const dist = mkdtempSync(path.join(tmpdir(), "theyspy-dist-"));
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { parseCidr, privateRanges } from "./fleet/addresses.mjs";
 
 /**
  * Everything TheySpy reads from the environment, in one place. BoxPilot sets these from the
@@ -8,6 +9,8 @@ import path from "node:path";
 export function readConfig(env = process.env) {
   const port = Number(env.TS_PORT ?? 8797);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`TS_PORT must be a port number, got "${env.TS_PORT}"`);
+  const scanRanges = env.TS_SCAN_RANGES?.trim() ? env.TS_SCAN_RANGES.split(/[\s,]+/).filter(Boolean) : [...privateRanges];
+  for (const range of scanRanges) if (!parseCidr(range)) throw new Error(`TS_SCAN_RANGES: "${range}" is not an IPv4 range such as 192.168.1.0/24`);
   return {
     host: env.TS_HOST ?? "0.0.0.0",
     port,
@@ -19,6 +22,10 @@ export function readConfig(env = process.env) {
     iocAutoCheck: env.TS_IOC_AUTOCHECK !== "false",
     // Look for new blocklists daily and update the enabled ones every 6 hours.
     blocklistsAuto: env.TS_BLOCKLISTS_AUTO !== "false",
+    // Discovery may only ever probe addresses inside these ranges (private ranges by default).
+    scanRanges,
+    // Read Pi-hole's network table every 5 minutes, and sweep the owner's chosen networks every 30.
+    fleetAuto: env.TS_FLEET_AUTO !== "false",
     // Pi-hole: these override what the owner sets on the Pi-hole Sentinel screen.
     pihole: {
       url: env.TS_PIHOLE_URL?.trim() || undefined,

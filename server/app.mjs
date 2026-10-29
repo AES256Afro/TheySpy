@@ -7,6 +7,7 @@ import { sessionCookie } from "./auth.mjs";
 import { iocRoutes } from "./iocs/routes.mjs";
 import { piholeRoutes } from "./pihole/routes.mjs";
 import { blocklistRoutes, publicListRoutes } from "./blocklists/routes.mjs";
+import { fleetRoutes } from "./fleet/routes.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -31,10 +32,12 @@ function readCookie(header, name) {
  *   sentinel: ReturnType<typeof import("./pihole/sentinel.mjs").createSentinel>,
  *   library: ReturnType<typeof import("./blocklists/library.mjs").createBlocklistLibrary>,
  *   baselines: ReturnType<typeof import("./blocklists/baselines.mjs").createBaselines>,
+ *   fleet: ReturnType<typeof import("./fleet/registry.mjs").createFleet>,
+ *   discovery: ReturnType<typeof import("./fleet/discovery.mjs").createDiscovery>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -123,6 +126,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, jobs }));
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 

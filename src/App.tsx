@@ -11,6 +11,7 @@ import { IndicatorsScreen } from "./screens/Indicators.tsx";
 import { PiholeScreen } from "./screens/Pihole.tsx";
 import { BlocklistsScreen } from "./screens/Blocklists.tsx";
 import { BaselinesScreen } from "./screens/Baselines.tsx";
+import { FleetScreen } from "./screens/Fleet.tsx";
 import { PlaceholderScreen } from "./screens/Placeholder.tsx";
 
 type AppearanceResponse = { appearance: Appearance };
@@ -53,7 +54,7 @@ export function App() {
     <div className="app">
       <Sidebar appearance={appearance} current={screen} onSignedOut={() => setSignedIn(false)} />
       <main id="main">
-        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
+        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
       </main>
     </div>
   );
