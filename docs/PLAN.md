@@ -280,6 +280,7 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - **Exit:** 405 indicators imported; an update with a tampered hash is refused; exports byte-match zero-breach's own for the same input.
 
 ### M2 — Pi-hole Sentinel (M)
+**Status (29 Oct 2026): done** (0.3.0). Pi-hole 6 API and pihole-FTL.db (Pi-hole 5 or 6) sources; hunts merge the in-memory log and the long-term database by query id; a 30-second live watch; coverage per indicator domain and its subdomains; pushes are Pi-hole wildcard regex entries commented `TheySpy:`, and a rollback removes only those. `scripts/e2e-pihole.sh` proves the exit criterion against a real, offline Pi-hole 6 in CI.
 - v6 connector (auth, queries, network devices, search, deny list, lists) and v5 FTL-db reader.
 - Retro-hunt: full query history vs IOCs → `ioc_hits` with `dns-record` evidence, per client.
 - Coverage check: which IOC domains Pi-hole would already block (gravity search) and which it would not.

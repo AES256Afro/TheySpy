@@ -17,6 +17,13 @@ export function readConfig(env = process.env) {
     cookieSecure: env.TS_COOKIE_SECURE === "true",
     // Daily look for a newer indicator set (it is only offered for review, never applied).
     iocAutoCheck: env.TS_IOC_AUTOCHECK !== "false",
+    // Pi-hole: these override what the owner sets on the Pi-hole Sentinel screen.
+    pihole: {
+      url: env.TS_PIHOLE_URL?.trim() || undefined,
+      password: env.TS_PIHOLE_PASSWORD || undefined,
+      dbPath: env.TS_PIHOLE_DB?.trim() || undefined,
+      write: env.TS_PIHOLE_WRITE === undefined || env.TS_PIHOLE_WRITE === "" ? undefined : env.TS_PIHOLE_WRITE === "true",
+    },
     appearance: {
       look: env.TS_LOOK?.trim() || undefined,
       name: env.TS_BRAND_NAME?.trim() || undefined,

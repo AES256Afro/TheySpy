@@ -19,5 +19,18 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "DELETE", url: str
   return data as T;
 }
 
+/** Polls a job until it finishes; returns it with its log. */
+export async function waitForJob(id: number): Promise<Job> {
+  for (let i = 0; i < 600; i += 1) {
+    const { job } = await api<{ job: Job }>("GET", `/api/jobs/${id}`);
+    if (job.status !== "queued" && job.status !== "running") return job;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+  throw new Error("The job is still running; see Activity.");
+}
+
+/** The last line a job logged, without its timestamp. */
+export const lastLogLine = (job: Job) => job.log?.trim().split("\n").pop()?.replace(/^\S+ /, "") ?? "";
+
 export type Job = { id: number; kind: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "interrupted"; actor: string; created_at: string; started_at: string | null; finished_at: string | null; log?: string };
 export type AuditEntry = { id: number; at: string; actor: string; action: string; target: string | null; detail: unknown };
