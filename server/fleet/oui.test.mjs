@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeWeb, testServices } from "../test-helpers.mjs";
+import { fakeWeb, testClock, testServices } from "../test-helpers.mjs";
 import { ouiUrl, parseOuiCsv } from "./oui.mjs";
 
 const header = "Registry,Assignment,Organization Name,Organization Address\n";
@@ -26,6 +26,18 @@ describe("MAC vendors", () => {
     fleet.observe([{ ip: "192.168.8.30", mac: "28:6f:b9:00:00:01", seenAt: "2026-10-29T11:01:00.000Z" }], "arp");
     expect(fleet.list().find((d) => d.ip === "192.168.8.30").vendor).toBe("Nokia Shanghai Bell Co., Ltd.");
     expect(await oui.update()).toMatchObject({ changed: false, named: 0 });
+  });
+
+  it("is due when never loaded, then again only after 30 days", async () => {
+    const now = testClock("2026-10-29T12:00:00.000Z");
+    const { oui } = testServices({ webFetch: fakeWeb({ [ouiUrl]: header + real + filler }).fetchImpl, now });
+    expect(oui.isDue()).toBe(true);
+    await oui.update();
+    expect(oui.isDue()).toBe(false);
+    now.advance(29 * 86_400_000);
+    expect(oui.isDue()).toBe(false);
+    now.advance(2 * 86_400_000);
+    expect(oui.isDue()).toBe(true);
   });
 
   it("keeps the current registry when a download looks wrong", async () => {
