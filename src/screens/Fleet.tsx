@@ -4,6 +4,8 @@ import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
   tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; sources: Record<string, string>; addresses?: number; randomisedMac: boolean; online: boolean; isNew: boolean; name: string;
+  nameFrom: string; names: { pihole?: string; router?: string; tailscale?: string; checkedAt?: string };
+  network: { kind: string; label: string; detail: string } | null; guess: { kind: string | null; label: string; from: string } | null;
 };
 type DeviceDetail = Device & { addressHistory: { ip: string; firstSeen: string; lastSeen: string }[]; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
 type FleetEvent = { id: number; deviceId: number; at: string; kind: string; detail: Record<string, unknown>; device: string };
@@ -40,6 +42,7 @@ export function FleetScreen() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted">("all");
   const [query, setQuery] = useState("");
+  const [showContainers, setShowContainers] = useState(false);
   const [selected, setSelected] = useState<DeviceDetail | null>(null);
   const [targets, setTargets] = useState("");
   const [busy, setBusy] = useState("");
@@ -90,9 +93,10 @@ export function FleetScreen() {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (overview?.devices ?? []).filter((d) => (filter === "all" || (filter === "new" && d.isNew) || (filter === "online" && d.online) || (filter === "offline" && !d.online) || (filter === "untrusted" && !d.trusted))
-      && (!q || [d.name, d.ip, d.mac, d.hostname, d.vendor, d.owner, ...d.tags].some((v) => v?.toLowerCase().includes(q))));
-  }, [overview, filter, query]);
+    return (overview?.devices ?? []).filter((d) => (showContainers || d.network?.kind !== "docker") && (filter === "all" || (filter === "new" && d.isNew) || (filter === "online" && d.online) || (filter === "offline" && !d.online) || (filter === "untrusted" && !d.trusted))
+      && (!q || [d.name, d.ip, d.mac, d.hostname, d.vendor, d.owner, d.names.pihole, d.names.router, d.names.tailscale, d.network?.label, d.guess?.label, ...d.tags].some((v) => v?.toLowerCase().includes(q))));
+  }, [overview, filter, query, showContainers]);
+  const containers = (overview?.devices ?? []).filter((d) => d.network?.kind === "docker").length;
 
   if (!overview) return <div className="stack"><h1>Fleet</h1>{message ? <div className="banner bad">{message.text}</div> : <p className="muted small">Loading…</p>}</div>;
   const { counts } = overview;
@@ -126,6 +130,7 @@ export function FleetScreen() {
                 <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>
               ))}
             </div>
+            {containers > 0 && <label className="small row" style={{ gap: 4 }} title="Containers on Docker networks on the Pi-hole host: apps asking Pi-hole, not separate devices"><input type="checkbox" checked={showContainers} onChange={(e) => setShowContainers(e.target.checked)} />Show {containers} Docker containers</label>}
             <input className="input" style={{ maxWidth: 240 }} placeholder="Search name, address, MAC, vendor…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search devices" />
           </header>
           <div className="table-wrap"><table>
@@ -137,7 +142,8 @@ export function FleetScreen() {
                   <button type="button" className="linkish" onClick={() => void open(d.id)}><b>{d.name}</b></button>
                   {d.isNew && <span className="badge b-high" style={{ marginLeft: 6 }}>new</span>}
                   {d.trusted && <span className="badge b-ok" style={{ marginLeft: 6 }}>trusted</span>}
-                  <div className="muted small">{[d.vendor, d.kind, d.owner].filter(Boolean).join(" · ") || "unidentified"}{d.tags.length ? ` · ${d.tags.join(", ")}` : ""}</div>
+                  <div className="muted small" title={`Name from ${d.nameFrom}`}>{[d.kind ?? d.guess?.label, d.vendor, d.owner].filter(Boolean).join(" · ") || "not identified yet"}{d.tags.length ? ` · ${d.tags.join(", ")}` : ""}</div>
+                  {d.network && <div className="small" title={d.network.detail}><span className={`badge ${networkBadge[d.network.kind] ?? "b-info"}`}>{d.network.label}</span></div>}
                 </td>
                 <td className="mono small">{d.ip ?? "—"}<div className="muted">{d.mac ? (d.randomisedMac ? "private MAC" : shortMac(d.mac)) : "no MAC yet"}</div></td>
                 <td><span className="src">{Object.keys(d.sources).map((s) => <i key={s} title={`${sourceTitle[s] ?? s}: ${new Date(d.sources[s]).toLocaleString()}`}>{sourceLabel[s] ?? s}</i>)}</span></td>
@@ -189,13 +195,20 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
   return (
     <section className="card stack">
       <header><h2>{device.name}</h2><button className="btn small" type="button" onClick={onClose}>Close</button></header>
+      <p className="small muted">Called “{device.name}” from {device.nameFrom}.{device.guess ? ` Probably: ${device.guess.label} (from ${device.guess.from}).` : ""}</p>
+      {device.network && <div className="banner"><span className="small"><b>{device.network.label}.</b> {device.network.detail}</span></div>}
       <div className="list small">
+        {device.names.pihole && <div><span className="grow muted">Your Pi-hole label</span><span>{device.names.pihole}</span></div>}
+        {device.names.router && <div><span className="grow muted">Name on your router</span><span className="mono">{device.names.router}</span></div>}
+        {device.names.tailscale && <div><span className="grow muted">Tailscale name</span><span className="mono">{device.names.tailscale}</span></div>}
         <div><span className="grow muted">Address</span><span className="mono">{device.ip ?? "—"}</span></div>
         <div><span className="grow muted">MAC</span><span className="mono">{device.mac ?? "not known yet"}{device.randomisedMac ? " (private)" : ""}</span></div>
         {device.hostname && <div><span className="grow muted">Name on the network</span><span className="mono">{device.hostname}</span></div>}
         <div><span className="grow muted">Vendor</span><span>{device.vendor ?? (device.randomisedMac ? "hidden by a private MAC" : "unknown")}</span></div>
+        {device.randomisedMac && <div><span className="grow muted small">Phones, tablets and laptops use a private (random) MAC per Wi-Fi network, so the maker cannot be read from it.</span></div>}
         <div><span className="grow muted">First seen</span><span>{new Date(device.firstSeen).toLocaleString()}</span></div>
       </div>
+      <Activity deviceId={device.id} />
       <div className="compact-fields">
       <div className="field"><label htmlFor="d-label">Name</label><input id="d-label" className="input" value={form.label} placeholder={device.hostname ?? ""} onChange={(e) => setForm({ ...form, label: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-owner">Owner</label><input id="d-owner" className="input" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} /></div>
@@ -215,5 +228,34 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
       )}
       <div><h3>History</h3><div className="list small">{device.events.map((e) => <div key={e.id}><span className="grow">{(eventText[e.kind] ?? (() => e.kind))(e.detail)}</span><span className="muted">{new Date(e.at).toLocaleString()}</span></div>)}</div></div>
     </section>
+  );
+}
+
+const networkBadge: Record<string, string> = { lan: "b-ok", router: "b-ok", tailscale: "b-info", docker: "b-med", local: "b-med", other: "b-med", public: "b-high" };
+
+type ActivityData = { connected: boolean; total: number; blockedTotal?: number; top: { domain: string; queries: number }[]; blocked: { domain: string; blocked: number; lists: string[] }[] };
+
+/** What the device looked up in the last 24 hours, from Pi-hole: a clue to what it is. */
+function Activity({ deviceId }: { deviceId: number }) {
+  const [data, setData] = useState<ActivityData | null>(null);
+  useEffect(() => { api<ActivityData>("GET", `/api/fleet/devices/${deviceId}/activity`).then(setData, () => setData(null)); }, [deviceId]);
+  if (!data) return <p className="small muted">Reading Pi-hole…</p>;
+  if (!data.connected) return null;
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <h3>Last 24 hours in Pi-hole</h3>
+      {data.total === 0 ? <p className="small muted">No lookups from this address: it is quiet, uses other DNS, or Pi-hole sees it under another address.</p> : (
+        <>
+          <p className="small muted">{data.total.toLocaleString()} lookups{data.blockedTotal ? `, ${data.blockedTotal.toLocaleString()} blocked` : ""}. The sites it asks for most often say a lot about what it is.</p>
+          <div className="list small">{data.top.slice(0, 8).map((t) => <div key={t.domain}><span className="grow mono">{t.domain}</span><span className="muted">{t.queries}</span></div>)}</div>
+          {data.blocked.length > 0 && (
+            <>
+              <h3>Blocked for it</h3>
+              <div className="list small">{data.blocked.slice(0, 8).map((b) => <div key={b.domain}><span className="grow"><span className="mono">{b.domain}</span>{b.lists.length ? <span className="muted"> · {b.lists.join(", ")}</span> : null}</span><span className="muted">{b.blocked}</span></div>)}</div>
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }

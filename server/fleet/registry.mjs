@@ -1,4 +1,5 @@
 import { isRandomisedMac, normaliseMac } from "./addresses.mjs";
+import { bestName, guessKind, networkOf } from "./explain.mjs";
 
 // The device registry (docs/PLAN.md M4). Every source reports observations (an address seen at a
 // time, with a MAC, name or vendor when it knows one); the registry merges them into devices by MAC.
@@ -17,9 +18,10 @@ const editable = ["label", "owner", "kind", "notes"];
  *   audit: ReturnType<typeof import("../audit.mjs").createAuditLog>,
  *   now?: () => Date,
  *   vendorOf?: (mac: string | null) => string | null,
+ *   gateway?: () => string | null,
  * }} deps
  */
-export function createFleet({ db, audit, now = () => new Date(), vendorOf = () => null }) {
+export function createFleet({ db, audit, now = () => new Date(), vendorOf = () => null, gateway = () => null }) {
   const q = {
     count: db.prepare("SELECT COUNT(*) AS n FROM devices"),
     byId: db.prepare("SELECT * FROM devices WHERE id = ?"),
@@ -40,11 +42,20 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     events: db.prepare("SELECT id, at, kind, detail FROM device_events WHERE device_id = ? ORDER BY at DESC, id DESC LIMIT ?"),
     recentEvents: db.prepare("SELECT e.id, e.device_id, e.at, e.kind, e.detail, d.label, d.hostname, d.ip, d.mac FROM device_events e JOIN devices d ON d.id = e.device_id ORDER BY e.at DESC, e.id DESC LIMIT ?"),
     edit: db.prepare("UPDATE devices SET label = ?, owner = ?, kind = ?, notes = ?, tags = ?, trusted = ?, acknowledged = ? WHERE id = ?"),
+    names: db.prepare("UPDATE devices SET names = ? WHERE id = ?"),
   };
 
   const event = (deviceId, kind, detail = {}) => q.event.run(deviceId, now().toISOString(), kind, JSON.stringify(detail));
   const later = (a, b) => (a > b ? a : b);
   const earlier = (a, b) => (a < b ? a : b);
+
+  /** The device's best name and where it came from, its network, and what it probably is. */
+  function describe(r) {
+    const names = JSON.parse(r.names ?? "{}");
+    const best = bestName({ label: r.label, names, hostname: r.hostname, vendor: r.vendor, mac: r.mac, ip: r.ip });
+    const guess = guessKind({ names: [r.label, names.pihole, names.router, names.tailscale, r.hostname], vendor: r.vendor, mac: r.mac });
+    return { name: best.name, nameFrom: best.from, names, network: networkOf(r.ip, gateway(), r.mac), guess };
+  }
 
   function present(row) {
     const r = /** @type {any} */ (row);
@@ -56,7 +67,7 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       randomisedMac: isRandomisedMac(r.mac),
       online: now().getTime() - Date.parse(lastSeen) <= onlineMinutes * 60_000,
       isNew: !r.acknowledged,
-      name: r.label || r.hostname || r.ip || r.mac,
+      ...describe(r),
     };
   }
 
@@ -128,6 +139,25 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     },
 
     list: () => q.all.all().map(present),
+
+    /**
+     * Records names a source knows the device by ({ pihole: "iPhone" }); null removes one.
+     * @param {number} id @param {Record<string, string | null>} patch
+     */
+    setNames(id, patch) {
+      const row = /** @type {any} */ (q.byId.get(id));
+      if (!row) return;
+      const names = JSON.parse(row.names ?? "{}");
+      for (const [k, v] of Object.entries(patch)) { if (v) names[k] = v; else delete names[k]; }
+      q.names.run(JSON.stringify(names), id);
+    },
+
+    /** Address → best name, for every screen that shows addresses. */
+    namesByIp() {
+      const out = {};
+      for (const d of fleet.list()) if (d.ip) out[d.ip] = { id: d.id, name: d.name, from: d.nameFrom, network: d.network?.label ?? null };
+      return out;
+    },
     get(id) {
       const row = q.byId.get(id);
       if (!row) return null;

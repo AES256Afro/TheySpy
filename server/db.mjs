@@ -286,6 +286,9 @@ export const migrations = [
      actor TEXT NOT NULL,
      PRIMARY KEY (device_id, cve_id)
    );`,
+  // Every name a device is known by, by source (Pi-hole label, router, Tailscale), so the Fleet
+  // shows something better than an address and says where each name came from.
+  `ALTER TABLE devices ADD COLUMN names TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 /**
