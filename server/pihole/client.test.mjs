@@ -3,6 +3,16 @@ import { fakePihole } from "../test-helpers.mjs";
 import { createPiholeClient } from "./client.mjs";
 
 describe("Pi-hole client", () => {
+  it("accepts the web interface's address, and finds the API at the root", async () => {
+    const pihole = fakePihole();
+    const asked = [];
+    const fetchImpl = async (url, init) => { asked.push(new URL(String(url)).pathname); return pihole.fetchImpl(url, init); };
+    for (const address of ["http://192.0.2.5/admin", "http://192.0.2.5/admin/", "http://192.0.2.5/admin/login", "http://192.0.2.5/api", "http://192.0.2.5"]) {
+      await createPiholeClient({ url: address, password: "pihole-pass", fetchImpl }).session(async () => {});
+    }
+    expect(new Set(asked)).toEqual(new Set(["/api/auth"]));
+  });
+
   it("retries a write while Pi-hole's gravity database is busy, and gives up on other errors", async () => {
     const pihole = fakePihole();
     let busy = 2;

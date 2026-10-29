@@ -31,7 +31,9 @@ const maxPages = 500; // 500,000 queries per filter: far beyond a household, a c
  * @param {{ url: string, password: string | null, fetchImpl?: typeof fetch, timeoutMs?: number, retries?: number, retryDelayMs?: number }} options
  */
 export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs = 20_000, retries = 6, retryDelayMs = 1000 }) {
-  const base = new URL("api/", url.endsWith("/") ? url : `${url}/`);
+  // People paste the address of Pi-hole's web interface (…/admin); the API lives at the root (/api).
+  const root = String(url).trim().replace(/\/admin(\/.*)?$/i, "").replace(/\/api\/?$/i, "");
+  const base = new URL("api/", root.endsWith("/") ? root : `${root}/`);
   if (base.protocol !== "http:" && base.protocol !== "https:") throw new PiholeError("The Pi-hole address must start with http:// or https://");
   let sid = null;
 
@@ -64,7 +66,7 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { /* not JSON: an error page */ }
     if (!response.ok) {
-      const detail = data?.error?.message ?? data?.error?.key ?? (text.slice(0, 120) || response.statusText);
+      const detail = [data?.error?.message ?? data?.error?.key ?? (text.slice(0, 120) || response.statusText), data?.error?.hint].filter(Boolean).join(". ");
       throw new PiholeError(`Pi-hole answered ${response.status} to ${method} /api/${path}: ${detail}`, { status: response.status });
     }
     return data;
