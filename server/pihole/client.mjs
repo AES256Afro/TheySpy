@@ -8,6 +8,8 @@ import { productVersion } from "../shared.mjs";
 //  - A `domain` filter of `*name` is a plain suffix match (it also matches "notname"), so callers
 //    apply their own label-boundary check.
 //  - An exact deny entry does not block subdomains; Pi-hole's "wildcard" regex `(\.|^)name$` does.
+//  - While gravity is being rebuilt, writes to groups, clients and lists fail with 400 "Could not add
+//    to gravity database" for a few seconds; they succeed when retried.
 
 export class PiholeError extends Error {
   /** @param {string} message @param {{ status?: number, cause?: unknown }} [options] */
@@ -26,14 +28,26 @@ const pageSize = 1000;
 const maxPages = 500; // 500,000 queries per filter: far beyond a household, a ceiling against runaway paging
 
 /**
- * @param {{ url: string, password: string | null, fetchImpl?: typeof fetch, timeoutMs?: number }} options
+ * @param {{ url: string, password: string | null, fetchImpl?: typeof fetch, timeoutMs?: number, retries?: number, retryDelayMs?: number }} options
  */
-export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs = 20_000 }) {
+export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs = 20_000, retries = 6, retryDelayMs = 1000 }) {
   const base = new URL("api/", url.endsWith("/") ? url : `${url}/`);
   if (base.protocol !== "http:" && base.protocol !== "https:") throw new PiholeError("The Pi-hole address must start with http:// or https://");
   let sid = null;
 
-  async function call(method, path, body, { auth = true } = {}) {
+  async function call(method, path, body, options = {}) {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await callOnce(method, path, body, options);
+      } catch (error) {
+        const busy = method !== "GET" && error.status === 400 && /gravity database|database is locked/i.test(error.message);
+        if (!busy || attempt >= retries) throw error;
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+      }
+    }
+  }
+
+  async function callOnce(method, path, body, { auth = true } = {}) {
     let response;
     try {
       response = await fetchImpl(new URL(path, base), {
@@ -93,9 +107,9 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
 
     /**
      * Every query matching the filter, newest first, across all pages.
-     * @param {{ from?: number, until?: number, domain?: string, disk?: boolean }} filter Unix seconds
+     * @param {{ from?: number, until?: number, domain?: string, client?: string, disk?: boolean }} filter Unix seconds
      */
-    async queries({ from, until, domain, disk = false } = {}) {
+    async queries({ from, until, domain, client: clientIp, disk = false } = {}) {
       const out = [];
       let cursor = null;
       for (let page = 0; page < maxPages; page += 1) {
@@ -103,6 +117,7 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
         if (from !== undefined) params.set("from", String(Math.floor(from)));
         if (until !== undefined) params.set("until", String(Math.ceil(until)));
         if (domain) params.set("domain", domain);
+        if (clientIp) params.set("client_ip", clientIp);
         if (disk) params.set("disk", "true");
         if (cursor !== null) params.set("cursor", String(cursor));
         const data = await call("GET", `queries?${params}`);
@@ -131,14 +146,41 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
       return (await call("GET", `domains/${type}/${kind}`))?.domains ?? [];
     },
 
+    /** The devices that ask Pi-hole most, with their names when Pi-hole knows them. */
+    async topClients(count = 50) {
+      const data = await call("GET", `stats/top_clients?count=${count}`);
+      return (data?.clients ?? []).map((c) => ({ ip: String(c.ip), name: c.name || null, queries: Number(c.count ?? 0) }));
+    },
+
+    /** Names with how often they were looked up (and blocked), from Pi-hole's in-memory stats. */
+    async topDomainCounts(count = 2000) {
+      const [allowed, blocked] = await Promise.all([call("GET", `stats/top_domains?count=${count}&blocked=false`), call("GET", `stats/top_domains?count=${count}&blocked=true`)]);
+      return [
+        ...(allowed?.domains ?? []).map((d) => ({ domain: String(d.domain), queries: Number(d.count ?? 0), blocked: 0 })),
+        ...(blocked?.domains ?? []).map((d) => ({ domain: String(d.domain), queries: Number(d.count ?? 0), blocked: Number(d.count ?? 0) })),
+      ];
+    },
+
+    async listGroups() { return (await call("GET", "groups"))?.groups ?? []; },
+    async addGroup(name, comment) {
+      const data = await call("POST", "groups", { name, comment, enabled: true });
+      return (data?.groups ?? []).find((g) => g.name === name) ?? null;
+    },
+    async deleteGroup(name) { await call("DELETE", `groups/${encodeURIComponent(name)}`); },
+
+    async listClients() { return (await call("GET", "clients"))?.clients ?? []; },
+    async addClient(client, groups, comment) { await call("POST", "clients", { client, groups, comment }); },
+    async updateClient(client, groups, comment) { await call("PUT", `clients/${encodeURIComponent(client)}`, { groups, comment }); },
+    async deleteClient(client) { await call("DELETE", `clients/${encodeURIComponent(client)}`); },
+
     /** Pi-hole's adlists (subscriptions) of one type. */
     async listAdlists(type = "block") {
       return (await call("GET", `lists?type=${type}`))?.lists ?? [];
     },
 
-    /** Subscribes Pi-hole to a list URL; the type goes in the query string, as FTL requires. */
-    async addAdlist(address, comment) {
-      await call("POST", "lists?type=block", { address, comment, groups: [0], enabled: true });
+    /** Subscribes Pi-hole to a list URL for some groups; the type goes in the query string, as FTL requires. */
+    async addAdlist(address, comment, groups = [0]) {
+      await call("POST", "lists?type=block", { address, comment, groups, enabled: true });
     },
 
     async deleteAdlist(address) {

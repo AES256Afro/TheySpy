@@ -111,6 +111,8 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
 
   const sentinel = {
     effective,
+    /** The configured history source (Pi-hole API or database file); throws when none is set. */
+    source,
 
     /** Settings as the UI may see them: never the password itself. */
     publicConfig() {

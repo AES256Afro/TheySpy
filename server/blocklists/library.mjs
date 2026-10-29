@@ -354,6 +354,53 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
       return result;
     },
 
+    /**
+     * Which enabled lists (and so categories) cover each looked-up name, either the name itself or
+     * a parent of it, the way Pi-hole treats Adblock-style entries. Lists are read one at a time, so
+     * a two-million-name list never sits in memory next to the others.
+     * @param {string[]} names
+     * @returns {Map<string, { categories: Set<string>, lists: Set<string> }>}
+     */
+    matchNames(names) {
+      const bySuffix = new Map();
+      for (const name of names) {
+        const labels = name.split(".");
+        for (let i = 0; i < labels.length - 1; i += 1) {
+          const suffix = labels.slice(i).join(".");
+          if (!bySuffix.has(suffix)) bySuffix.set(suffix, []);
+          bySuffix.get(suffix).push(name);
+        }
+      }
+      const protectedNames = neverBlockSet();
+      const out = new Map();
+      for (const r of q.enabled.all()) {
+        const s = /** @type {any} */ (r);
+        const cats = JSON.parse(s.categories);
+        for (const d of domainsOf(s)) {
+          const hit = bySuffix.get(d);
+          if (!hit || protectedNames.has(d)) continue;
+          for (const name of hit) {
+            if (protectedNames.has(name)) continue;
+            const e = out.get(name) ?? { categories: new Set(), lists: new Set() };
+            for (const c of cats) e.categories.add(c);
+            e.lists.add(s.name);
+            out.set(name, e);
+          }
+        }
+      }
+      return out;
+    },
+
+    /** Turns on the lists a baseline needs; returns the ids that were newly enabled. */
+    async ensureEnabled(keys, actor) {
+      const ids = [];
+      for (const key of keys) {
+        const s = row(q.byKey.get(key));
+        if (s && s.status !== "enabled") { await library.setStatus(s.id, "enabled", actor); ids.push(s.id); }
+      }
+      return ids;
+    },
+
     /** How many domains and lists each category and each named list has, as numbers only. */
     counts() {
       if (counts) return counts;

@@ -8,6 +8,7 @@ import { createJobRunner, jobKinds } from "./jobs.mjs";
 import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.mjs";
+import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 
 /** A clock tests can move. */
 export function testClock(start = "2026-10-29T12:00:00.000Z") {
@@ -55,7 +56,7 @@ export function fakeGitHub(files = {}) {
  *   gravity maps an exact name to the address of the adlist that blocks it
  */
 export function fakePihole({ password = "pihole-pass", queries = [], gravity = {} } = {}) {
-  const state = { queries: [...queries], gravity: { ...gravity }, domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [] };
+  const state = { queries: [...queries], gravity: { ...gravity }, domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [], groups: [{ id: 0, name: "Default", comment: "The default group", enabled: true }], clients: [], adlists: [], gravityEntries: 3 };
   const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const listed = (type, kind) => state.domains.filter((d) => d.type === type && d.kind === kind);
   const fetchImpl = async (input, init = {}) => {
@@ -81,6 +82,7 @@ export function fakePihole({ password = "pihole-pass", queries = [], gravity = {
       if (p.get("from")) rows = rows.filter((q) => q.time >= Number(p.get("from")));
       if (p.get("until")) rows = rows.filter((q) => q.time <= Number(p.get("until")));
       if (domain) rows = rows.filter((q) => (domain.startsWith("*") ? q.domain.endsWith(domain.slice(1)) : q.domain === domain));
+      if (p.get("client_ip")) rows = rows.filter((q) => q.client.ip === p.get("client_ip"));
       rows = rows.sort((a, b) => b.id - a.id);
       const cursor = p.get("cursor") ? Number(p.get("cursor")) : rows[0]?.id ?? null;
       const pinned = rows.filter((q) => cursor === null || q.id <= cursor);
@@ -94,6 +96,28 @@ export function fakePihole({ password = "pihole-pass", queries = [], gravity = {
       const lists = state.gravity[name] ? [{ domain: name, address: state.gravity[name], type: "block", enabled: true }] : [];
       return json(200, { search: { domains, gravity: lists, results: { domains: { exact: domains.filter((d) => d.kind === "exact").length, regex: domains.filter((d) => d.kind === "regex").length }, gravity: { allow: 0, block: lists.length }, total: domains.length + lists.length } } });
     }
+    if (path === "stats/top_clients") {
+      const byClient = new Map();
+      for (const q of state.queries) { const e = byClient.get(q.client.ip) ?? { ip: q.client.ip, name: q.client.name ?? "", count: 0 }; e.count += 1; byClient.set(q.client.ip, e); }
+      return json(200, { clients: [...byClient.values()].sort((a, b) => b.count - a.count) });
+    }
+    if (path === "stats/top_domains") {
+      const blocked = url.searchParams.get("blocked") === "true";
+      const byDomain = new Map();
+      for (const q of state.queries.filter((x) => /GRAVITY|REGEX|DENYLIST/.test(x.status) === blocked)) byDomain.set(q.domain, (byDomain.get(q.domain) ?? 0) + 1);
+      return json(200, { domains: [...byDomain].map(([d, count]) => ({ domain: d, count })) });
+    }
+    if (path === "groups" && method === "GET") return json(200, { groups: state.groups });
+    if (path === "groups" && method === "POST") { const g = { id: state.groups.length, name: body.name, comment: body.comment, enabled: true }; state.groups.push(g); return json(201, { groups: [g] }); }
+    if (path.startsWith("groups/") && method === "DELETE") { state.groups = state.groups.filter((g) => g.name !== decodeURIComponent(path.slice(7))); return new Response(null, { status: 204 }); }
+    if (path === "clients" && method === "GET") return json(200, { clients: state.clients });
+    if (path === "clients" && method === "POST") { state.clients.push({ client: body.client, groups: body.groups, comment: body.comment }); return json(201, {}); }
+    if (path.startsWith("clients/") && method === "PUT") { const c = state.clients.find((x) => x.client === decodeURIComponent(path.slice(8))); Object.assign(c, { groups: body.groups, comment: body.comment }); return json(200, {}); }
+    if (path.startsWith("clients/") && method === "DELETE") { state.clients = state.clients.filter((x) => x.client !== decodeURIComponent(path.slice(8))); return new Response(null, { status: 204 }); }
+    if (path === "lists" && method === "GET") return json(200, { lists: state.adlists });
+    if (path === "lists" && method === "POST") { state.adlists.push({ address: body.address, comment: body.comment, groups: body.groups, enabled: true, number: 0 }); return json(201, {}); }
+    if (path.startsWith("lists/") && method === "DELETE") { state.adlists = state.adlists.filter((l) => l.address !== decodeURIComponent(path.slice(6))); return new Response(null, { status: 204 }); }
+    if (path === "action/gravity") { for (const l of state.adlists) l.number = state.gravityEntries ?? 3; return new Response("  [i] Target: x\n  [i] Status: Retrieval successful\n", { status: 200 }); }
     const listMatch = /^domains\/(allow|deny)\/(exact|regex)$/.exec(path);
     if (listMatch && method === "GET") return json(200, { domains: listed(listMatch[1], listMatch[2]) });
     if (listMatch && method === "POST") {
@@ -146,6 +170,7 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: piholeEnv, fetchImpl: piholeFetch, now });
   const library = createBlocklistLibrary({ db, settings, audit, iocStore, fetchImpl: webFetch, popular, now });
   library.seed();
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, now };
+  const baselines = createBaselines({ library, sentinel, settings, audit, now });
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, now };
 }
