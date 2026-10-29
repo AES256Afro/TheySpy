@@ -231,6 +231,45 @@ export const migrations = [
      prefix TEXT PRIMARY KEY,
      vendor TEXT NOT NULL
    );`,
+  // M5: CVEs from NVD, CISA KEV and EPSS, one row per CVE, with what each source said. Products are
+  // "vendor:product" pairs from NVD's CPE criteria (or KEV's names), for filtering and M6 matching.
+  `CREATE TABLE cves (
+     cve_id TEXT PRIMARY KEY,
+     published TEXT,
+     modified TEXT,
+     status TEXT,
+     description TEXT,
+     cvss_score REAL,
+     cvss_severity TEXT,
+     cvss_vector TEXT,
+     cwes TEXT NOT NULL DEFAULT '[]',
+     products TEXT NOT NULL DEFAULT '[]',
+     cpe_matches TEXT NOT NULL DEFAULT '[]',
+     kev INTEGER NOT NULL DEFAULT 0,
+     kev_added TEXT,
+     kev_due TEXT,
+     kev_ransomware INTEGER NOT NULL DEFAULT 0,
+     kev_name TEXT,
+     kev_action TEXT,
+     epss REAL,
+     epss_percentile REAL,
+     zero_day INTEGER NOT NULL DEFAULT 0,
+     zero_day_sources TEXT NOT NULL DEFAULT '[]',
+     sources TEXT NOT NULL DEFAULT '{}',
+     first_seen TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE INDEX cves_kev ON cves (kev, kev_added);
+   CREATE INDEX cves_published ON cves (published);
+   CREATE INDEX cves_epss ON cves (epss);
+   CREATE TABLE cve_events (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     cve_id TEXT NOT NULL,
+     at TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     detail TEXT NOT NULL DEFAULT '{}'
+   );
+   CREATE INDEX cve_events_at ON cve_events (at);`,
 ];
 
 /**

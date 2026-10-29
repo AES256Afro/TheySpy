@@ -187,6 +187,23 @@ describe("HTTP API", () => {
     expect((await request("GET", "/api/fleet")).body.lastSweep).toMatchObject({ networks: ["192.168.1.0/24"], alive: 0 });
   });
 
+  it("serves the CVE list only to the owner, exploited first, and checks its filters", async () => {
+    const { request, cves } = await start();
+    expect((await request("GET", "/api/cves")).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    cves.upsertNvd([{ cveId: "CVE-2026-5000", published: "2026-10-20T00:00:00", modified: "2026-10-28T00:00:00", status: "Analyzed", description: "A bug", cvssScore: 9.8, cvssSeverity: "critical", cvssVector: null, cwes: [], products: ["synology:diskstation_manager"], cpeMatches: [] }], { announce: false });
+    cves.applyKev({ version: "1", entries: [{ cveId: "CVE-2026-4127", added: "2026-10-27", due: "2026-11-17", ransomware: false, name: "Chromium V8 type confusion", description: "V8", action: "Update", product: "google:chromium_v8", cwes: [] }] });
+    const all = (await request("GET", "/api/cves")).body;
+    expect(all.rows.map((r) => r.cveId)).toEqual(["CVE-2026-4127", "CVE-2026-5000"]);
+    expect(all.stats).toMatchObject({ total: 2, kev: 1, zeroDays: 1 });
+    expect(all.attributions[0]).toMatch(/not endorsed or certified by the NVD/);
+    expect((await request("GET", "/api/cves?product=synology")).body.rows.map((r) => r.cveId)).toEqual(["CVE-2026-5000"]);
+    expect((await request("GET", "/api/cves?minEpss=7")).status).toBe(400);
+    expect((await request("GET", "/api/cves/CVE-2026-4127")).body.cve).toMatchObject({ zeroDay: true, kev: { due: "2026-11-17" } });
+    expect((await request("GET", "/api/cves/CVE-1999-0001")).status).toBe(404);
+    expect((await request("GET", "/api/cves/not-a-cve")).status).toBe(400);
+  });
+
   it("serves the app shell for client-side routes", async () => {
     const dist = mkdtempSync(path.join(tmpdir(), "theyspy-dist-"));
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");

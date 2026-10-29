@@ -1,0 +1,250 @@
+import { productVersion } from "../shared.mjs";
+import { feedUrls, nvdDate, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
+
+// The CVE aggregator (docs/PLAN.md M5): NVD for descriptions, scores and CPE criteria; CISA KEV for
+// what is known to be exploited (which flags a zero-day); FIRST EPSS for how likely exploitation is.
+// One row per CVE; events record what changed after the first load (a KEV addition above all).
+
+const day = 86_400_000;
+const nvdWindowDays = 120; // NVD's largest lastMod window
+
+/**
+ * @param {{
+ *   db: import("node:sqlite").DatabaseSync,
+ *   settings: ReturnType<typeof import("../db.mjs").createSettingsStore>,
+ *   audit: ReturnType<typeof import("../audit.mjs").createAuditLog>,
+ *   fetchImpl?: typeof fetch,
+ *   now?: () => Date,
+ *   nvdApiKey?: string | null,
+ *   sleep?: (ms: number) => Promise<void>,
+ * }} deps
+ */
+export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = () => new Date(), nvdApiKey = null, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  const q = {
+    get: db.prepare("SELECT * FROM cves WHERE cve_id = ?"),
+    exists: db.prepare("SELECT kev, epss FROM cves WHERE cve_id = ?"),
+    insertNvd: db.prepare(`INSERT INTO cves (cve_id, published, modified, status, description, cvss_score, cvss_severity, cvss_vector, cwes, products, cpe_matches, sources, first_seen, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    updateNvd: db.prepare(`UPDATE cves SET published = ?, modified = ?, status = ?, description = ?, cvss_score = ?, cvss_severity = ?, cvss_vector = ?, cwes = ?,
+      products = CASE WHEN ? = '[]' THEN products ELSE ? END, cpe_matches = ?, sources = json_set(sources, '$.nvd', ?), updated_at = ? WHERE cve_id = ?`),
+    insertKev: db.prepare(`INSERT INTO cves (cve_id, description, cwes, products, kev, kev_added, kev_due, kev_ransomware, kev_name, kev_action, zero_day, zero_day_sources, sources, first_seen, updated_at)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`),
+    updateKev: db.prepare(`UPDATE cves SET kev = 1, kev_added = ?, kev_due = ?, kev_ransomware = ?, kev_name = ?, kev_action = ?, zero_day = 1, zero_day_sources = ?,
+      description = COALESCE(description, ?), products = CASE WHEN products = '[]' AND ? IS NOT NULL THEN json_array(?) ELSE products END,
+      sources = json_set(sources, '$.kev', ?), updated_at = ? WHERE cve_id = ?`),
+    epss: db.prepare("UPDATE cves SET epss = ?, epss_percentile = ? WHERE cve_id = ? AND (epss IS NULL OR abs(epss - ?) >= 0.0005)"),
+    ids: db.prepare("SELECT cve_id FROM cves"),
+    event: db.prepare("INSERT INTO cve_events (cve_id, at, kind, detail) VALUES (?, ?, ?, ?)"),
+    events: db.prepare("SELECT at, kind, detail FROM cve_events WHERE cve_id = ? ORDER BY at DESC LIMIT 50"),
+    recentEvents: db.prepare("SELECT e.cve_id, e.at, e.kind, e.detail, c.kev_name, c.description FROM cve_events e JOIN cves c ON c.cve_id = e.cve_id ORDER BY e.at DESC, e.id DESC LIMIT ?"),
+    counts: db.prepare(`SELECT COUNT(*) AS total, SUM(kev) AS kev, SUM(zero_day) AS zero_day, SUM(CASE WHEN epss >= 0.5 THEN 1 ELSE 0 END) AS epss_high,
+      SUM(CASE WHEN kev_added >= ? THEN 1 ELSE 0 END) AS kev_recent FROM cves`),
+  };
+  const transaction = (work) => {
+    db.exec("BEGIN");
+    try { const r = work(); db.exec("COMMIT"); return r; } catch (error) { db.exec("ROLLBACK"); throw error; }
+  };
+  const status = (feed) => settings.get(`cve_feed_${feed}`) ?? null;
+  const setStatus = (feed, value) => settings.set(`cve_feed_${feed}`, { ...status(feed), ...value });
+  const headers = (extra = {}) => ({ "user-agent": `TheySpy/${productVersion} (+https://github.com/AES256Afro/TheySpy)`, ...extra });
+
+  async function get(url, init = {}, { attempts = 4 } = {}) {
+    for (let attempt = 1; ; attempt += 1) {
+      let response;
+      try {
+        response = await fetchImpl(url, { ...init, redirect: "follow", signal: AbortSignal.timeout(120_000) });
+      } catch (error) {
+        if (attempt >= attempts) throw new Error(`Could not reach ${new URL(url).host}: ${error.cause?.code ?? error.message}`, { cause: error });
+        await sleep(10_000 * attempt);
+        continue;
+      }
+      // NVD answers 403 or 503 when rate-limited or busy; wait and try again.
+      if ((response.status === 403 || response.status === 429 || response.status >= 500) && attempt < attempts) { await sleep(30_000 * attempt); continue; }
+      return response;
+    }
+  }
+
+  const store = {
+    /** @param {ReturnType<typeof parseNvdCve>[]} rows @param {{ announce?: boolean }} [options] */
+    upsertNvd(rows, { announce = true } = {}) {
+      const at = now().toISOString();
+      let added = 0;
+      transaction(() => {
+        for (const r of rows) {
+          const cwes = JSON.stringify(r.cwes);
+          const products = JSON.stringify(r.products);
+          const matches = JSON.stringify(r.cpeMatches);
+          if (q.exists.get(r.cveId)) {
+            q.updateNvd.run(r.published, r.modified, r.status, r.description, r.cvssScore, r.cvssSeverity, r.cvssVector, cwes, products, products, matches, r.modified ?? at, at, r.cveId);
+          } else {
+            q.insertNvd.run(r.cveId, r.published, r.modified, r.status, r.description, r.cvssScore, r.cvssSeverity, r.cvssVector, cwes, products, matches, JSON.stringify({ nvd: r.modified ?? at }), at, at);
+            added += 1;
+            if (announce) q.event.run(r.cveId, at, "new", JSON.stringify({ cvss: r.cvssScore, severity: r.cvssSeverity }));
+          }
+        }
+      });
+      return { added, updated: rows.length - added };
+    },
+
+    /** Applies the KEV catalog; returns the CVEs it newly marks as known exploited. */
+    applyKev(parsed) {
+      const at = now().toISOString();
+      const firstLoad = !status("kev");
+      const added = [];
+      transaction(() => {
+        for (const e of parsed.entries) {
+          const existing = /** @type {any} */ (q.exists.get(e.cveId));
+          const zeroDay = JSON.stringify([{ source: "CISA KEV", at: e.added, note: e.ransomware ? "used in ransomware campaigns" : null }]);
+          if (existing) q.updateKev.run(e.added, e.due, e.ransomware ? 1 : 0, e.name, e.action, zeroDay, e.description, e.product, e.product, parsed.version ?? at, at, e.cveId);
+          else q.insertKev.run(e.cveId, e.description, JSON.stringify(e.cwes), JSON.stringify(e.product ? [e.product] : []), e.added, e.due, e.ransomware ? 1 : 0, e.name, e.action, zeroDay, JSON.stringify({ kev: parsed.version ?? at }), at, at);
+          if (!existing?.kev && !firstLoad) {
+            added.push(e.cveId);
+            q.event.run(e.cveId, at, "kev_added", JSON.stringify({ name: e.name, due: e.due, ransomware: e.ransomware }));
+          }
+        }
+      });
+      if (added.length) audit.record("system", "cves.kev_added", null, { cves: added.slice(0, 50), count: added.length });
+      return added;
+    },
+
+    /** Applies EPSS scores to the CVEs in the store. */
+    applyEpss(scores) {
+      let updated = 0;
+      transaction(() => {
+        for (const raw of q.ids.all()) {
+          const id = /** @type {any} */ (raw).cve_id;
+          const s = scores.get(id);
+          if (s && Number(q.epss.run(s.epss, s.percentile, id, s.epss).changes)) updated += 1;
+        }
+      });
+      return updated;
+    },
+
+    /**
+     * Fetches the KEV catalog (unless unchanged) and applies it.
+     * @param {{ log?: (line: string) => void }} [options] */
+    async syncKev({ log = () => {} } = {}) {
+      const previous = status("kev");
+      const response = await get(feedUrls.kev, { headers: headers(previous?.etag ? { "if-none-match": previous.etag } : {}) });
+      if (response.status === 304) { setStatus("kev", { at: now().toISOString(), changed: false }); log("CISA KEV: unchanged."); return { changed: false, added: [] }; }
+      if (!response.ok) throw new Error(`CISA KEV answered ${response.status}`);
+      const parsed = parseKev(await response.text());
+      const added = store.applyKev(parsed);
+      setStatus("kev", { at: now().toISOString(), etag: response.headers.get("etag"), version: parsed.version, count: parsed.entries.length, added: added.length, changed: true });
+      log(`CISA KEV ${parsed.version}: ${parsed.entries.length} known exploited${added.length ? `, ${added.length} new: ${added.slice(0, 5).join(", ")}` : ""}.`);
+      return { changed: true, added };
+    },
+
+    /** @param {{ log?: (line: string) => void }} [options] */
+    async syncEpss({ log = () => {} } = {}) {
+      const response = await get(feedUrls.epss, { headers: headers() });
+      if (!response.ok) throw new Error(`EPSS answered ${response.status}`);
+      const { scoreDate, scores } = parseEpss(Buffer.from(await response.arrayBuffer()));
+      if (scores.size < 100_000) throw new Error(`The EPSS file looked wrong (${scores.size} scores)`);
+      const updated = store.applyEpss(scores);
+      setStatus("epss", { at: now().toISOString(), scoreDate, scores: scores.size, updated });
+      log(`EPSS ${scoreDate}: ${scores.size.toLocaleString()} scores; ${updated} changed here.`);
+      return { scoreDate, updated };
+    },
+
+    /**
+     * Fetches what NVD changed since the last run (or the last `days` on the first), in windows of
+     * at most 120 days and pages of 2,000, pausing between requests as NVD asks.
+     * @param {{ days?: number, log?: (line: string) => void }} [options]
+     */
+    async syncNvd({ days = nvdWindowDays, log = () => {} } = {}) {
+      const previous = status("nvd");
+      const end = now();
+      let start = previous?.through ? new Date(Date.parse(previous.through) - 5 * 60_000) : new Date(end.getTime() - days * day);
+      const pause = nvdApiKey ? 700 : 6500;
+      const announce = Boolean(previous?.through);
+      let fetched = 0;
+      let added = 0;
+      let requests = 0;
+      while (start < end) {
+        const windowEnd = new Date(Math.min(end.getTime(), start.getTime() + nvdWindowDays * day));
+        for (let index = 0, total = 1; index < total; index += 2000) {
+          if (requests++) await sleep(pause);
+          const url = `${feedUrls.nvd}?lastModStartDate=${encodeURIComponent(nvdDate(start))}&lastModEndDate=${encodeURIComponent(nvdDate(windowEnd))}&startIndex=${index}&resultsPerPage=2000`;
+          const response = await get(url, { headers: headers(nvdApiKey ? { apiKey: nvdApiKey } : {}) });
+          if (!response.ok) throw new Error(`NVD answered ${response.status}${response.status === 403 ? " (rate limited; an API key raises the limit)" : ""}`);
+          const page = await response.json();
+          total = Number(page.totalResults ?? 0);
+          const rows = (page.vulnerabilities ?? []).map((v) => parseNvdCve(v.cve)).filter((r) => r.cveId);
+          added += store.upsertNvd(rows, { announce }).added;
+          fetched += rows.length;
+          log(`NVD ${start.toISOString().slice(0, 10)} → ${windowEnd.toISOString().slice(0, 10)}: ${Math.min(index + 2000, total).toLocaleString()} of ${total.toLocaleString()}.`);
+          setStatus("nvd", { at: now().toISOString(), progress: { window: [start.toISOString(), windowEnd.toISOString()], done: Math.min(index + 2000, total), total } });
+        }
+        start = windowEnd;
+      }
+      setStatus("nvd", { at: now().toISOString(), through: end.toISOString(), fetched, added, progress: null });
+      return { fetched, added };
+    },
+
+    /**
+     * A page of CVEs, exploited first.
+     * @param {{ kev?: boolean, zeroDay?: boolean, minEpss?: number, q?: string, product?: string, severity?: string, limit?: number, offset?: number }} [filters]
+     */
+    list(filters = {}) {
+      const where = [];
+      const params = [];
+      if (filters.kev) where.push("kev = 1");
+      if (filters.zeroDay) where.push("zero_day = 1");
+      if (filters.minEpss) { where.push("epss >= ?"); params.push(filters.minEpss); }
+      if (filters.severity) { where.push("cvss_severity = ?"); params.push(filters.severity); }
+      if (filters.product) { where.push("products LIKE ?"); params.push(`%${filters.product.toLowerCase().replace(/[%_]/g, "")}%`); }
+      if (filters.q) {
+        const term = filters.q.trim();
+        if (/^CVE-\d{4}-\d+$/i.test(term)) { where.push("cve_id = ?"); params.push(term.toUpperCase()); }
+        else { where.push("(description LIKE ? OR kev_name LIKE ? OR products LIKE ?)"); params.push(`%${term}%`, `%${term}%`, `%${term.toLowerCase()}%`); }
+      }
+      const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      const total = Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) AS n FROM cves ${clause}`).get(...params)).n);
+      const limit = Math.min(Math.max(Number(filters.limit ?? 50), 1), 200);
+      const rows = db.prepare(`SELECT * FROM cves ${clause} ORDER BY kev DESC, kev_added DESC, COALESCE(epss, 0) DESC, published DESC LIMIT ? OFFSET ?`)
+        .all(...params, limit, Math.max(Number(filters.offset ?? 0), 0)).map(present);
+      return { total, rows };
+    },
+    get(id) {
+      const row = q.get.get(String(id).toUpperCase());
+      if (!row) return null;
+      return { ...present(row), cpeMatches: JSON.parse(/** @type {any} */ (row).cpe_matches), events: q.events.all(String(id).toUpperCase()).map((e) => ({ ...(/** @type {any} */ (e)), detail: JSON.parse(/** @type {any} */ (e).detail) })) };
+    },
+    recentEvents: (limit = 20) => q.recentEvents.all(limit).map((raw) => {
+      const e = /** @type {any} */ (raw);
+      return { cveId: e.cve_id, at: e.at, kind: e.kind, detail: JSON.parse(e.detail), title: e.kev_name ?? e.description?.slice(0, 120) ?? null };
+    }),
+    stats() {
+      const c = /** @type {any} */ (q.counts.get(new Date(now().getTime() - 7 * day).toISOString().slice(0, 10)));
+      return { total: Number(c.total ?? 0), kev: Number(c.kev ?? 0), zeroDays: Number(c.zero_day ?? 0), epssHigh: Number(c.epss_high ?? 0), kevThisWeek: Number(c.kev_recent ?? 0), feeds: { kev: status("kev"), nvd: status("nvd"), epss: status("epss") }, apiKey: Boolean(nvdApiKey) };
+    },
+  };
+
+  function present(row) {
+    const r = /** @type {any} */ (row);
+    return {
+      cveId: r.cve_id, published: r.published, modified: r.modified, status: r.status, description: r.description,
+      cvss: r.cvss_score, severity: r.cvss_severity, vector: r.cvss_vector, cwes: JSON.parse(r.cwes), products: JSON.parse(r.products),
+      kev: r.kev ? { added: r.kev_added, due: r.kev_due, ransomware: Boolean(r.kev_ransomware), name: r.kev_name, action: r.kev_action } : null,
+      epss: r.epss, epssPercentile: r.epss_percentile, zeroDay: Boolean(r.zero_day), zeroDaySources: JSON.parse(r.zero_day_sources), sources: JSON.parse(r.sources),
+    };
+  }
+  return store;
+}
+
+/** @param {ReturnType<typeof createCveStore>} store */
+export function cveJobKinds(store) {
+  return {
+    "cves.update": {
+      title: "Update CVEs (CISA KEV, NVD, EPSS)",
+      direct: true,
+      async run({ log }) {
+        const kev = await store.syncKev({ log });
+        const nvd = await store.syncNvd({ log });
+        const epss = await store.syncEpss({ log });
+        return { kevAdded: kev.added.length, nvdFetched: nvd.fetched, epssUpdated: epss.updated };
+      },
+    },
+  };
+}
