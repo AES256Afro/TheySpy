@@ -8,10 +8,11 @@ import { classify } from "./targeted.mjs";
  *   discovery: ReturnType<typeof import("./discovery.mjs").createDiscovery>,
  *   checker: ReturnType<typeof import("./targeted.mjs").createTargetedCheck>,
  *   oui: ReturnType<typeof import("./oui.mjs").createOui>,
+ *   web: ReturnType<typeof import("../web/scan.mjs").createWebScanner>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, jobs }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, jobs }) {
   const router = express.Router();
   const id = (req) => Number(req.params.id);
 
@@ -51,9 +52,16 @@ export function fleetRoutes({ fleet, discovery, checker, oui, jobs }) {
   router.post("/check", (req, res) => {
     const query = String(req.body?.query ?? "");
     const profile = String(req.body?.profile ?? "standard");
-    classify(query); // a 400 now rather than a failed job
-    if (!["quick", "standard", "deep", "dns"].includes(profile)) return res.status(400).json({ error: "profile must be quick, standard, deep or dns" });
+    const { kind } = classify(query); // a 400 now rather than a failed job
+    if (kind !== "website" && !["quick", "standard", "deep", "dns"].includes(profile)) return res.status(400).json({ error: "profile must be quick, standard, deep or dns" });
     res.status(202).json({ job: jobs.enqueue("fleet.check", { actor: "owner", params: { query, profile } }) });
+  });
+  // The token a public site's owner publishes so TheySpy may check it.
+  router.get("/web/verification", (req, res) => {
+    const host = String(req.query.host ?? "").trim().toLowerCase();
+    if (!/^[a-z0-9.-]{1,253}$/.test(host)) return res.status(400).json({ error: "host must be a hostname" });
+    const token = web.tokenFor(host);
+    res.json({ host, token, file: `https://${host}/.well-known/theyspy-verification.txt`, txt: `theyspy-verification=${token}` });
   });
   router.get("/devices/:id/services", (req, res) => res.json({ services: checker.servicesOf(id(req)) }));
   return router;

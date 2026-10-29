@@ -4,8 +4,12 @@ import { api, lastLogLine, waitForJob } from "../api.ts";
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; banner: string | null; tls: { protocol: string; subject: string | null; issuer: string | null; validTo: string | null; selfSigned: boolean } | null; risk: string | null; lastSeen?: string };
 type Hit = { domain: string; indicator: string; lookups: number; lastAt: string; lastStatus: string; citation?: { label: string } | null };
 type DeviceInfo = { id: number; name: string; ip: string | null; mac: string | null; hostname: string | null; vendor: string | null; owner: string | null; kind: string | null; tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; randomisedMac: boolean; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
+type WebCve = { cveId: string; cvss: number | null; severity: string | null; description: string | null; kev: boolean; epss: number | null };
+type WebSoftware = { product: string; version: string | null; source: string; supportEnds?: string | null; supported?: boolean | null; cves?: WebCve[]; cvesError?: string };
+type WebFinding = { path: string; severity: "critical" | "high" | "medium" | "low"; title: string; evidence: string; fix: string };
 type Check = {
-  id: number; query: string; kind: "device" | "domain" | "network"; profile: string; durationMs: number;
+  id: number; query: string; kind: "device" | "domain" | "network" | "website"; profile: string; durationMs: number;
+  url?: string; access?: string; software?: WebSoftware[]; findings?: WebFinding[];
   ip?: string; up?: boolean | null; open?: Service[] | null; services?: Service[]; device?: DeviceInfo | null;
   dns?: { connected: boolean; error?: string; hits: Hit[]; totalLookups: number; topDomains: { domain: string; queries: number; blocked: number }[] };
   domain?: string; days?: number; lookups?: number; indicator?: boolean; clients?: { ip: string; device: string | null; lookups: number; blocked: number; first: string; last: string; names: string[] }[];
@@ -65,18 +69,19 @@ export function CheckScreen() {
       <div className="top"><div><h1>Targeted check</h1><p className="muted small">An address, MAC, hostname, network or domain. Active checks stay inside {ranges.join(", ") || "your scan ranges"}; a domain is only looked up in Pi-hole’s history.</p></div></div>
       <form className="card stack" onSubmit={submit}>
         <div className="row">
-          <input className="input grow" style={{ minWidth: 220 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="192.168.1.42 · a4:c1:38:… · nas · 192.168.1.0/24 · example.com" aria-label="What to check" required />
+          <input className="input grow" style={{ minWidth: 220 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="192.168.1.42 · a4:c1:38:… · nas · 192.168.1.0/24 · example.com · https://your-site" aria-label="What to check" required />
           <button className="btn primary" type="submit" disabled={Boolean(busy)}>{busy ? "Checking…" : "Check"}</button>
         </div>
         <div className="seg" role="group" aria-label="Profile">{profiles.map((p) => (
           <button key={p.id} type="button" aria-pressed={profile === p.id} title={profileHelp[p.id]} onClick={() => setProfile(p.id)}>{p.label}{p.ports ? ` · ${p.ports} ports` : ""}</button>
         ))}</div>
-        <p className="small muted">{profileHelp[profile]}</p>
+        <p className="small muted">{/^https?:\/\//i.test(query.trim()) ? "A website address runs the website check: its PHP and CMS versions, their CVEs, and files that should not be public. Only GET requests to a fixed list of paths. A public site must be yours: the first check tells you how to prove it." : profileHelp[profile]}</p>
       </form>
       {error && <div className="banner bad" role="alert"><span className="small">{error}</span></div>}
 
       {check?.kind === "device" && <DeviceResult check={check} />}
       {check?.kind === "domain" && <DomainResult check={check} />}
+      {check?.kind === "website" && <WebsiteResult check={check} />}
       {check?.kind === "network" && (
         <section className="card stack">
           <header><h2>{check.network}</h2><span className="muted small">{check.sweep?.alive} answered · {check.sweep?.newDevices} new · {(check.durationMs / 1000).toFixed(1)} s</span></header>
@@ -171,5 +176,50 @@ function DomainResult({ check }: { check: Check }) {
         </table></div>
       )}
     </section>
+  );
+}
+
+const findingBadge: Record<string, string> = { critical: "b-crit", high: "b-high", medium: "b-med", low: "b-low" };
+
+function WebsiteResult({ check }: { check: Check }) {
+  const findings = check.findings ?? [];
+  return (
+    <div className="stack">
+      <section className="card stack">
+        <header><h2 className="mono">{check.url}</h2><span className="muted small">{check.access} · {(check.durationMs / 1000).toFixed(1)} s</span></header>
+        {findings.length === 0 ? <p className="small muted">Nothing exposed on the paths checked.</p> : (
+          <div className="list">{findings.map((f, i) => (
+            <div key={`${f.path}-${i}`} style={{ alignItems: "flex-start" }}>
+              <span className={`badge ${findingBadge[f.severity]}`}>{f.severity}</span>
+              <span className="grow stack" style={{ gap: 2 }}><b className="small">{f.title}</b><span className="small muted mono">{f.path} · {f.evidence}</span><span className="small">{f.fix}</span></span>
+            </div>
+          ))}</div>
+        )}
+      </section>
+      {(check.software ?? []).map((s) => (
+        <section key={s.product} className="card stack">
+          <header>
+            <h2>{s.product} {s.version ?? <span className="muted">(version hidden)</span>}</h2>
+            <span className="muted small">from {s.source}{s.supportEnds ? ` · security support ${s.supported ? "until" : "ended"} ${s.supportEnds}` : ""}</span>
+          </header>
+          {!s.version ? <p className="small muted">The version is not visible, so CVEs cannot be matched. That is good practice; check the version on the server itself.</p>
+            : s.cvesError ? <p className="small muted">Could not ask NVD: {s.cvesError}</p>
+            : !s.cves?.length ? <p className="small muted">NVD lists no CVEs for this version.</p> : (
+              <div className="table-wrap"><table>
+                <thead><tr><th>CVE</th><th>CVSS</th><th>Exploited</th><th>What</th></tr></thead>
+                <tbody>{s.cves.slice(0, 50).map((c) => (
+                  <tr key={c.cveId}>
+                    <td className="mono"><a href={`https://nvd.nist.gov/vuln/detail/${c.cveId}`} target="_blank" rel="noreferrer noopener">{c.cveId}</a></td>
+                    <td>{c.cvss ?? "—"}</td>
+                    <td>{c.kev ? <span className="badge b-crit">KEV</span> : ""}</td>
+                    <td className="small">{c.description}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          {(s.cves?.length ?? 0) > 50 && <p className="small muted">Showing 50 of {s.cves?.length}, exploited and highest scores first.</p>}
+        </section>
+      ))}
+    </div>
   );
 }
