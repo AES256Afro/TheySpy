@@ -77,18 +77,17 @@ export function fingerprint(headers, body) {
 /**
  * @param {{
  *   db: import("node:sqlite").DatabaseSync,
- *   cves: ReturnType<typeof import("../cves/store.mjs").createCveStore>,
+ *   software: ReturnType<typeof import("../cves/lookup.mjs").createSoftwareLookup>,
  *   audit: ReturnType<typeof import("../audit.mjs").createAuditLog>,
  *   verificationKey: Buffer,
  *   scanRanges: string[],
- *   nvdApiKey?: string | null,
  *   fetchImpl?: typeof fetch,
  *   resolve?: (host: string) => Promise<string[]>,
  *   resolveTxt?: (host: string) => Promise<string[][]>,
  *   now?: () => Date,
  * }} deps
  */
-export function createWebScanner({ db, cves, audit, verificationKey, scanRanges, nvdApiKey = null, fetchImpl = fetch, resolve, resolveTxt, now = () => new Date() }) {
+export function createWebScanner({ db, software: lookup, audit, verificationKey, scanRanges, fetchImpl = fetch, resolve, resolveTxt, now = () => new Date() }) {
   const lookupAll = resolve ?? (async (host) => (await dnsPromises.lookup(host, { all: true })).map((a) => a.address));
   const txt = resolveTxt ?? ((host) => dnsPromises.resolveTxt(host));
   const q = {
@@ -147,22 +146,6 @@ export function createWebScanner({ db, cves, audit, verificationKey, scanRanges,
     throw Object.assign(new Error(`${host} is not on your network, so TheySpy needs proof the site is yours before checking it. Publish ${token} at ${new URL("/.well-known/theyspy-verification.txt", origin)} or as a DNS TXT record "theyspy-verification=${token}", then check again.`), { status: 403, verification: { host, token } });
   }
 
-  /** CVEs NVD lists for this exact version (its virtualMatchString), flagged when CISA KEV has them. */
-  async function cvesFor(cpe, version) {
-    const match = `cpe:2.3:a:${cpe[0]}:${cpe[1]}:${version}`;
-    const response = await fetchImpl(`https://services.nvd.nist.gov/rest/json/cves/2.0?virtualMatchString=${encodeURIComponent(match)}&resultsPerPage=500`, {
-      headers: { "user-agent": userAgent, ...(nvdApiKey ? { apiKey: nvdApiKey } : {}) }, signal: AbortSignal.timeout(60_000),
-    });
-    if (!response.ok) throw new Error(`NVD answered ${response.status}`);
-    const data = /** @type {any} */ (await response.json());
-    return (data.vulnerabilities ?? []).map(({ cve }) => {
-      const m = cve.metrics ?? {};
-      const metric = (m.cvssMetricV40 ?? m.cvssMetricV31 ?? m.cvssMetricV30 ?? m.cvssMetricV2 ?? [])[0]?.cvssData ?? {};
-      const known = cves.get(cve.id);
-      return { cveId: cve.id, cvss: metric.baseScore ?? null, severity: String(metric.baseSeverity ?? "").toLowerCase() || null, description: (cve.descriptions ?? []).find((d) => d.lang === "en")?.value?.slice(0, 300) ?? null, kev: Boolean(known?.kev), epss: known?.epss ?? null };
-    }).sort((a, b) => Number(b.kev) - Number(a.kev) || (b.cvss ?? 0) - (a.cvss ?? 0));
-  }
-
   const scanner = {
     tokenFor,
 
@@ -211,7 +194,7 @@ export function createWebScanner({ db, cves, audit, verificationKey, scanRanges,
         }
         if (s.version) {
           try {
-            s.cves = await cvesFor(s.cpe, s.version);
+            s.cves = await lookup.lookup({ vendor: s.cpe[0], product: s.cpe[1], version: s.version });
             log(`${s.product} ${s.version}: ${s.cves.length} CVEs in NVD${s.cves.some((c) => c.kev) ? `, ${s.cves.filter((c) => c.kev).length} known exploited` : ""}.`);
           } catch (error) {
             s.cvesError = error.message;

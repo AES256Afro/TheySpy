@@ -9,6 +9,7 @@ import { piholeRoutes } from "./pihole/routes.mjs";
 import { blocklistRoutes, publicListRoutes } from "./blocklists/routes.mjs";
 import { fleetRoutes } from "./fleet/routes.mjs";
 import { cveRoutes } from "./cves/routes.mjs";
+import { adProbeUrl, dnsCheckZone, thisDeviceRoutes } from "./thisdevice.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -38,11 +39,13 @@ function readCookie(header, name) {
  *   checker: ReturnType<typeof import("./fleet/targeted.mjs").createTargetedCheck>,
  *   oui: ReturnType<typeof import("./fleet/oui.mjs").createOui>,
  *   web: ReturnType<typeof import("./web/scan.mjs").createWebScanner>,
+ *   software: ReturnType<typeof import("./cves/lookup.mjs").createSoftwareLookup>,
+ *   deviceCves: ReturnType<typeof import("./cves/devices.mjs").createDeviceCves>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -50,7 +53,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use((_req, res, next) => {
     // Nothing third-party: fonts are bundled, and the app makes no outbound requests from the browser.
     res.set({
-      "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      // The two outside destinations are This device's probes: an ad-exchange script (does it load?)
+      // and a one-time name under a reserved zone (does its lookup reach Pi-hole?).
+      "Content-Security-Policy": `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' ${new URL(adProbeUrl).origin} http://*.${dnsCheckZone}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
@@ -131,8 +136,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, jobs }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, jobs }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs }));
+  app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 
