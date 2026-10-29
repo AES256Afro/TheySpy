@@ -9,6 +9,7 @@ import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
 import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
 import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.mjs";
+import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
 
@@ -22,14 +23,15 @@ iocStore.seedBundled();
 const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library) } });
+const baselines = createBaselines({ library, sentinel, settings, audit });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });

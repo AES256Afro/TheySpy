@@ -43,6 +43,31 @@ export function apiSource({ url, password, fetchImpl }) {
         return { queriesSeen: seen.size, hits: findHits(seen.values(), matcher) };
       });
     },
+    /** Devices by how much they ask, for choosing a baseline's scope. */
+    async clients() {
+      return client().session((c) => c.topClients(50));
+    },
+    /**
+     * How often each name was looked up and blocked: one device over a window (from its query log),
+     * or the whole network from Pi-hole's own top-domain stats (its in-memory day).
+     * @param {{ client?: string, from: number, until: number }} scope
+     */
+    async domainCounts({ client: ip, from, until }) {
+      return client().session(async (c) => {
+        if (!ip) return { rows: await c.topDomainCounts(2000), basis: "Pi-hole's 2,000 most-looked-up allowed and blocked names, from its in-memory statistics" };
+        const seen = new Map();
+        for (const disk of [false, true]) for (const row of await c.queries({ from, until, disk, client: ip })) seen.set(`${row.id}:${row.time}`, row);
+        const counts = new Map();
+        for (const row of seen.values()) {
+          const q = fromApi(row);
+          const e = counts.get(q.domain) ?? { domain: q.domain, queries: 0, blocked: 0 };
+          e.queries += 1;
+          if (/BLOCK|GRAVITY|REGEX|DENYLIST|BLACKLIST|SPECIAL/.test(q.status)) e.blocked += 1;
+          counts.set(q.domain, e);
+        }
+        return { rows: [...counts.values()], basis: `every lookup ${ip} made` };
+      });
+    },
     /** Everything since `from` in the in-memory log, for the live watch. */
     async recent(matcher, from) {
       return client().session(async (c) => {
@@ -113,6 +138,24 @@ export function databaseSource({ path }) {
       }
     },
     async hunt(matcher, { from, until }) { return scan(matcher, from, until); },
+    async clients() {
+      const db = open();
+      try {
+        const names = clientNames(db);
+        return db.prepare("SELECT client, COUNT(*) AS n FROM queries WHERE timestamp >= ? GROUP BY client ORDER BY n DESC LIMIT 50").all(Math.floor(Date.now() / 1000) - 7 * 86400)
+          .map((r) => ({ ip: String(/** @type {any} */ (r).client), name: names.get(/** @type {any} */ (r).client) ?? null, queries: Number(/** @type {any} */ (r).n) }));
+      } finally { db.close(); }
+    },
+    async domainCounts({ client: ip, from, until }) {
+      const db = open();
+      try {
+        const blocked = [1, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 18].join(",");
+        const where = `timestamp >= ? AND timestamp <= ?${ip ? " AND client = ?" : ""}`;
+        const rows = db.prepare(`SELECT domain, COUNT(*) AS n, SUM(CASE WHEN status IN (${blocked}) THEN 1 ELSE 0 END) AS b FROM queries WHERE ${where} GROUP BY domain ORDER BY n DESC LIMIT 20000`)
+          .all(...[Math.floor(from), Math.ceil(until), ...(ip ? [ip] : [])]).map((r) => ({ domain: String(/** @type {any} */ (r).domain).toLowerCase(), queries: Number(/** @type {any} */ (r).n), blocked: Number(/** @type {any} */ (r).b) }));
+        return { rows, basis: ip ? `every lookup ${ip} made` : "every lookup on the network" };
+      } finally { db.close(); }
+    },
     async recent(matcher, from) { return scan(matcher, from, Date.now() / 1000 + 60); },
   };
 }
