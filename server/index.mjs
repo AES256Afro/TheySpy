@@ -23,7 +23,7 @@ iocStore.seedBundled();
 const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
-const baselines = createBaselines({ library, sentinel, settings, audit });
+const baselines = createBaselines({ db, library, sentinel, settings, audit });
 const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
 
 if (auth.generatedPassword) {

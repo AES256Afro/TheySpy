@@ -153,6 +153,17 @@ export const migrations = [
      decided_by TEXT
    );
    CREATE INDEX blocklist_versions_source ON blocklist_versions (source_id, status);`,
+  // M3: shadow mode. While a baseline is tried in shadow for a scope, the live watch counts that
+  // scope's lookups per name here; nothing is blocked. The report matches them against the baseline.
+  `CREATE TABLE baseline_shadow (
+     scope TEXT NOT NULL,
+     domain TEXT NOT NULL,
+     queries INTEGER NOT NULL,
+     blocked INTEGER NOT NULL,
+     first_at TEXT NOT NULL,
+     last_at TEXT NOT NULL,
+     PRIMARY KEY (scope, domain)
+   );`,
 ];
 
 /**

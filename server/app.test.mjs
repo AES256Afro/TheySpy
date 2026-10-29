@@ -159,6 +159,13 @@ describe("HTTP API", () => {
     expect((await request("PUT", "/api/blocklists/baselines/exceptions", { scope: "device-192-168-1-42", site: "fearevolve[.]com" })).body).toEqual({ exceptions: ["fearevolve.com"] });
     expect((await request("POST", "/api/blocklists/baselines/apply", { baselineId: "extreme" })).status).toBe(400);
     expect((await request("POST", "/api/blocklists/baselines/apply", { baselineId: "strict", client: "pixel; rm" })).status).toBe(400);
+    expect((await request("PUT", "/api/blocklists/baselines/custom", { categories: ["nope"] })).status).toBe(400);
+    expect((await request("PUT", "/api/blocklists/baselines/custom", { name: "Mine", categories: ["ads"] })).body.custom).toMatchObject({ id: "custom", categories: ["spyware", "ads"] });
+    expect((await request("DELETE", "/api/blocklists/baselines/shadow", { client: "192.168.1.42" })).status).toBe(404);
+    expect((await request("POST", "/api/blocklists/baselines/shadow", { baselineId: "custom", client: "192.168.1.42" })).body.shadow).toMatchObject({ baseline: "custom", mode: "shadow" });
+    expect((await request("GET", "/api/blocklists/baselines/preview?client=192.168.1.42")).body.shadow).toMatchObject({ baseline: "custom", totalQueries: 0 });
+    expect((await request("DELETE", "/api/blocklists/baselines/custom")).status).toBe(409);
+    expect((await request("DELETE", "/api/blocklists/baselines/shadow", { client: "192.168.1.42" })).body).toEqual({ removed: true, shadow: true });
   });
 
   it("serves the app shell for client-side routes", async () => {
