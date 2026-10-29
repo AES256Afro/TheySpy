@@ -11,6 +11,9 @@ import { createIocStore } from "../server/iocs/store.mjs";
 import { createPiholeClient } from "../server/pihole/client.mjs";
 import { createSentinel } from "../server/pihole/sentinel.mjs";
 import { createSecretBox } from "../server/secrets.mjs";
+import express from "express";
+import { createBlocklistLibrary } from "../server/blocklists/library.mjs";
+import { publicListRoutes } from "../server/blocklists/routes.mjs";
 
 const url = process.env.PIHOLE_URL ?? "http://127.0.0.1:18053";
 const password = process.env.PIHOLE_PASSWORD ?? "";
@@ -30,6 +33,7 @@ sentinel.configure({ mode: "api", url, password, write: true }, "e2e");
 const snapshot = async () => createPiholeClient({ url, password }).session(async (c) => {
   const lists = {};
   for (const type of ["allow", "deny"]) for (const kind of ["exact", "regex"]) lists[`${type}/${kind}`] = (await c.listDomains(type, kind)).map(({ date_modified: _modified, ...rest }) => rest);
+  lists.adlists = (await c.listAdlists("block")).map((l) => `${l.id} ${l.address} ${l.enabled}`);
   return JSON.stringify(lists);
 });
 
@@ -98,4 +102,26 @@ const rolled = await sentinel.rollback(pushed.pushId, "e2e");
 assert.equal(rolled.removed, 2);
 assert.equal(await snapshot(), before, "Pi-hole's allow and deny lists are exactly as before");
 step("rolled back: Pi-hole's lists are exactly as before the push");
+// M3: Pi-hole subscribes to TheySpy's compiled spyware list, served over HTTP the way the app serves
+// it, and blocks from it through gravity. Removing the subscription leaves Pi-hole's lists as they were.
+if (process.env.E2E_LISTS_HOST) {
+  const library = createBlocklistLibrary({ db, settings, audit, iocStore });
+  library.seed();
+  const app = express().use("/lists", publicListRoutes({ library }));
+  const listServer = await new Promise((resolve) => { const s = app.listen(18797, "0.0.0.0", () => resolve(s)); });
+  const address = `http://${process.env.E2E_LISTS_HOST}:18797/lists/${library.listToken()}/spyware.txt`;
+  const beforeSubscribe = await snapshot();
+  const subscribed = await sentinel.subscribe(address, "Spyware & ADINT", "e2e");
+  assert.equal(subscribed.entries, 2, "Pi-hole loaded both indicator domains from TheySpy's list");
+  step(`subscribed Pi-hole to TheySpy's spyware list: ${subscribed.entries} entries loaded (${subscribed.retrieval})`);
+  assert.deepEqual((await sentinel.subscriptions()).map((s) => s.address), [address]);
+  const coverageNow = await sentinel.coverage();
+  assert.equal(coverageNow.blocked, 2, "both domains now blocked by Pi-hole's gravity");
+  assert.ok(coverageNow.results.every((r) => r.by.includes(address)), "blocked by TheySpy's list");
+  step("Pi-hole's own search shows both indicator domains blocked by TheySpy's list");
+  await sentinel.unsubscribe(address, "e2e");
+  assert.equal(await snapshot(), beforeSubscribe, "Pi-hole's lists are exactly as before the subscription");
+  step("removed the subscription: Pi-hole's lists are exactly as before");
+  listServer.close();
+}
 console.log("E2E OK");

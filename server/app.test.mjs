@@ -116,6 +116,33 @@ describe("HTTP API", () => {
     expect((await request("POST", "/api/jobs", { kind: "ioc.check" })).status).toBe(202);
   });
 
+  it("serves compiled blocklists to Pi-hole at the secret address, in five formats", async () => {
+    const { request, library } = await start();
+    const token = library.listToken();
+    const spyware = await request("GET", `/lists/${token}/spyware.txt`);
+    expect(spyware.status).toBe(200);
+    expect(spyware.body).toContain("# TheySpy Spyware & ADINT list (txt)");
+    expect(spyware.body).toContain("\nfearevolve.com\n");
+    expect((await request("GET", `/lists/${token}/spyware.adblock`)).body).toContain("||fearevolve.com^");
+    expect((await request("GET", `/lists/${token}/security.rpz`)).body).toContain("*.fearevolve.com CNAME .");
+    expect((await request("GET", "/lists/wrong-token/spyware.txt")).status).toBe(404);
+    expect((await request("GET", `/lists/${token}/nonsense.txt`)).status).toBe(404);
+    const again = await request("GET", `/lists/${token}/spyware.txt`, undefined, { "if-none-match": spyware.headers.get("etag") });
+    expect(again.status).toBe(304);
+  });
+
+  it("manages blocklists only for the owner", async () => {
+    const { request } = await start();
+    expect((await request("GET", "/api/blocklists")).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    const overview = (await request("GET", "/api/blocklists")).body;
+    expect(overview.sources.filter((s) => s.status === "enabled")).toHaveLength(7);
+    expect(overview.subscriptions.find((l) => l.id === "spyware").url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/lists\/[\w-]+\/spyware\.txt$/);
+    expect((await request("GET", "/api/blocklists/candidates?category=bypass")).body.candidates.map((c) => c.key)).toEqual(["adguard:hagezi_encrypted_dns_vpn_tor_proxy_bypass"]);
+    expect((await request("POST", "/api/blocklists/sources", { url: "ftp://x" })).status).toBe(400);
+    expect((await request("PUT", "/api/blocklists/pins", { pins: ["Example.COM", "not a name"] })).body).toEqual({ pins: ["example.com"] });
+  });
+
   it("serves the app shell for client-side routes", async () => {
     const dist = mkdtempSync(path.join(tmpdir(), "theyspy-dist-"));
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");
