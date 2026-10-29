@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.mjs";
 import { readConfig } from "./config.mjs";
-import { testServices } from "./test-helpers.mjs";
+import { testServices, vendored } from "./test-helpers.mjs";
 
 const servers = [];
 afterEach(() => { for (const server of servers.splice(0)) server.close(); });
@@ -74,6 +74,46 @@ describe("HTTP API", () => {
     expect((await request("PUT", "/api/appearance", { look: "neon" })).status).toBe(400);
     expect((await request("PUT", "/api/appearance", { look: "paper", accent: "#123456" })).body.appearance).toMatchObject({ look: "paper", accent: "#123456", name: "NetWatch" });
     expect((await request("DELETE", "/api/appearance")).body.appearance.look).toBe("glass");
+  });
+
+  it("serves indicators, defanged, only to the owner", async () => {
+    const { request } = await start();
+    expect((await request("GET", "/api/iocs")).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    const overview = (await request("GET", "/api/iocs")).body;
+    expect(overview).toMatchObject({ active: { count: 405, asof: "2026-10-18", provenance: { track: "bundled" } }, pending: null, track: "release", counts: { total: 405, byType: { domain: 292, ip: 111, sha256: 2 } } });
+    const { indicators } = (await request("GET", "/api/iocs/indicators")).body;
+    expect(indicators).toHaveLength(405);
+    expect(indicators.filter((i) => i.type !== "sha256").every((i) => i.value.includes("[.]"))).toBe(true);
+  });
+
+  it("downloads exports that match zero-breach's files", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const hosts = await request("GET", "/api/iocs/export/hosts");
+    expect(hosts.headers.get("content-disposition")).toBe('attachment; filename="adfection.hosts.txt"');
+    expect(hosts.body).toBe(vendored("dist/adfection.hosts.txt").toString("utf8"));
+    expect((await request("GET", "/api/iocs/export/csv")).status).toBe(404);
+  });
+
+  it("checks for updates as a job, and only applies pending versions", async () => {
+    const { request, jobs } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const queued = await request("POST", "/api/iocs/check");
+    expect(queued.status).toBe(202);
+    await jobs.idle();
+    expect((await request("GET", "/api/iocs")).body.lastCheck).toMatchObject({ outcome: "up-to-date" });
+    const activeId = (await request("GET", "/api/iocs")).body.active.id;
+    expect((await request("POST", `/api/iocs/versions/${activeId}/apply`)).status).toBe(409);
+    expect((await request("PUT", "/api/iocs/settings", { track: "nightly" })).status).toBe(400);
+    expect((await request("PUT", "/api/iocs/settings", { track: "main" })).body).toEqual({ track: "main" });
+  });
+
+  it("starts only direct job kinds from /api/jobs", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    expect((await request("POST", "/api/jobs", { kind: "ioc.apply" })).status).toBe(400);
+    expect((await request("POST", "/api/jobs", { kind: "ioc.check" })).status).toBe(202);
   });
 
   it("serves the app shell for client-side routes", async () => {

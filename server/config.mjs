@@ -15,6 +15,8 @@ export function readConfig(env = process.env) {
     adminPassword: env.TS_ADMIN_PASSWORD?.trim() || null,
     sessionSecret: env.TS_SESSION_SECRET?.trim() || null,
     cookieSecure: env.TS_COOKIE_SECURE === "true",
+    // Daily look for a newer indicator set (it is only offered for review, never applied).
+    iocAutoCheck: env.TS_IOC_AUTOCHECK !== "false",
     appearance: {
       look: env.TS_LOOK?.trim() || undefined,
       name: env.TS_BRAND_NAME?.trim() || undefined,

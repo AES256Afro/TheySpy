@@ -15,6 +15,7 @@ h2 { font-size: 15px; font-weight: 600; }
 h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-family: var(--font-body); }
 p { margin: 0; }
 code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+code { overflow-wrap: anywhere; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
