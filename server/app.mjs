@@ -34,10 +34,12 @@ function readCookie(header, name) {
  *   baselines: ReturnType<typeof import("./blocklists/baselines.mjs").createBaselines>,
  *   fleet: ReturnType<typeof import("./fleet/registry.mjs").createFleet>,
  *   discovery: ReturnType<typeof import("./fleet/discovery.mjs").createDiscovery>,
+ *   checker: ReturnType<typeof import("./fleet/targeted.mjs").createTargetedCheck>,
+ *   oui: ReturnType<typeof import("./fleet/oui.mjs").createOui>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -126,7 +128,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, jobs }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, jobs }));
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 

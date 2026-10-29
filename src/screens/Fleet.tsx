@@ -13,6 +13,7 @@ type Overview = {
   lastSync: { at: string; pihole: number; arp: number; devices: number } | null;
   lastSweep: { at: string; networks: string[]; alive: number; withMac: number; newDevices: number } | null;
   events: FleetEvent[];
+  vendors: { prefixes: number; at?: string; named?: number };
 };
 
 const sourceLabel: Record<string, string> = { pihole: "PH", arp: "ARP", sweep: "SWEEP" };
@@ -173,6 +174,8 @@ export function FleetScreen() {
             <div className="list small">
               <div><span className="grow">Pi-hole read</span><span className="muted">{overview.lastSync ? `${ago(overview.lastSync.at)} · ${overview.lastSync.pihole} addresses` : "not yet"}</span></div>
               <div><span className="grow">Last sweep</span><span className="muted">{overview.lastSweep ? `${ago(overview.lastSweep.at)} · ${overview.lastSweep.alive} answered` : "not yet"}</span></div>
+              <div><span className="grow">MAC vendor names (IEEE)</span><span className="muted">{overview.vendors.prefixes ? `${overview.vendors.prefixes.toLocaleString()} prefixes${overview.vendors.at ? ` · ${ago(overview.vendors.at)}` : ""}` : "not loaded"}</span>
+                <button className="btn small" type="button" disabled={Boolean(busy)} onClick={() => run("vendors", () => api("POST", "/api/fleet/vendors"))}>{busy === "vendors" ? "Loading…" : "Update"}</button></div>
             </div>
           </section>
         </div>
@@ -204,6 +207,7 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
       <div className="row">
         <button className="btn primary" type="button" onClick={() => onSave({ label: form.label, owner: form.owner, kind: form.kind, notes: form.notes, tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) })}>Save</button>
         <button className="btn" type="button" onClick={() => onSave({ trusted: !device.trusted })}>{device.trusted ? "Stop trusting" : "Trust this device"}</button>
+        {device.ip && <a className="btn" href={`/check?q=${encodeURIComponent(device.ip)}`}>Check it</a>}
         <button className="btn danger" type="button" onClick={onForget}>Forget</button>
       </div>
       {device.addressHistory.length > 1 && (

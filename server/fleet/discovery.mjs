@@ -153,9 +153,10 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
     /**
      * Sweeps networks (the owner's targets by default): probes every address, then records the
      * hosts that answered with the MAC and name found for them.
-     * @param {{ targets?: string[], log?: (line: string) => void, concurrency?: number }} [options]
+     * @param {{ targets?: string[], log?: (line: string) => void, concurrency?: number, record?: boolean }} [options]
+     *   record: false for a targeted check's one-address sweep, which is not "the last sweep"
      */
-    async sweep({ targets, log = () => {}, concurrency = 64 } = {}) {
+    async sweep({ targets, log = () => {}, concurrency = 64, record = true } = {}) {
       const networks = (targets ?? discovery.targets()).map((t) => discovery.checkTarget(t));
       if (!networks.length) throw Object.assign(new Error("Choose the networks to sweep first"), { status: 400 });
       const started = now().toISOString();
@@ -181,7 +182,7 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
       }
       const created = fleet.observe(observations, "sweep");
       const result = { at: started, networks, alive: alive.length, withMac: observations.filter((o) => o.mac).length, newDevices: created.length };
-      settings.set("fleet_last_sweep", result);
+      if (record) settings.set("fleet_last_sweep", result);
       log(`${alive.length} hosts answered${result.withMac ? `, ${result.withMac} with a MAC` : ""}; ${created.length} new.`);
       return result;
     },

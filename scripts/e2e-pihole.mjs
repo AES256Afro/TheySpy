@@ -17,6 +17,7 @@ import { publicListRoutes } from "../server/blocklists/routes.mjs";
 import { createBaselines } from "../server/blocklists/baselines.mjs";
 import { createDiscovery } from "../server/fleet/discovery.mjs";
 import { createFleet } from "../server/fleet/registry.mjs";
+import { createTargetedCheck } from "../server/fleet/targeted.mjs";
 
 const url = process.env.PIHOLE_URL ?? "http://127.0.0.1:18053";
 const password = process.env.PIHOLE_PASSWORD ?? "";
@@ -212,6 +213,20 @@ if (process.env.E2E_LISTS_HOST) {
     step(`sweep of 172.29.53.0/24: ${swept.alive} hosts answered; Pi-hole found at .2 with its MAC`);
   } else {
     step("sweep skipped: this host cannot reach Docker's networks directly (it runs in CI on Linux)");
+  }
+
+  // The targeted check: a domain reads Pi-hole's history (nothing is sent to it); on Linux, a Standard
+  // check of Pi-hole finds its DNS and web ports.
+  const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: ["172.29.53.0/24"] });
+  const domain = await checker.run({ query: "c2-node[.]theyspy[.]test", profile: "standard" }, "e2e");
+  assert.equal(domain.kind, "domain");
+  assert.ok(domain.clients.some((c) => c.ip === "172.29.53.11" && c.lookups >= 2), `the check found .11's lookups (${JSON.stringify(domain.clients)})`);
+  step(`targeted check of c2-node.theyspy.test: ${domain.lookups} lookups from ${domain.clients.length} devices, from Pi-hole's history`);
+  if (process.platform === "linux") {
+    const piholeCheck = await checker.run({ query: "172.29.53.2", profile: "standard" }, "e2e");
+    const ports = piholeCheck.open.map((o) => o.port);
+    assert.ok(ports.includes(53) && ports.includes(80), `Pi-hole listens on 53 and 80 (${JSON.stringify(piholeCheck.open)})`);
+    step(`targeted Standard check of Pi-hole: open ${ports.join(", ")}${piholeCheck.open.find((o) => o.port === 80)?.banner ? ` (web: ${piholeCheck.open.find((o) => o.port === 80).banner})` : ""}`);
   }
 }
 console.log("E2E OK");
