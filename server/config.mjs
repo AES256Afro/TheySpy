@@ -26,6 +26,10 @@ export function readConfig(env = process.env) {
     scanRanges,
     // Read Pi-hole's network table every 5 minutes, and sweep the owner's chosen networks every 30.
     fleetAuto: env.TS_FLEET_AUTO !== "false",
+    // CVEs: CISA KEV hourly, NVD every 2 hours (the last 120 days on the first run), EPSS daily.
+    cvesAuto: env.TS_CVES_AUTO !== "false",
+    // Optional NVD API key: 50 requests per 30 seconds instead of 5.
+    nvdApiKey: env.TS_NVD_API_KEY?.trim() || null,
     // Pi-hole: these override what the owner sets on the Pi-hole Sentinel screen.
     pihole: {
       url: env.TS_PIHOLE_URL?.trim() || undefined,
