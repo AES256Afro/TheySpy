@@ -84,13 +84,46 @@ async function reverseName(resolver, ip) {
  *   neighbours?: () => Promise<{ ip: string, mac: string }[]>,
  *   probeHost?: (ip: string) => Promise<{ port: number, answer: string } | null>,
  *   reverse?: (ip: string) => Promise<string | null>,
+ *   reverseVia?: (server: string, ip: string) => Promise<string | null>,
  * }} deps
  */
-export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now = () => new Date(), neighbours = readNeighbours, probeHost, reverse }) {
+export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now = () => new Date(), neighbours = readNeighbours, probeHost, reverse, reverseVia }) {
   const resolver = new dnsPromises.Resolver({ timeout: 1500, tries: 1 });
   const probeOne = probeHost ?? ((ip) => probe(ip, sweepPorts, 700));
   const reverseOne = reverse ?? ((ip) => reverseName(resolver, ip));
   const allowed = (ip) => scanRanges.some((range) => inCidr(ip, range));
+  // Asking a particular DNS server for an address's name: the router (which knows its DHCP clients'
+  // names) and Tailscale's MagicDNS (which knows the tailnet's).
+  const askServer = reverseVia ?? (async (server, ip) => {
+    const r = new dnsPromises.Resolver({ timeout: 1500, tries: 1 });
+    r.setServers([server]);
+    try { return (await r.reverse(ip))[0] ?? null; } catch { return null; }
+  });
+
+  /** Names for devices from your Pi-hole client labels, your router and Tailscale. */
+  async function learnNames(labels, gateway, log) {
+    const devices = fleet.list();
+    const byMac = new Map(labels.map((l) => [l.client.toLowerCase(), l.label]));
+    let named = 0;
+    for (const d of devices) {
+      const label = (d.mac && byMac.get(d.mac)) ?? (d.ip && byMac.get(d.ip)) ?? null;
+      if ((label ?? null) !== (d.names.pihole ?? null)) fleet.setNames(d.id, { pihole: label });
+      if (label) named += 1;
+    }
+    const stale = (d) => !d.names.checkedAt || now().getTime() - Date.parse(d.names.checkedAt) > 6 * 3_600_000;
+    const queue = devices.filter((d) => d.ip && stale(d) && d.network?.kind !== "docker" && d.network?.kind !== "local");
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(8, queue.length) }, async () => {
+      while (next < queue.length) {
+        const d = queue[next++];
+        const tailnet = inCidr(d.ip, "100.64.0.0/10");
+        const router = !tailnet && gateway ? await askServer(gateway, d.ip) : null;
+        const tailscale = await askServer("100.100.100.100", d.ip);
+        fleet.setNames(d.id, { router: router && !/\.ts\.net\.?$/.test(router) ? router : null, tailscale: tailscale ?? (router && /\.ts\.net\.?$/.test(router) ? router : null), checkedAt: now().toISOString() });
+      }
+    }));
+    if (named || queue.length) log(`Names: ${named} from your Pi-hole labels; asked ${gateway ? "the router and " : ""}Tailscale about ${queue.length} addresses.`);
+  }
 
   const discovery = {
     scanRanges: () => scanRanges,
@@ -141,10 +174,13 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
         fromPihole = observations.length;
         log(`Pi-hole's network table: ${fromPihole} addresses.`);
       }
+      const { clients: labels, gateway } = sentinel.effective().mode ? await sentinel.source().clientLabels().catch(() => ({ clients: [], gateway: null })) : { clients: [], gateway: null };
+      if (gateway) settings.set("fleet_gateway", gateway);
       const seenAt = now().toISOString();
       const arp = (await neighbours()).filter((e) => allowed(e.ip));
       fleet.observe(arp.map((e) => ({ ...e, seenAt })), "arp", { inventory });
       if (arp.length) log(`Neighbour table: ${arp.length} addresses with MACs.`);
+      await learnNames(labels, gateway ?? settings.get("fleet_gateway"), log);
       const result = { pihole: fromPihole, arp: arp.length, devices: fleet.list().length };
       settings.set("fleet_last_sync", { at: seenAt, ...result });
       return result;
