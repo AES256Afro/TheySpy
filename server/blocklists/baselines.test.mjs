@@ -45,7 +45,7 @@ describe("baselines", () => {
 
   it("previews each level against a device's real lookups", async () => {
     const { baselines } = await setup({ queries: [
-      ...lookups(phone, "fearevolve.com", 2),
+      ...lookups(phone, "fearevolve.com", 12),
       ...lookups(phone, "ads-1.example", 12),
       ...lookups(phone, "cdn.tracker.example", 60),
       ...lookups(phone, "malware-a.example", 1, "GRAVITY"),
@@ -53,7 +53,7 @@ describe("baselines", () => {
       ...lookups(laptop, "ads-1.example", 500),
     ] });
     const preview = await baselines.preview({ client: phone, windowDays: 7 });
-    expect(preview.totalQueries).toBe(105);
+    expect(preview.totalQueries).toBe(115);
     const essential = preview.levels.find((l) => l.id === "essential");
     const balanced = preview.levels.find((l) => l.id === "balanced");
     expect(essential.details.map((s) => s.site).sort()).toEqual(["fearevolve.com", "malware-a.example"]);
@@ -61,6 +61,8 @@ describe("baselines", () => {
     expect(balanced.details.map((s) => [s.site, s.risk])).toEqual([["ads-1.example", "high"], ["tracker.example", "low"], ["fearevolve.com", "low"], ["malware-a.example", "low"]]);
     expect(balanced.details.find((s) => s.site === "ads-1.example")).toMatchObject({ queries: 12, categories: ["ads", "trackers"], lists: ["HaGeZi's Normal Blocklist"] });
     expect(balanced.mightBreak).toBe(1);
+    // fearevolve.com is looked up directly, but a spyware site is never a breakage risk.
+    expect(essential.details.find((x) => x.site === "fearevolve.com").risk).toBe("low");
     expect(preview.levels.find((l) => l.id === "strict").missingLists.length).toBeGreaterThan(0);
   });
 
@@ -157,6 +159,56 @@ describe("baselines", () => {
     expect(pihole.state.adlists[0].groups).toEqual([0]);
     expect(pihole.state.clients).toEqual([]);
     expect(library.sources().find((s) => s.key === "adguard:hagezi_pro++").status).toBe("enabled");
+  });
+
+  it("lets the owner define their own level, always with spyware, and keeps it while in use", async () => {
+    const { baselines } = await setup({ queries: [...lookups(phone, "ads-1.example", 3), ...lookups(phone, "fearevolve.com", 1)] });
+    expect(() => baselines.setCustom({ categories: ["ads", "astrology"] }, "owner")).toThrow(/categories must be from/);
+    const custom = baselines.setCustom({ name: "Kids' tablet", categories: ["social", "ads"] }, "owner");
+    expect(custom).toMatchObject({ id: "custom", name: "Kids' tablet", severity: 4, categories: ["spyware", "ads", "social"] });
+    expect(baselines.list().map((b) => b.id)).toEqual(["essential", "balanced", "strict", "lockdown", "custom"]);
+    const level = (await baselines.preview({ client: phone })).levels.find((l) => l.id === "custom");
+    expect(level.details.map((d) => d.site).sort()).toEqual(["ads-1.example", "fearevolve.com"]);
+    expect(level.missingCategories).toEqual(["social"]);
+    expect(baselines.compileFor("custom", "network").domains).toContain("ads-1.example");
+    await baselines.apply({ baselineId: "custom", client: phone, listsOrigin: "http://x:8797" }, "owner");
+    expect(() => baselines.deleteCustom("owner")).toThrow(/in use/);
+    await baselines.remove({ client: phone }, "owner");
+    baselines.deleteCustom("owner");
+    expect(baselines.list()).toHaveLength(4);
+  });
+
+  it("tries a baseline in shadow: counts the device's new lookups once each, blocks nothing", async () => {
+    const { baselines, sentinel, pihole, now } = await setup();
+    expect(() => baselines.startShadow({ baselineId: "nope", client: phone }, "owner")).toThrow(/No such baseline/);
+    baselines.startShadow({ baselineId: "balanced", client: phone }, "owner");
+    const before = JSON.stringify({ g: pihole.state.groups, c: pihole.state.clients, l: pihole.state.adlists });
+    const at = "2026-10-29T12:00:05Z";
+    const fresh = [...lookups(phone, "ads-1.example", 4, "FORWARDED", at), ...lookups(phone, "cdn.tracker.example", 2, "GRAVITY", at), ...lookups(phone, "example.org", 5, "FORWARDED", at), ...lookups(laptop, "ads-1.example", 9, "FORWARDED", at)];
+    pihole.state.queries.push(...fresh.map((x, i) => ({ ...x, id: 1000 + i })));
+    now.advance(30_000);
+    await sentinel.watch.poll();
+    await sentinel.watch.poll(); // overlapping polls read the same queries again
+    const report = baselines.shadowReport(phone);
+    expect(report).toMatchObject({ baseline: "balanced", totalQueries: 11 });
+    expect(report.level.details.map((d) => [d.site, d.queries, d.today])).toEqual([["ads-1.example", 4, "allowed"], ["tracker.example", 2, "blocked"]]);
+    expect(report.level.shareAfter).toBeCloseTo(6 / 11, 12);
+    expect((await baselines.preview({ client: phone })).shadow.baseline).toBe("balanced");
+    expect(JSON.stringify({ g: pihole.state.groups, c: pihole.state.clients, l: pihole.state.adlists })).toBe(before);
+
+    // Applying for real replaces the shadow; trying another in shadow on top of a real one is refused.
+    await baselines.apply({ baselineId: "balanced", client: phone, listsOrigin: "http://x:8797" }, "owner");
+    expect(baselines.shadowReport(phone)).toBeNull();
+    expect(() => baselines.startShadow({ baselineId: "strict", client: phone }, "owner")).toThrow(/is applied here/);
+  });
+
+  it("stops a shadow without touching Pi-hole", async () => {
+    const { baselines, pihole } = await setup();
+    baselines.startShadow({ baselineId: "strict" }, "owner");
+    const requests = pihole.state.requests.length;
+    expect(await baselines.remove({}, "owner")).toEqual({ removed: true, shadow: true });
+    expect(pihole.state.requests.length).toBe(requests);
+    expect(baselines.assignments()).toEqual({});
   });
 
   it("refuses to change Pi-hole when writes are off", async () => {

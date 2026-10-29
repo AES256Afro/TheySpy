@@ -110,7 +110,7 @@ step("rolled back: Pi-hole's lists are exactly as before the push");
 if (process.env.E2E_LISTS_HOST) {
   const library = createBlocklistLibrary({ db, settings, audit, iocStore });
   library.seed();
-  const baselines = createBaselines({ library, sentinel, settings, audit });
+  const baselines = createBaselines({ db, library, sentinel, settings, audit });
   const app = express().use("/lists", publicListRoutes({ library, baselines }));
   const listServer = await new Promise((resolve) => { const s = app.listen(18797, "0.0.0.0", () => resolve(s)); });
   const origin = `http://${process.env.E2E_LISTS_HOST}:18797`;
@@ -154,6 +154,29 @@ if (process.env.E2E_LISTS_HOST) {
   await baselines.remove({ client: "172.29.53.15" }, "e2e");
   assert.equal(await snapshot(), beforeBaseline, "groups, clients and lists exactly as before the baseline");
   step("removed the baseline: Pi-hole's groups, clients and lists are exactly as before");
+
+  // Shadow mode: nothing changes in Pi-hole, but the watch counts what the level would have blocked.
+  const beforeShadow = await snapshot();
+  baselines.startShadow({ baselineId: "essential", client: "172.29.53.17" }, "e2e");
+  let shadowed = null;
+  for (let attempt = 1; attempt <= 6 && !shadowed; attempt += 1) {
+    lookupFrom("172.29.53.17", "s.c2-node.theyspy.test");
+    await sentinel.watch.poll();
+    await sentinel.watch.poll(); // overlapping polls must not count a lookup twice
+    shadowed = baselines.shadowReport("172.29.53.17")?.level.details.find((d) => d.site === "theyspy.test");
+    if (!shadowed) await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  assert.ok(shadowed, "the shadow saw the device's lookup of an indicator subdomain");
+  // Let Pi-hole's API catch up with the last lookup, poll once more, then compare with Pi-hole's own count.
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  await sentinel.watch.poll();
+  shadowed = baselines.shadowReport("172.29.53.17").level.details.find((d) => d.site === "theyspy.test");
+  const asked = (await sentinel.source().client().session((c) => c.queries({ from: Date.now() / 1000 - 600, client: "172.29.53.17" }))).filter((r) => r.domain === "s.c2-node.theyspy.test").length;
+  assert.equal(shadowed.queries, asked, "each query counted once");
+  assert.equal(shadowed.today, "allowed", "and nothing was blocked");
+  assert.equal(await snapshot(), beforeShadow, "shadow mode leaves Pi-hole untouched");
+  await baselines.remove({ client: "172.29.53.17" }, "e2e");
+  step(`shadow mode counted ${shadowed.queries} lookups Essential would have blocked from 172.29.53.17, and changed nothing in Pi-hole`);
   listServer.close();
 }
 console.log("E2E OK");
