@@ -43,6 +43,11 @@ export function createOui({ db, settings, fetchImpl = fetch, now = () => new Dat
       return /** @type {any} */ (q.get.get(m.replaceAll(":", "").slice(0, 6)))?.vendor ?? null;
     },
     status: () => ({ prefixes: Number(/** @type {any} */ (q.count.get()).n), ...(settings.get("oui_last_update") ?? {}) }),
+    /** Whether the registry should be fetched: never loaded, or last checked over `maxAgeDays` ago. */
+    isDue(maxAgeDays = 30) {
+      const last = settings.get("oui_last_update");
+      return !oui.status().prefixes || !last?.at || now().getTime() - Date.parse(last.at) > maxAgeDays * 86_400_000;
+    },
 
     /** Downloads the registry (unless unchanged since last time) and names devices that had no vendor. */
     async update() {
