@@ -81,6 +81,7 @@ describe("HTTP API", () => {
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");
     const { request } = await start({ staticDirectory: dist });
     expect((await request("GET", "/fleet")).body).toContain("shell");
+    expect((await request("HEAD", "/")).status).toBe(200);
     expect((await request("GET", "/api/nope")).status).toBe(404);
   });
 });

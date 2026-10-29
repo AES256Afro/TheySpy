@@ -265,7 +265,7 @@ It holds a map of your network and secrets for Pi-hole, so it is a target too.
 Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone ends with `npm run check` green, a tagged image, and the BoxPilot manifest bumped.
 
 ### M0 — Foundation (S)
-**Status (29 Oct 2026): done**, except that the Docker image has not been built locally yet (Docker was not running). CI builds it and checks `/healthz`.
+**Status (29 Oct 2026): done.** The image builds, runs as `node`, and passes its Docker healthcheck; `docker compose` keeps data in the named volume `theyspy-data`.
 - Repo layout (`server/`, `src/`, `agent/`, `third_party/zero-breach/`, `boxpilot/`, `docs/`), CI on Linux/macOS, Dockerfile, compose file.
 - SQLite schema + migrations, settings, owner auth, job runner with audit log, `/healthz`.
 - App shell (sidebar, routing) with the design tokens and all seven looks from the mockups, Settings → Appearance (look, name, tagline, logo, accent, home screen, density), owner defaults from env, per-browser overrides.

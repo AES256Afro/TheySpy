@@ -117,8 +117,8 @@ export function createApp({ config, settings, audit, auth, jobs, staticDirectory
 
   if (existsSync(path.join(staticDirectory, "index.html"))) {
     app.use(express.static(staticDirectory, { index: false, maxAge: "1h" }));
-    // Client-side routes: every other GET gets the app shell.
-    app.use((req, res, next) => (req.method === "GET" ? res.sendFile(path.join(staticDirectory, "index.html")) : next()));
+    // Client-side routes: every other GET (or HEAD) gets the app shell.
+    app.use((req, res, next) => (req.method === "GET" || req.method === "HEAD" ? res.sendFile(path.join(staticDirectory, "index.html")) : next()));
   }
 
   app.use((error, _req, res, _next) => {

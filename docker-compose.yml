@@ -11,4 +11,9 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./data:/data
+      # A named volume, not ./data: ./data belongs to `npm run dev:server`, and a bind mount would
+      # be created root-owned on Linux where the container's node user cannot write to it.
+      - theyspy-data:/data
+
+volumes:
+  theyspy-data:
