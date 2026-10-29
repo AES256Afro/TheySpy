@@ -199,6 +199,38 @@ export const migrations = [
      detail TEXT NOT NULL DEFAULT '{}'
    );
    CREATE INDEX device_events_device ON device_events (device_id, at);`,
+  // M4: targeted checks. Each check is kept with its result; services are what a port check found
+  // listening on a device (the product and version feed CVE matching in M6).
+  `CREATE TABLE checks (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     query TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     profile TEXT NOT NULL,
+     device_id INTEGER REFERENCES devices (id) ON DELETE SET NULL,
+     started_at TEXT NOT NULL,
+     finished_at TEXT,
+     actor TEXT NOT NULL,
+     result TEXT
+   );
+   CREATE TABLE device_services (
+     device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+     port INTEGER NOT NULL,
+     proto TEXT NOT NULL,
+     service TEXT,
+     product TEXT,
+     version TEXT,
+     banner TEXT,
+     tls TEXT,
+     risk TEXT,
+     first_seen TEXT NOT NULL,
+     last_seen TEXT NOT NULL,
+     PRIMARY KEY (device_id, port, proto)
+   );`,
+  // M4: MAC vendor names from the IEEE registry (24-bit prefixes, lower-case hex).
+  `CREATE TABLE oui (
+     prefix TEXT PRIMARY KEY,
+     vendor TEXT NOT NULL
+   );`,
 ];
 
 /**
