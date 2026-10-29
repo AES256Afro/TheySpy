@@ -12,6 +12,7 @@ port=18053
 password=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
 
 cleanup() {
+  docker rm -f theyspy-e2e-client >/dev/null 2>&1 || true
   docker rm -f theyspy-e2e-pihole >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
