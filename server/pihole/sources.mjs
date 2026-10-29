@@ -72,6 +72,18 @@ export function apiSource({ url, password, fetchImpl }) {
     /** Pi-hole's network table, in the API's shape. */
     async networkDevices() { return client().session((c) => c.networkDevices()); },
     /**
+     * Every lookup of a name or its subdomains between two times (Pi-hole's suffix filter, then a
+     * label-boundary check), from memory and the long-term database.
+     * @param {string} domain @param {{ from: number, until: number }} window
+     */
+    async lookupsOf(domain, { from, until }) {
+      return client().session(async (c) => {
+        const seen = new Map();
+        for (const disk of [false, true]) for (const row of await c.queries({ from, until, disk, domain: `*${domain}` })) seen.set(`${row.id}:${row.time}`, row);
+        return [...seen.values()].map(fromApi).filter((q) => q.domain === domain || q.domain.endsWith(`.${domain}`));
+      });
+    },
+    /**
      * New queries since `from`: indicator hits, and each query to `observe`.
      * @param {any} matcher @param {number} from @param {(query: any) => void} [observe]
      */
@@ -162,6 +174,15 @@ export function databaseSource({ path }) {
         const rows = db.prepare(`SELECT domain, COUNT(*) AS n, SUM(CASE WHEN status IN (${blocked}) THEN 1 ELSE 0 END) AS b FROM queries WHERE ${where} GROUP BY domain ORDER BY n DESC LIMIT 20000`)
           .all(...[Math.floor(from), Math.ceil(until), ...(ip ? [ip] : [])]).map((r) => ({ domain: String(/** @type {any} */ (r).domain).toLowerCase(), queries: Number(/** @type {any} */ (r).n), blocked: Number(/** @type {any} */ (r).b) }));
         return { rows, basis: ip ? `every lookup ${ip} made` : "every lookup on the network" };
+      } finally { db.close(); }
+    },
+    /** @param {string} domain @param {{ from: number, until: number }} window */
+    async lookupsOf(domain, { from, until }) {
+      const db = open();
+      try {
+        const out = [];
+        for (const q of rows(db, from, until)) if (q.domain === domain || q.domain.endsWith(`.${domain}`)) out.push(q);
+        return out;
       } finally { db.close(); }
     },
     /** Pi-hole's network table (tables `network` and `network_addresses`), in the API's shape. */

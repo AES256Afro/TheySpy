@@ -17,6 +17,7 @@ import { publicListRoutes } from "../server/blocklists/routes.mjs";
 import { createBaselines } from "../server/blocklists/baselines.mjs";
 import { createDiscovery } from "../server/fleet/discovery.mjs";
 import { createFleet } from "../server/fleet/registry.mjs";
+import { createTargetedCheck } from "../server/fleet/targeted.mjs";
 
 const url = process.env.PIHOLE_URL ?? "http://127.0.0.1:18053";
 const password = process.env.PIHOLE_PASSWORD ?? "";
@@ -187,17 +188,21 @@ if (process.env.E2E_LISTS_HOST) {
 {
   const fleet = createFleet({ db, audit });
   const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: ["172.29.53.0/24"] });
-  // FTL builds its network table from its ARP cache about once a minute, so a client is listed only
-  // while its ARP entry is fresh: look something up from a client now, then wait for the table.
+  // FTL builds its network table from its ARP cache about once a minute, and a client container that
+  // exits after one lookup is soon gone from that cache. Keep one client running and asking while
+  // the table is read (e2e-pihole.sh removes it if this script fails).
+  execFileSync("docker", ["run", "-d", "--rm", "--name", "theyspy-e2e-client", "--network", process.env.E2E_DOCKER_NETWORK, "--ip", "172.29.53.18", "busybox:1.37",
+    "sh", "-c", "while true; do nslookup -timeout=2 fleet.theyspy.test 172.29.53.2 >/dev/null 2>&1; sleep 3; done"], { stdio: "ignore" });
   const testClient = (d) => d.mac && d.sources.pihole && /^172\.29\.53\.(1[0-9])$/.test(d.ip ?? "");
   let known = [];
-  for (let attempt = 1; attempt <= 18 && !known.length; attempt += 1) {
-    if (attempt % 6 === 1) {
-      try { execFileSync("docker", ["run", "--rm", "--network", process.env.E2E_DOCKER_NETWORK, "--ip", "172.29.53.18", "busybox:1.37", "nslookup", "-timeout=2", "fleet.theyspy.test", "172.29.53.2"], { stdio: "ignore" }); } catch { /* the answer does not matter */ }
+  try {
+    for (let attempt = 1; attempt <= 30 && !known.length; attempt += 1) {
+      await discovery.sync();
+      known = fleet.list().filter(testClient);
+      if (!known.length) await new Promise((resolve) => setTimeout(resolve, 5000));
     }
-    await discovery.sync();
-    known = fleet.list().filter(testClient);
-    if (!known.length) await new Promise((resolve) => setTimeout(resolve, 5000));
+  } finally {
+    try { execFileSync("docker", ["rm", "-f", "theyspy-e2e-client"], { stdio: "ignore" }); } catch { /* already gone */ }
   }
   assert.ok(known.length >= 1, `Pi-hole's network table gave test clients with MACs (${JSON.stringify(fleet.list())})`);
   assert.ok(fleet.list().every((d) => d.ip?.startsWith("172.29.53.")), "nothing outside the scan range was recorded");
@@ -212,6 +217,20 @@ if (process.env.E2E_LISTS_HOST) {
     step(`sweep of 172.29.53.0/24: ${swept.alive} hosts answered; Pi-hole found at .2 with its MAC`);
   } else {
     step("sweep skipped: this host cannot reach Docker's networks directly (it runs in CI on Linux)");
+  }
+
+  // The targeted check: a domain reads Pi-hole's history (nothing is sent to it); on Linux, a Standard
+  // check of Pi-hole finds its DNS and web ports.
+  const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: ["172.29.53.0/24"] });
+  const domain = await checker.run({ query: "c2-node[.]theyspy[.]test", profile: "standard" }, "e2e");
+  assert.equal(domain.kind, "domain");
+  assert.ok(domain.clients.some((c) => c.ip === "172.29.53.11" && c.lookups >= 2), `the check found .11's lookups (${JSON.stringify(domain.clients)})`);
+  step(`targeted check of c2-node.theyspy.test: ${domain.lookups} lookups from ${domain.clients.length} devices, from Pi-hole's history`);
+  if (process.platform === "linux") {
+    const piholeCheck = await checker.run({ query: "172.29.53.2", profile: "standard" }, "e2e");
+    const ports = piholeCheck.open.map((o) => o.port);
+    assert.ok(ports.includes(53) && ports.includes(80), `Pi-hole listens on 53 and 80 (${JSON.stringify(piholeCheck.open)})`);
+    step(`targeted Standard check of Pi-hole: open ${ports.join(", ")}${piholeCheck.open.find((o) => o.port === 80)?.banner ? ` (web: ${piholeCheck.open.find((o) => o.port === 80).banner})` : ""}`);
   }
 }
 console.log("E2E OK");
