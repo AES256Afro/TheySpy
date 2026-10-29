@@ -187,14 +187,19 @@ if (process.env.E2E_LISTS_HOST) {
 {
   const fleet = createFleet({ db, audit });
   const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: ["172.29.53.0/24"] });
-  // FTL adds clients to its network table about once a minute.
+  // FTL builds its network table from its ARP cache about once a minute, so a client is listed only
+  // while its ARP entry is fresh: look something up from a client now, then wait for the table.
+  const testClient = (d) => d.mac && d.sources.pihole && /^172\.29\.53\.(1[0-9])$/.test(d.ip ?? "");
   let known = [];
-  for (let attempt = 1; attempt <= 18 && known.length < 2; attempt += 1) {
+  for (let attempt = 1; attempt <= 18 && !known.length; attempt += 1) {
+    if (attempt % 6 === 1) {
+      try { execFileSync("docker", ["run", "--rm", "--network", process.env.E2E_DOCKER_NETWORK, "--ip", "172.29.53.18", "busybox:1.37", "nslookup", "-timeout=2", "fleet.theyspy.test", "172.29.53.2"], { stdio: "ignore" }); } catch { /* the answer does not matter */ }
+    }
     await discovery.sync();
-    known = fleet.list().filter((d) => d.mac && ["172.29.53.10", "172.29.53.11", "172.29.53.12"].includes(d.ip));
-    if (known.length < 2) await new Promise((resolve) => setTimeout(resolve, 5000));
+    known = fleet.list().filter(testClient);
+    if (!known.length) await new Promise((resolve) => setTimeout(resolve, 5000));
   }
-  assert.ok(known.length >= 1, `Pi-hole's network table gave devices with MACs (${JSON.stringify(fleet.list())})`);
+  assert.ok(known.length >= 1, `Pi-hole's network table gave test clients with MACs (${JSON.stringify(fleet.list())})`);
   assert.ok(fleet.list().every((d) => d.ip?.startsWith("172.29.53.")), "nothing outside the scan range was recorded");
   step(`fleet: Pi-hole's network table gave ${fleet.list().length} devices, ${known.length} of the test clients with their MACs`);
   assert.throws(() => discovery.checkTarget("8.8.8.0/24"), /outside the ranges/);
