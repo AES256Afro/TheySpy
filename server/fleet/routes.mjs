@@ -9,10 +9,11 @@ import { classify } from "./targeted.mjs";
  *   checker: ReturnType<typeof import("./targeted.mjs").createTargetedCheck>,
  *   oui: ReturnType<typeof import("./oui.mjs").createOui>,
  *   web: ReturnType<typeof import("../web/scan.mjs").createWebScanner>,
+ *   deviceCves: ReturnType<typeof import("../cves/devices.mjs").createDeviceCves>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, web, jobs }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, jobs }) {
   const router = express.Router();
   const id = (req) => Number(req.params.id);
 
@@ -62,6 +63,13 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, jobs }) {
     if (!/^[a-z0-9.-]{1,253}$/.test(host)) return res.status(400).json({ error: "host must be a hostname" });
     const token = web.tokenFor(host);
     res.json({ host, token, file: `https://${host}/.well-known/theyspy-verification.txt`, txt: `theyspy-verification=${token}` });
+  });
+  // M6: the CVEs that apply to a device's software, and the owner's decisions about them.
+  router.get("/devices/:id/cves", async (req, res) => res.json(await deviceCves.forDevice(id(req))));
+  router.put("/devices/:id/cves/:cve", (req, res) => {
+    const status = req.body?.status ?? null;
+    deviceCves.decide(id(req), String(req.params.cve).toUpperCase(), status, req.body?.note ?? null, "owner");
+    res.json({ ok: true });
   });
   router.get("/devices/:id/services", (req, res) => res.json({ services: checker.servicesOf(id(req)) }));
   return router;

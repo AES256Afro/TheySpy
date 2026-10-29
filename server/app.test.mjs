@@ -204,6 +204,32 @@ describe("HTTP API", () => {
     expect((await request("GET", "/api/cves/not-a-cve")).status).toBe(400);
   });
 
+  it("checks this device: a Chrome one version behind a KEV fix is flagged, the patched one is not, and DNS is traced through Pi-hole (M6)", async () => {
+    const pihole = fakePihole();
+    const webFetch = async (input) => {
+      const match = new URL(String(input)).searchParams.get("virtualMatchString");
+      const affected = match === "cpe:2.3:a:google:chrome:141.0.7390.54" ? [{ id: "CVE-2026-4127", descriptions: [{ lang: "en", value: "V8 type confusion" }], metrics: {}, configurations: [{ nodes: [{ cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*", versionEndExcluding: "141.0.7390.65" }] }] }] }] : [];
+      return Response.json({ totalResults: affected.length, vulnerabilities: affected.map((cve) => ({ cve })) });
+    };
+    const { request, sentinel, cves } = await start({ services: { piholeFetch: pihole.fetchImpl, webFetch, now: () => new Date() } });
+    sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
+    cves.applyKev({ version: "1", entries: [{ cveId: "CVE-2026-4127", added: "2026-10-27", due: "2026-11-17", ransomware: false, name: "Chromium V8 type confusion", description: "x", action: "x", product: "google:chromium_v8", cwes: [] }] });
+    await request("POST", "/api/login", { password: "correct horse" });
+    const chrome = (v) => ({ platform: "macOS", platformVersion: "15.6.1", fullVersionList: [{ brand: "Google Chrome", version: v }] });
+
+    const begun = (await request("POST", "/api/this-device/start")).body;
+    expect(begun.dnsName).toMatch(/^ts-[0-9a-f]{12}\.dnscheck\.theyspy\.example$/);
+    pihole.state.queries.push({ id: 1, time: Date.now() / 1000, type: "A", domain: begun.dnsName, cname: null, status: "FORWARDED", client: { ip: "192.168.1.20", name: "macbook" } });
+    const behind = (await request("POST", "/api/this-device/check", { token: begun.token, uaData: chrome("141.0.7390.54"), gpc: true, adBlocked: true })).body;
+    expect(behind).toMatchObject({ browser: { version: "141.0.7390.54", exact: true }, os: "macOS 15.6", gpc: true, adBlocked: true, exploited: 1, dns: { checked: true, throughPihole: true, from: "192.168.1.20" } });
+    expect(behind.cves[0]).toMatchObject({ cveId: "CVE-2026-4127", kev: true, kevDue: "2026-11-17", fixed: "141.0.7390.65" });
+
+    const again = (await request("POST", "/api/this-device/start")).body;
+    const patched = (await request("POST", "/api/this-device/check", { token: again.token, uaData: chrome("141.0.7390.65") })).body;
+    expect(patched).toMatchObject({ exploited: 0, cves: [], dns: { checked: true, throughPihole: false } });
+    expect((await request("POST", "/api/this-device/check", { token: again.token })).status).toBe(400); // tokens are single-use
+  });
+
   it("serves the app shell for client-side routes", async () => {
     const dist = mkdtempSync(path.join(tmpdir(), "theyspy-dist-"));
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");

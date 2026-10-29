@@ -159,4 +159,16 @@ describe("Pi-hole database source", () => {
     ]);
     await expect(services.sentinel.coverage()).rejects.toThrow(/needs the Pi-hole API/);
   });
+
+  it("counts a working live watch as a passed test, and forgets the result when the address changes", async () => {
+    const { sentinel, settings } = testServices();
+    sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
+    expect(settings.get("pihole_last_test") ?? null).toBeNull();
+    await sentinel.watch.poll();
+    expect(settings.get("pihole_last_test")).toMatchObject({ ok: true, via: "live watch" });
+    sentinel.configure({ password: "wrong" }, "owner");
+    expect(settings.get("pihole_last_test") ?? null).toBeNull();
+    await sentinel.watch.poll();
+    expect(settings.get("pihole_last_test")).toMatchObject({ ok: false, message: expect.stringMatching(/refused the password/) });
+  });
 });

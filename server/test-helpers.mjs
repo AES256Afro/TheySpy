@@ -14,6 +14,8 @@ import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createWebScanner } from "./web/scan.mjs";
+import { createSoftwareLookup } from "./cves/lookup.mjs";
+import { createDeviceCves } from "./cves/devices.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
@@ -186,9 +188,11 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const { checkPortsImpl = async () => [], lookup = async () => null, ...probes } = network;
   const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...probes });
   // Websites in tests: the fake web, addresses from the test's lookup, no DNS TXT records.
-  const web = createWebScanner({ db, cves, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges, fetchImpl: webFetch, now,
+  const software = createSoftwareLookup({ db, cves, fetchImpl: webFetch, now, sleep: async () => {} });
+  const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges, fetchImpl: webFetch, now,
     resolve: async (host) => { const ip = await lookup(host); return ip ? [ip] : []; }, resolveTxt: async () => [] });
   const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup, web });
+  const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, now };
 }

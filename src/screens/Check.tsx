@@ -123,6 +123,7 @@ function DeviceResult({ check }: { check: Check }) {
             </table></div>
           )}
         </section>
+        {d && <DeviceCves deviceId={d.id} />}
         <section className="card stack">
           <header><h2>Pi-hole’s view</h2>{check.dns?.connected && <span className="muted small">{check.dns.totalLookups.toLocaleString()} lookups in 7 days</span>}</header>
           {!check.dns?.connected ? <p className="small muted">Connect Pi-hole to see what this device looks up.</p> : check.dns.error ? <p className="small muted">{check.dns.error}</p> : (
@@ -221,5 +222,45 @@ function WebsiteResult({ check }: { check: Check }) {
         </section>
       ))}
     </div>
+  );
+}
+
+type DeviceCve = { cveId: string; cvss: number | null; description: string | null; fixed: string | null; kev: boolean; software: string[]; decision: { status: "accepted" | "fixed"; note: string | null; contradicted: boolean } | null };
+type DeviceCveList = { inventory: { product: string; version: string | null; port: number; matchable: boolean }[]; cves: DeviceCve[]; open: number; exploited: number };
+
+function DeviceCves({ deviceId }: { deviceId: number }) {
+  const [data, setData] = useState<DeviceCveList | null>(null);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try { setData(await api<DeviceCveList>("GET", `/api/fleet/devices/${deviceId}/cves`)); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  }, [deviceId]);
+  useEffect(() => { void load(); }, [load]);
+  const decide = async (cveId: string, status: "accepted" | "fixed" | null) => { await api("PUT", `/api/fleet/devices/${deviceId}/cves/${cveId}`, { status }); await load(); };
+  return (
+    <section className="card stack">
+      <header><h2>CVEs for this device’s software</h2>{data && <span className="muted small">{data.open} open{data.exploited ? ` · ${data.exploited} exploited` : ""}</span>}</header>
+      {error ? <p className="small muted">{error}</p> : !data ? <p className="small muted">Asking NVD about each product and version…</p> : (
+        <>
+          <p className="small muted">{data.inventory.length === 0 ? "No product versions known yet: run a Standard or Deep check." : data.inventory.map((i) => `${i.product} ${i.version ?? "(version hidden)"} on ${i.port}${i.matchable ? "" : " (cannot be matched)"}`).join(" · ")}</p>
+          <div className="list">{data.cves.slice(0, 40).map((c) => (
+            <div key={c.cveId} className="stack" style={{ alignItems: "stretch", gap: 4, opacity: c.decision && !c.decision.contradicted ? 0.55 : 1 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <span className={`badge ${c.kev ? "b-crit" : (c.cvss ?? 0) >= 7 ? "b-high" : "b-med"}`}>{c.kev ? "EXPLOITED" : c.cvss ? `CVSS ${c.cvss}` : "CVE"}</span>
+                <a className="mono small" href={`https://nvd.nist.gov/vuln/detail/${c.cveId}`} target="_blank" rel="noreferrer noopener">{c.cveId}</a>
+                <span className="small muted">{c.software.join(", ")}{c.fixed ? ` · fixed in ${c.fixed}` : ""}</span>
+                <span className="grow" />
+                {c.decision?.contradicted && <span className="badge b-high" title="A check after you marked it fixed still found the same version">still there</span>}
+                {c.decision && !c.decision.contradicted ? <button className="btn small" type="button" onClick={() => void decide(c.cveId, null)}>{c.decision.status === "accepted" ? "Accepted · reopen" : "Fixed · reopen"}</button> : (
+                  <><button className="btn small" type="button" onClick={() => void decide(c.cveId, "fixed")}>Mark fixed</button>
+                    <button className="btn small" type="button" onClick={() => void decide(c.cveId, "accepted")}>Accept risk</button></>
+                )}
+              </div>
+              <span className="small muted">{c.description}</span>
+            </div>
+          ))}</div>
+          {data.cves.length > 40 && <p className="small muted">Showing 40 of {data.cves.length}, exploited first.</p>}
+        </>
+      )}
+    </section>
   );
 }
