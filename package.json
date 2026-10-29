@@ -1,6 +1,6 @@
 {
   "name": "theyspy",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Self-hosted defender against ad-delivered spyware: Pi-hole hunting, network fleet, CVE and zero-day matching.",
   "license": "Apache-2.0",
