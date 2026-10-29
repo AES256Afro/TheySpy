@@ -34,7 +34,7 @@ const firstStart = library.seed();
 const baselines = createBaselines({ db, library, sentinel, settings, audit });
 const oui = createOui({ db, settings });
 const cves = createCveStore({ db, settings, audit, nvdApiKey: config.nvdApiKey });
-const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf });
+const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
 const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey });
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });

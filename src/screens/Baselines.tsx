@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNames } from "../names.ts";
 import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 
 type Baseline = { id: string; name: string; severity: number; categories: string[]; lists: string[]; summary: string; custom?: boolean };
@@ -24,6 +25,7 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const n = (x: number) => x.toLocaleString();
 
 export function BaselinesScreen() {
+  const names = useNames();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [client, setClient] = useState("");
@@ -61,7 +63,7 @@ export function BaselinesScreen() {
   const categoryName = useMemo(() => new Map((overview?.categories ?? []).map((c) => [c.id, c.name])), [overview]);
   const rows = (level?.details ?? []).filter((s) => filter === "all" || (filter === "new" ? s.today !== "blocked" && !s.kept : s.risk !== "low" && !s.kept));
   const kept = preview?.exceptions.length ?? 0;
-  const scopeLabel = client ? `${scope && "name" in scope && scope.name ? `${scope.name} (${client})` : client}` : "the whole network";
+  const scopeLabel = client ? `${names[client]?.name ?? (scope && "name" in scope && scope.name) ?? client} (${client})` : "the whole network";
 
   const run = async (label: string, start: () => Promise<{ job: Job }>) => {
     setBusy(label);
@@ -122,7 +124,7 @@ export function BaselinesScreen() {
         <label className="small muted" htmlFor="baseline-scope">Apply to</label>
         <select id="baseline-scope" className="input" style={{ maxWidth: 320 }} value={client} onChange={(e) => { setClient(e.target.value); setPicked(null); setFilter("all"); }}>
           <option value="">Whole network{assignedLabel(overview.assignments.network)}</option>
-          {overview.scopes.devices.map((d) => <option key={d.ip} value={d.ip}>{d.name ? `${d.name} (${d.ip})` : d.ip} · {n(d.queries)} lookups{assignedLabel(overview.assignments[d.key])}</option>)}
+          {overview.scopes.devices.map((d) => <option key={d.ip} value={d.ip}>{names[d.ip]?.name ?? d.name ?? d.ip}{(names[d.ip]?.name ?? d.name) ? ` (${d.ip})` : ""} · {n(d.queries)} lookups{assignedLabel(overview.assignments[d.key])}</option>)}
         </select>
         <span className="small muted">Traffic from</span>
         <div className="seg" role="group" aria-label="Traffic window">{[1, 7, 14, 30].map((d) => <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>{d === 1 ? "24 hours" : `${d} days`}</button>)}</div>

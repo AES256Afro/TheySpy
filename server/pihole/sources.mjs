@@ -71,6 +71,13 @@ export function apiSource({ url, password, fetchImpl }) {
     /** Everything since `from` in the in-memory log, for the live watch. */
     /** Pi-hole's network table, in the API's shape. */
     async networkDevices() { return client().session((c) => c.networkDevices()); },
+    /** The owner's names for clients in Pi-hole (Group management → Clients → comment), and the router. */
+    async clientLabels() {
+      return client().session(async (c) => ({
+        clients: (await c.listClients()).filter((x) => x.comment?.trim()).map((x) => ({ client: String(x.client), label: x.comment.trim() })),
+        gateway: (await c.networkGateway().catch(() => null))?.address ?? null,
+      }));
+    },
     /**
      * Every lookup of a name or its subdomains between two times (Pi-hole's suffix filter, then a
      * label-boundary check), from memory and the long-term database.
@@ -176,6 +183,8 @@ export function databaseSource({ path }) {
         return { rows, basis: ip ? `every lookup ${ip} made` : "every lookup on the network" };
       } finally { db.close(); }
     },
+    /** Client labels live in gravity.db, which a database-file setup does not read. */
+    async clientLabels() { return { clients: [], gateway: null }; },
     /** @param {string} domain @param {{ from: number, until: number }} window */
     async lookupsOf(domain, { from, until }) {
       const db = open();

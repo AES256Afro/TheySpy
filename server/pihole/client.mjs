@@ -175,6 +175,11 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
     },
     async deleteGroup(name) { await call("DELETE", `groups/${encodeURIComponent(name)}`); },
 
+    /** The default gateway Pi-hole's host uses: on a home network, the router. */
+    async networkGateway() {
+      return ((await call("GET", "network/gateway"))?.gateway ?? []).find((g) => g.family === "inet" || /^\d+\.\d+\.\d+\.\d+$/.test(g.address)) ?? null;
+    },
+
     async listClients() { return (await call("GET", "clients"))?.clients ?? []; },
     async addClient(client, groups, comment) { await call("POST", "clients", { client, groups, comment }); },
     async updateClient(client, groups, comment) { await call("PUT", `clients/${encodeURIComponent(client)}`, { groups, comment }); },

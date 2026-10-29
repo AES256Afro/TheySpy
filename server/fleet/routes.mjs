@@ -10,10 +10,12 @@ import { classify } from "./targeted.mjs";
  *   oui: ReturnType<typeof import("./oui.mjs").createOui>,
  *   web: ReturnType<typeof import("../web/scan.mjs").createWebScanner>,
  *   deviceCves: ReturnType<typeof import("../cves/devices.mjs").createDeviceCves>,
+ *   sentinel: ReturnType<typeof import("../pihole/sentinel.mjs").createSentinel>,
+ *   library: ReturnType<typeof import("../blocklists/library.mjs").createBlocklistLibrary>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, jobs }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }) {
   const router = express.Router();
   const id = (req) => Number(req.params.id);
 
@@ -24,6 +26,26 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, j
       counts: { total: devices.length, online: devices.filter((d) => d.online).length, isNew: devices.filter((d) => d.isNew).length, untrusted: devices.filter((d) => !d.trusted).length, randomised: devices.filter((d) => d.randomisedMac).length },
       targets: discovery.targets(), suggestions: discovery.suggestions(), scanRanges: discovery.scanRanges(),
       lastSync: discovery.lastSync(), lastSweep: discovery.lastSweep(), events: fleet.recentEvents(20), vendors: oui.status(),
+    });
+  });
+  // Address → best name, so every screen can say who an address is.
+  router.get("/names", (_req, res) => res.json({ names: fleet.namesByIp() }));
+
+  // What a device has been doing, from Pi-hole: how much it looks up, its top sites, and what was
+  // blocked and by which of TheySpy's lists.
+  router.get("/devices/:id/activity", async (req, res) => {
+    const device = fleet.get(id(req));
+    if (!device) return res.status(404).json({ error: "No such device" });
+    if (!device.ip || !sentinel.effective().mode) return res.json({ connected: Boolean(sentinel.effective().mode), total: 0, top: [], blocked: [] });
+    const until = Date.now() / 1000;
+    const { rows } = await sentinel.source().domainCounts({ client: device.ip, from: until - 86400, until });
+    const total = rows.reduce((n, r) => n + r.queries, 0);
+    const blockedRows = rows.filter((r) => r.blocked > 0).sort((a, b) => b.blocked - a.blocked).slice(0, 15);
+    const matches = library.matchNames(blockedRows.map((r) => r.domain));
+    res.json({
+      connected: true, total, blockedTotal: rows.reduce((n, r) => n + r.blocked, 0),
+      top: rows.filter((r) => r.queries > r.blocked).sort((a, b) => b.queries - a.queries).slice(0, 12).map((r) => ({ domain: r.domain, queries: r.queries })),
+      blocked: blockedRows.map((r) => ({ domain: r.domain, blocked: r.blocked, lists: [...(matches.get(r.domain)?.lists ?? [])].slice(0, 3) })),
     });
   });
   router.get("/devices/:id", (req, res) => {
