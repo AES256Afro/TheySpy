@@ -13,6 +13,7 @@ import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
+import { createWebScanner } from "./web/scan.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
@@ -184,7 +185,10 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   // No real network in tests: no neighbours, nothing answers, no names, unless a test says so.
   const { checkPortsImpl = async () => [], lookup = async () => null, ...probes } = network;
   const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...probes });
-  const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup });
+  // Websites in tests: the fake web, addresses from the test's lookup, no DNS TXT records.
+  const web = createWebScanner({ db, cves, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges, fetchImpl: webFetch, now,
+    resolve: async (host) => { const ip = await lookup(host); return ip ? [ip] : []; }, resolveTxt: async () => [] });
+  const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup, web });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, now };
 }

@@ -19,6 +19,9 @@ const domainPattern = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/i
 export function classify(query) {
   const q = String(query ?? "").trim().replace(/\[\.\]/g, ".");
   if (!q) throw Object.assign(new Error("Type an address, MAC, hostname, network or domain"), { status: 400 });
+  if (/^https?:\/\//i.test(q)) {
+    try { return { kind: "website", value: new URL(q).origin }; } catch { throw Object.assign(new Error(`"${q}" is not a website address`), { status: 400 }); }
+  }
   if (net.isIPv4(q)) return { kind: "ip", value: q };
   if (q.includes("/") && parseCidr(q)) return { kind: "network", value: parseCidr(q).cidr };
   const mac = normaliseMac(q);
@@ -38,10 +41,11 @@ export function classify(query) {
  *   scanRanges: string[],
  *   now?: () => Date,
  *   checkPortsImpl?: typeof checkPorts,
+ *   web?: ReturnType<typeof import("../web/scan.mjs").createWebScanner>,
  *   lookup?: (name: string) => Promise<string | null>,
  * }} deps
  */
-export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now = () => new Date(), checkPortsImpl = checkPorts, lookup }) {
+export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now = () => new Date(), checkPortsImpl = checkPorts, lookup, web }) {
   const resolveName = lookup ?? (async (name) => { try { return (await dnsPromises.lookup(name, { family: 4 })).address; } catch { return null; } });
   const allowed = (ip) => scanRanges.some((range) => inCidr(ip, range));
   const q = {
@@ -94,8 +98,13 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
      * @param {{ query: string, profile?: string, log?: (line: string) => void }} options @param {string} actor
      */
     async run({ query, profile = "standard", log = () => {} }, actor) {
-      if (!["quick", "standard", "deep", "dns"].includes(profile)) throw Object.assign(new Error("profile must be quick, standard, deep or dns"), { status: 400 });
       const { kind, value } = classify(query);
+      // A website address runs the website check (PHP, CMS, exposed files), whatever the profile.
+      if (kind === "website") {
+        if (!web) throw Object.assign(new Error("The website check is not available"), { status: 501 });
+        return web.scan({ url: value, log }, actor);
+      }
+      if (!["quick", "standard", "deep", "dns"].includes(profile)) throw Object.assign(new Error("profile must be quick, standard, deep or dns"), { status: 400 });
       const started = now();
       const id = Number(q.start.run(query, kind, profile, null, started.toISOString(), actor).lastInsertRowid);
       let result;
