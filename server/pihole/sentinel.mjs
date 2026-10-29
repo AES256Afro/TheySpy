@@ -93,14 +93,17 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
   const watchState = { running: false, lastPollAt: null, lastError: null, newHits: 0 };
   let timer = null;
   let lastPoll = null;
+  const observers = new Set();
   async function poll() {
     const c = effective();
     if (!c.mode || !c.watch) return;
     const started = now().getTime() / 1000;
     const from = (lastPoll ?? started - 300) - 90; // overlap: rows are unique, so re-reading is free
     try {
-      const { hits } = await source().recent(matcher(), from);
+      const seen = [];
+      const { hits } = await source().recent(matcher(), from, observers.size ? (q) => seen.push(q) : undefined);
       watchState.newHits += recordHits(hits, "watch");
+      for (const observe of observers) observe(seen);
       watchState.lastError = null;
       lastPoll = started;
     } catch (error) {
@@ -347,6 +350,12 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     watch: {
       status: () => ({ ...watchState, enabled: Boolean(effective().mode && effective().watch) }),
       poll,
+      /**
+       * Calls `observe` with every query each poll reads. Polls overlap by 90 seconds, so an
+       * observer sees some queries twice and must skip what it has counted (by queryId and time).
+       * @param {(queries: ReturnType<typeof import("./match.mjs").fromApi>[]) => void} observe
+       */
+      observe(observe) { observers.add(observe); return () => observers.delete(observe); },
       /** Starts the 30-second watch loop (index.mjs only; tests call poll directly). */
       start(intervalMs = 30_000) {
         if (timer) return;

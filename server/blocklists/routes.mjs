@@ -1,6 +1,6 @@
 import express from "express";
+import { scopeKey } from "./baselines.mjs";
 import { compiledLists } from "./library.mjs";
-import { baselineById } from "./baselines.mjs";
 import { categories, categoryIds, groups, securityCategories } from "./taxonomy.mjs";
 import { defang } from "../iocs/parse.mjs";
 
@@ -166,7 +166,8 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
     const preview = await baselines.preview({ client, windowDays });
     // Security sites are spyware, malware and phishing names: they leave the server defanged, like indicators.
     const safe = (site) => (site.categories.some((c) => securityCategories.includes(c)) ? { ...site, site: defang(site.site), names: site.names.map(defang) } : site);
-    res.json({ ...preview, levels: preview.levels.map((l) => ({ ...l, details: l.details.map(safe) })) });
+    const shadow = preview.shadow && { ...preview.shadow, level: { ...preview.shadow.level, details: preview.shadow.level.details.map(safe) } };
+    res.json({ ...preview, levels: preview.levels.map((l) => ({ ...l, details: l.details.map(safe) })), shadow });
   });
   router.put("/baselines/exceptions", (req, res) => {
     const { scope, site, keep } = req.body ?? {};
@@ -175,9 +176,21 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   });
   router.post("/baselines/apply", (req, res) => {
     const { baselineId, client } = req.body ?? {};
-    if (!baselineById(baselineId)) return res.status(400).json({ error: "No such baseline" });
+    if (!baselines.find(baselineId)) return res.status(400).json({ error: "No such baseline" });
     if (client && !/^[0-9a-f.:]{2,45}$/i.test(String(client))) return res.status(400).json({ error: "client must be an IP address" });
     res.status(202).json({ job: jobs.enqueue("baselines.apply", { actor: "owner", params: { baselineId, client: client || undefined, listsOrigin: origin(req) } }) });
+  });
+  router.put("/baselines/custom", (req, res) => res.json({ custom: baselines.setCustom(req.body ?? {}, "owner") }));
+  router.delete("/baselines/custom", (_req, res) => { baselines.deleteCustom("owner"); res.json({ deleted: true }); });
+  router.post("/baselines/shadow", (req, res) => {
+    const { baselineId, client } = req.body ?? {};
+    if (client && !/^[0-9a-f.:]{2,45}$/i.test(String(client))) return res.status(400).json({ error: "client must be an IP address" });
+    res.json({ shadow: baselines.startShadow({ baselineId, client: client || undefined }, "owner") });
+  });
+  router.delete("/baselines/shadow", (req, res) => {
+    const client = req.body?.client || undefined;
+    if (baselines.assignments()[scopeKey(client)]?.mode !== "shadow") return res.status(404).json({ error: "Nothing is in shadow mode there" });
+    void baselines.remove({ client }, "owner").then((r) => res.json(r), (error) => res.status(500).json({ error: error.message }));
   });
   router.post("/baselines/remove", (req, res) => {
     res.status(202).json({ job: jobs.enqueue("baselines.remove", { actor: "owner", params: { client: req.body?.client || undefined } }) });

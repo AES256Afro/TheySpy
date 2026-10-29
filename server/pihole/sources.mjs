@@ -69,9 +69,14 @@ export function apiSource({ url, password, fetchImpl }) {
       });
     },
     /** Everything since `from` in the in-memory log, for the live watch. */
-    async recent(matcher, from) {
+    /**
+     * New queries since `from`: indicator hits, and each query to `observe`.
+     * @param {any} matcher @param {number} from @param {(query: any) => void} [observe]
+     */
+    async recent(matcher, from, observe = () => {}) {
       return client().session(async (c) => {
         const rows = (await c.queries({ from })).map(fromApi);
+        for (const q of rows) observe(q);
         return { queriesSeen: rows.length, hits: findHits(rows, matcher) };
       });
     },
@@ -113,11 +118,12 @@ export function databaseSource({ path }) {
       };
     }
   }
-  const scan = (matcher, from, until) => {
+  /** @param {any} matcher @param {number} from @param {number} until @param {(query: any) => void} [observe] */
+  const scan = (matcher, from, until, observe = () => {}) => {
     const db = open();
     try {
       let queriesSeen = 0;
-      const counted = (function* () { for (const q of rows(db, from, until)) { queriesSeen += 1; yield q; } })();
+      const counted = (function* () { for (const q of rows(db, from, until)) { queriesSeen += 1; observe(q); yield q; } })();
       const hits = findHits(counted, matcher);
       return { queriesSeen, hits };
     } finally {
@@ -156,6 +162,7 @@ export function databaseSource({ path }) {
         return { rows, basis: ip ? `every lookup ${ip} made` : "every lookup on the network" };
       } finally { db.close(); }
     },
-    async recent(matcher, from) { return scan(matcher, from, Date.now() / 1000 + 60); },
+    /** @param {any} matcher @param {number} from @param {(query: any) => void} [observe] */
+    async recent(matcher, from, observe) { return scan(matcher, from, Date.now() / 1000 + 60, observe); },
   };
 }

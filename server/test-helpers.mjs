@@ -170,7 +170,7 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: piholeEnv, fetchImpl: piholeFetch, now });
   const library = createBlocklistLibrary({ db, settings, audit, iocStore, fetchImpl: webFetch, popular, now });
   library.seed();
-  const baselines = createBaselines({ library, sentinel, settings, audit, now });
+  const baselines = createBaselines({ db, library, sentinel, settings, audit, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines) } });
   return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, now };
 }
