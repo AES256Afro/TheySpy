@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type Job } from "../api.ts";
+import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 
 type Provenance = { track: "bundled" | "release" | "main"; release?: string; signedBy?: string; signedAt?: string; sha256?: string; note: string };
 type Version = { id: number; status: "pending" | "active" | "superseded" | "rejected"; sha256: string; asof: string | null; count: number; provenance: Provenance; fetchedAt: string; decidedAt: string | null; decidedBy: string | null; changes?: { added: number; removed: number; changed: number } };
@@ -19,15 +19,6 @@ const tierBadge: Record<string, string> = { cc: "b-crit", validator: "b-crit", s
 const typeLabel: Record<string, string> = { domain: "Domains", ip: "IP addresses", sha256: "File hashes" };
 const fingerprint = (fp?: string) => (fp ? fp.match(/.{1,4}/g)!.join(" ") : "");
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
-
-async function waitForJob(id: number): Promise<Job> {
-  for (let i = 0; i < 120; i += 1) {
-    const { job } = await api<{ job: Job }>("GET", `/api/jobs/${id}`);
-    if (job.status !== "queued" && job.status !== "running") return job;
-    await new Promise((resolve) => setTimeout(resolve, 600));
-  }
-  throw new Error("The job is still running; see Activity.");
-}
 
 function Trust({ version }: { version: Version }) {
   const p = version.provenance;
@@ -83,8 +74,7 @@ export function IndicatorsScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id);
-      const lastLine = (await api<{ job: Job }>("GET", `/api/jobs/${done.id}`)).job.log?.trim().split("\n").pop()?.replace(/^\S+ /, "") ?? "";
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLine || done.status });
+      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });

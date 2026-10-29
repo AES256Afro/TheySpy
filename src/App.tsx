@@ -8,6 +8,7 @@ import { SignIn } from "./SignIn.tsx";
 import { ActivityScreen } from "./screens/Activity.tsx";
 import { AppearanceScreen, type AppearanceControls } from "./screens/Appearance.tsx";
 import { IndicatorsScreen } from "./screens/Indicators.tsx";
+import { PiholeScreen } from "./screens/Pihole.tsx";
 import { PlaceholderScreen } from "./screens/Placeholder.tsx";
 
 type AppearanceResponse = { appearance: Appearance };
@@ -50,7 +51,7 @@ export function App() {
     <div className="app">
       <Sidebar appearance={appearance} current={screen} onSignedOut={() => setSignedIn(false)} />
       <main id="main">
-        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
+        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
       </main>
     </div>
   );

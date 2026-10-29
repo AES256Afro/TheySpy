@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, hkdfSync, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 export const sessionCookie = "ts_session";
 export const sessionLifetimeMs = 14 * 24 * 60 * 60 * 1000;
@@ -65,6 +65,16 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
 
   return {
     generatedPassword,
+
+    /**
+     * A 32-byte key for one purpose, derived from the session secret. Settings encrypted with it
+     * (the Pi-hole password) become unreadable when the secret changes, like sessions do. Keep
+     * TS_SESSION_SECRET outside the database so a copied database alone does not unlock them.
+     * @param {string} purpose
+     */
+    deriveKey(purpose) {
+      return Buffer.from(hkdfSync("sha256", secret, "theyspy", purpose, 32));
+    },
 
     /**
      * @param {unknown} password
