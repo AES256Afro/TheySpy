@@ -7,6 +7,7 @@ import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
 import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
 import { createSecretBox } from "./secrets.mjs";
+import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.mjs";
 
 /** A clock tests can move. */
 export function testClock(start = "2026-10-29T12:00:00.000Z") {
@@ -111,10 +112,31 @@ export function fakePihole({ password = "pihole-pass", queries = [], gravity = {
 }
 
 /**
- * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object }} [options]
+ * A web server for blocklists and directories. `files` maps a URL to its body (a string), to
+ * { status, body, etag }, or to null for 404; it can be changed between calls. Conditional GETs
+ * get a 304 when the ETag still matches.
+ * @param {Record<string, any>} files
  */
-export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {} } = {}) {
+export function fakeWeb(files = {}) {
+  const state = { files: { ...files }, requests: [] };
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    state.requests.push(url);
+    const entry = state.files[url];
+    if (entry === undefined || entry === null) return new Response("not found", { status: 404 });
+    const { status = 200, body = "", etag } = typeof entry === "string" ? { body: entry } : entry;
+    const ifNoneMatch = /** @type {any} */ (init.headers)?.["if-none-match"];
+    if (etag && ifNoneMatch === etag) return new Response(null, { status: 304 });
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: etag ? { etag } : {} });
+  };
+  return { fetchImpl, state };
+}
+
+/**
+ * Everything the app needs, in memory, with the bundled indicator set seeded.
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]> }} [options]
+ */
+export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular } = {}) {
   const settings = createSettingsStore(db, { now });
   const audit = createAuditLog(db, { now });
   const auth = createAuth({ db, settings, audit, adminPassword, sessionSecret, now });
@@ -122,6 +144,8 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   iocStore.seedBundled();
   const updater = createIocUpdater({ fetchImpl });
   const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: piholeEnv, fetchImpl: piholeFetch, now });
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, now };
+  const library = createBlocklistLibrary({ db, settings, audit, iocStore, fetchImpl: webFetch, popular, now });
+  library.seed();
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, now };
 }

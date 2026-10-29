@@ -288,6 +288,7 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - **Exit:** against a test Pi-hole seeded with synthetic queries for test IOCs, every hit is found with correct client and time; push and roll back leave Pi-hole exactly as before.
 
 ### M3 — Blocklist library and baselines (L)
+**Status (29 Oct 2026): library done** (0.4.0); baselines next. Discovery reads AdGuard's HostlistsRegistry, FilterLists and Firebog (about 1,300 candidates); seven lists start enabled (zero-breach, stalkerware, HaGeZi TIF, URLhaus, Phishing Army, NoCoin, HaGeZi Normal). Updates use ETags, are versioned as gzip blobs, and are held when they jump in size or newly block a protected name (built-in never-block names, the owner's pins, and Pi-hole's 200 most-looked-up names). Compiled lists are served at a secret `/lists/<token>/` address in five formats, and Pi-hole can be subscribed with one click; `scripts/e2e-pihole.sh` proves a real Pi-hole loads and blocks from them. Lists over 500,000 names are rebuilt on request rather than cached (HaGeZi's threat feed alone is about two million).
 - Directory readers (FilterLists API, AdGuard HostlistsRegistry, Firebog, followed GitHub publishers) → candidates with licence, maintainer, syntax, tags.
 - Fetcher with conditional GET, multi-syntax parser, version snapshots and diffs, health flags, poisoning/breakage gates with a quarantine review screen.
 - Category taxonomy, tag mapping, per-domain categories and confidence; compiled outputs served at `/lists/…` in five formats.
