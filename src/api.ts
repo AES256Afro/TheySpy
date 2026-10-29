@@ -32,5 +32,5 @@ export async function waitForJob(id: number): Promise<Job> {
 /** The last line a job logged, without its timestamp. */
 export const lastLogLine = (job: Job) => job.log?.trim().split("\n").pop()?.replace(/^\S+ /, "") ?? "";
 
-export type Job = { id: number; kind: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "interrupted"; actor: string; created_at: string; started_at: string | null; finished_at: string | null; log?: string };
+export type Job = { id: number; kind: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "interrupted"; actor: string; created_at: string; started_at: string | null; finished_at: string | null; log?: string; result?: unknown };
 export type AuditEntry = { id: number; at: string; actor: string; action: string; target: string | null; detail: unknown };

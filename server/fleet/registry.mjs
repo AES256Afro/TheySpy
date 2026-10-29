@@ -16,9 +16,10 @@ const editable = ["label", "owner", "kind", "notes"];
  *   db: import("node:sqlite").DatabaseSync,
  *   audit: ReturnType<typeof import("../audit.mjs").createAuditLog>,
  *   now?: () => Date,
+ *   vendorOf?: (mac: string | null) => string | null,
  * }} deps
  */
-export function createFleet({ db, audit, now = () => new Date() }) {
+export function createFleet({ db, audit, now = () => new Date(), vendorOf = () => null }) {
   const q = {
     count: db.prepare("SELECT COUNT(*) AS n FROM devices"),
     byId: db.prepare("SELECT * FROM devices WHERE id = ?"),
@@ -96,7 +97,7 @@ export function createFleet({ db, audit, now = () => new Date() }) {
           else if (!mac && !device) device = ipOnly ?? /** @type {any} */ (q.atIp.get(o.ip)) ?? null;
 
           if (!device) {
-            const info = q.insert.run(mac, o.ip, o.hostname || null, o.vendor || null, initial ? 1 : 0, JSON.stringify({ [source]: seenAt }), seenAt, seenAt);
+            const info = q.insert.run(mac, o.ip, o.hostname || null, o.vendor || vendorOf(mac), initial ? 1 : 0, JSON.stringify({ [source]: seenAt }), seenAt, seenAt);
             const id = Number(info.lastInsertRowid);
             q.address.run(id, o.ip, seenAt, seenAt);
             event(id, initial ? "inventoried" : "new", { ip: o.ip, mac, source });
@@ -109,7 +110,7 @@ export function createFleet({ db, audit, now = () => new Date() }) {
           if (isLatest && hostname && device.hostname && device.hostname !== hostname) event(device.id, "name_changed", { from: device.hostname, to: hostname, source });
           const sources = JSON.parse(device.sources);
           sources[source] = later(sources[source] ?? "", seenAt);
-          q.update.run(device.mac ?? mac, isLatest ? o.ip : device.ip, (isLatest && hostname) || device.hostname || hostname, device.vendor || o.vendor || null,
+          q.update.run(device.mac ?? mac, isLatest ? o.ip : device.ip, (isLatest && hostname) || device.hostname || hostname, device.vendor || o.vendor || vendorOf(device.mac ?? mac),
             JSON.stringify(sources), earlier(device.first_seen, seenAt), later(device.last_seen, seenAt), device.id);
           q.address.run(device.id, o.ip, seenAt, seenAt);
         }

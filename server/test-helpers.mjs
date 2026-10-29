@@ -11,6 +11,8 @@ import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.
 import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
+import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
+import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
 export function testClock(start = "2026-10-29T12:00:00.000Z") {
@@ -162,7 +164,7 @@ export function fakeWeb(files = {}) {
 
 /**
  * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
  */
 export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] } = {}) {
   const settings = createSettingsStore(db, { now });
@@ -175,9 +177,12 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const library = createBlocklistLibrary({ db, settings, audit, iocStore, fetchImpl: webFetch, popular, now });
   library.seed();
   const baselines = createBaselines({ db, library, sentinel, settings, audit, now });
-  const fleet = createFleet({ db, audit, now });
+  const oui = createOui({ db, settings, fetchImpl: webFetch, now });
+  const fleet = createFleet({ db, audit, now, vendorOf: oui.vendorOf });
   // No real network in tests: no neighbours, nothing answers, no names, unless a test says so.
-  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...network });
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, now };
+  const { checkPortsImpl = async () => [], lookup = async () => null, ...probes } = network;
+  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...probes });
+  const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup });
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, now };
 }

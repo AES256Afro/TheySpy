@@ -12,6 +12,8 @@ import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.
 import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
+import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
+import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
 
@@ -26,16 +28,18 @@ const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: crea
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
 const baselines = createBaselines({ db, library, sentinel, settings, audit });
-const fleet = createFleet({ db, audit });
+const oui = createOui({ db, settings });
+const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery) } });
+const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -77,7 +81,10 @@ if (config.fleetAuto) {
   };
   const sync = quietly("sync", async () => { if (sentinel.effective().mode) await discovery.sync(); });
   const sweep = quietly("sweep", async () => { if (discovery.targets().length) await discovery.sweep(); });
-  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000)];
+  // MAC vendor names from the IEEE registry: shortly after the first start, then monthly.
+  const vendors = quietly("vendors", async () => { await oui.update(); });
+  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000), setInterval(vendors, 30 * day)];
+  if (!oui.status().prefixes) timers.push(setTimeout(vendors, 60 * 1000));
   for (const t of timers) t.unref();
 }
 
