@@ -1,0 +1,141 @@
+import { productVersion } from "../shared.mjs";
+
+// A client for Pi-hole v6's REST API, shaped by what a live Pi-hole 6 (FTL v6.7) actually does:
+//  - POST /api/auth gives a session id, sent back as the X-FTL-SID header (no CSRF token needed
+//    with the header). Sessions are a limited pool, so every use ends with DELETE /api/auth.
+//  - GET /api/queries pages newest-first: keep the first response's `cursor` and step `start`.
+//    `disk=true` reads the long-term database, which lags the in-memory log by up to a minute.
+//  - A `domain` filter of `*name` is a plain suffix match (it also matches "notname"), so callers
+//    apply their own label-boundary check.
+//  - An exact deny entry does not block subdomains; Pi-hole's "wildcard" regex `(\.|^)name$` does.
+
+export class PiholeError extends Error {
+  /** @param {string} message @param {{ status?: number, cause?: unknown }} [options] */
+  constructor(message, { status, cause } = {}) {
+    super(message, { cause });
+    this.status = status;
+  }
+}
+
+/** Pi-hole's own wildcard pattern for a domain and all its subdomains. */
+export function wildcardRegex(domain) {
+  return `(\\.|^)${domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`;
+}
+
+const pageSize = 1000;
+const maxPages = 500; // 500,000 queries per filter: far beyond a household, a ceiling against runaway paging
+
+/**
+ * @param {{ url: string, password: string | null, fetchImpl?: typeof fetch, timeoutMs?: number }} options
+ */
+export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs = 20_000 }) {
+  const base = new URL("api/", url.endsWith("/") ? url : `${url}/`);
+  if (base.protocol !== "http:" && base.protocol !== "https:") throw new PiholeError("The Pi-hole address must start with http:// or https://");
+  let sid = null;
+
+  async function call(method, path, body, { auth = true } = {}) {
+    let response;
+    try {
+      response = await fetchImpl(new URL(path, base), {
+        method,
+        headers: { "user-agent": `TheySpy/${productVersion}`, ...(body === undefined ? {} : { "content-type": "application/json" }), ...(auth && sid ? { "X-FTL-SID": sid } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        redirect: "error",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      throw new PiholeError(`Could not reach Pi-hole at ${base.origin}: ${error.cause?.code ?? error.message}`, { cause: error });
+    }
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* not JSON: an error page */ }
+    if (!response.ok) {
+      const detail = data?.error?.message ?? data?.error?.key ?? (text.slice(0, 120) || response.statusText);
+      throw new PiholeError(`Pi-hole answered ${response.status} to ${method} /api/${path}: ${detail}`, { status: response.status });
+    }
+    return data;
+  }
+
+  const client = {
+    origin: base.origin,
+
+    /** Signs in. A Pi-hole without a password answers valid with no session id. */
+    async login() {
+      let data;
+      try {
+        data = await call("POST", "auth", { password: password ?? "" }, { auth: false });
+      } catch (error) {
+        if (error.status === 401) throw new PiholeError("Pi-hole refused the password. Use the web password or an app password from Settings → Web interface / API.", { status: 401 });
+        throw error;
+      }
+      if (!data?.session?.valid) throw new PiholeError("Pi-hole did not accept the sign-in");
+      sid = data.session.sid ?? null;
+      return { totp: Boolean(data.session.totp) };
+    },
+
+    /** Gives the session back so it does not use up one of Pi-hole's session slots. */
+    async logout() {
+      if (!sid) return;
+      try { await call("DELETE", "auth"); } catch { /* the session expires on its own */ }
+      sid = null;
+    },
+
+    /** Runs `work` signed in, and always signs out afterwards. */
+    async session(work) {
+      await client.login();
+      try { return await work(client); } finally { await client.logout(); }
+    },
+
+    async version() {
+      const data = await call("GET", "info/version");
+      return { core: data?.version?.core?.local?.version ?? null, ftl: data?.version?.ftl?.local?.version ?? null, web: data?.version?.web?.local?.version ?? null };
+    },
+
+    /**
+     * Every query matching the filter, newest first, across all pages.
+     * @param {{ from?: number, until?: number, domain?: string, disk?: boolean }} filter Unix seconds
+     */
+    async queries({ from, until, domain, disk = false } = {}) {
+      const out = [];
+      let cursor = null;
+      for (let page = 0; page < maxPages; page += 1) {
+        const params = new URLSearchParams({ length: String(pageSize), start: String(page * pageSize) });
+        if (from !== undefined) params.set("from", String(Math.floor(from)));
+        if (until !== undefined) params.set("until", String(Math.ceil(until)));
+        if (domain) params.set("domain", domain);
+        if (disk) params.set("disk", "true");
+        if (cursor !== null) params.set("cursor", String(cursor));
+        const data = await call("GET", `queries?${params}`);
+        if (cursor === null) cursor = data?.cursor ?? null;
+        const rows = data?.queries ?? [];
+        out.push(...rows);
+        if (rows.length < pageSize || out.length >= (data?.recordsFiltered ?? 0) || cursor === null) break;
+      }
+      return out;
+    },
+
+    /** Whether Pi-hole would block a name, and why: its own lists or its adlists (gravity). */
+    async search(domain) {
+      const data = await call("GET", `search/${encodeURIComponent(domain)}?partial=false&N=50`);
+      return data?.search ?? { domains: [], gravity: [], results: { domains: { exact: 0, regex: 0 }, gravity: { allow: 0, block: 0 }, total: 0 } };
+    },
+
+    /** @param {"allow" | "deny"} type @param {"exact" | "regex"} kind */
+    async listDomains(type, kind) {
+      return (await call("GET", `domains/${type}/${kind}`))?.domains ?? [];
+    },
+
+    /** Adds deny-regex entries in one request; returns what Pi-hole says it processed. */
+    async addDenyRegex(patterns, comment) {
+      const data = await call("POST", "domains/deny/regex", { domain: patterns, comment, groups: [0], enabled: true });
+      return data?.processed ?? { success: [], errors: [] };
+    },
+
+    async deleteDenyRegex(patterns) {
+      if (!patterns.length) return;
+      // "./" so the colon is not read as a URL scheme ("domains:" would replace the whole address).
+      await call("POST", "./domains:batchDelete", patterns.map((item) => ({ item, type: "deny", kind: "regex" })));
+    },
+  };
+  return client;
+}

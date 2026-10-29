@@ -71,6 +71,45 @@ export const migrations = [
      PRIMARY KEY (feed, value)
    );
    CREATE INDEX iocs_value ON iocs (value);`,
+  // M2: Pi-hole. One row per DNS query that matched an indicator (the query's own id and time make
+  // it unique, so overlapping hunts never double-count), each hunt, and each denylist push with
+  // exactly what it added, so a rollback removes only that.
+  `CREATE TABLE ioc_hit_events (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     source TEXT NOT NULL,
+     query_id INTEGER NOT NULL,
+     at TEXT NOT NULL,
+     indicator TEXT NOT NULL,
+     domain TEXT NOT NULL,
+     via TEXT NOT NULL CHECK (via IN ('query', 'cname')),
+     client_ip TEXT NOT NULL,
+     client_name TEXT,
+     status TEXT NOT NULL,
+     blocked INTEGER NOT NULL,
+     found_by TEXT NOT NULL,
+     found_at TEXT NOT NULL,
+     UNIQUE (source, query_id, at, indicator)
+   );
+   CREATE INDEX ioc_hit_events_indicator ON ioc_hit_events (indicator, client_ip);
+   CREATE TABLE pihole_hunts (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     mode TEXT NOT NULL,
+     from_at TEXT NOT NULL,
+     until_at TEXT NOT NULL,
+     indicators INTEGER NOT NULL,
+     queries_seen INTEGER NOT NULL,
+     new_hits INTEGER NOT NULL,
+     finished_at TEXT NOT NULL
+   );
+   CREATE TABLE pihole_pushes (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     status TEXT NOT NULL CHECK (status IN ('active', 'rolled_back')),
+     entries TEXT NOT NULL,
+     pushed_at TEXT NOT NULL,
+     pushed_by TEXT NOT NULL,
+     rolled_back_at TEXT,
+     rolled_back_by TEXT
+   );`,
 ];
 
 /**

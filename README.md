@@ -9,7 +9,7 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 - Keep a list of every device on your network, and check any one in depth.
 - Gather CVEs and zero-days from 11 feeds and show which apply to your devices, including the one you are reading on.
 
-**Status: M1 (indicators).** On top of M0 (sign-in, jobs, audit log, Appearance), the Indicators screen holds zero-breach's AdFection / Candiru set: where it came from and how it was verified, updates waiting for review, and exports for DNS filters, MVT and MISP. Other screens say which milestone fills them.
+**Status: M2 (Pi-hole Sentinel).** TheySpy connects to Pi-hole 6 (or reads its database file), hunts its DNS history and watches new queries for lookups of zero-breach's AdFection / Candiru indicators, shows which indicator domains Pi-hole already blocks, and adds the rest with your approval — and can take them out again. The Indicators screen keeps the set current from signed releases and exports it for DNS filters, MVT and MISP. Other screens say which milestone fills them.
 
 ## Run it
 
@@ -37,6 +37,9 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_BRAND_NAME` / `TS_BRAND_TAGLINE` | `TheySpy` / empty | Name and tagline shown in the app. |
 | `TS_ACCENT` | empty | Accent colour such as `#39c6ff`. |
 | `TS_COOKIE_SECURE` | `false` | Set `true` when served over HTTPS. |
+| `TS_PIHOLE_URL` / `TS_PIHOLE_PASSWORD` | empty | Pi-hole 6's address and an app password. Overrides the Pi-hole Sentinel screen. |
+| `TS_PIHOLE_DB` | empty | Path to a read-only `pihole-FTL.db` instead of the API (hunting and watching only). |
+| `TS_PIHOLE_WRITE` | unset | `false` forbids changing Pi-hole whatever the screen says; `true` allows it. Unset: the screen decides. |
 | `TS_IOC_AUTOCHECK` | `true` | Look for a newer indicator set once a day. Updates are only offered for review, never applied by themselves. |
 
 ## Develop
@@ -53,11 +56,11 @@ npm run dev:server
 npm run dev
 ```
 
-The UI runs on 5173 and hands `/api` to the server on 8797. `npm run check` builds, type-checks, tests, lints, checks every look's contrast (and that no colour is hard-coded outside `shared/looks.json`), and validates the BoxPilot manifest against BoxPilot's schema when a checkout is at `../BoxPilot` or `BOXPILOT_DIR`.
+The UI runs on 5173 and hands `/api` to the server on 8797. `sh scripts/e2e-pihole.sh` checks Pi-hole Sentinel against a real, offline Pi-hole 6 in Docker. `npm run check` builds, type-checks, tests, lints, checks every look's contrast (and that no colour is hard-coded outside `shared/looks.json`), and validates the BoxPilot manifest against BoxPilot's schema when a checkout is at `../BoxPilot` or `BOXPILOT_DIR`.
 
 ## Layout
 
-- `server/` Node 24 + Express 5 + `node:sqlite`: config, migrations, auth, jobs, audit, appearance.
+- `server/` Node 24 + Express 5 + `node:sqlite`: config, migrations, auth, jobs, audit, appearance, `iocs/` (indicators) and `pihole/` (Pi-hole Sentinel).
 - `src/` React 19 UI. `shared/` holds the look tokens and screen list both sides read.
 - `boxpilot/` the BoxPilot catalog manifest. `third_party/zero-breach/` is the vendored indicator set, signatures and reference exports (see its README). `agent/` fills in at M7.
 - `docs/` the plan and the 13 mockups.

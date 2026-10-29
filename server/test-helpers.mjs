@@ -5,6 +5,8 @@ import { createSettingsStore, openDatabase } from "./db.mjs";
 import { createIocStore } from "./iocs/store.mjs";
 import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
+import { createSentinel, piholeJobKinds } from "./pihole/sentinel.mjs";
+import { createSecretBox } from "./secrets.mjs";
 
 /** A clock tests can move. */
 export function testClock(start = "2026-10-29T12:00:00.000Z") {
@@ -45,16 +47,81 @@ export function fakeGitHub(files = {}) {
 }
 
 /**
- * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch }} [options]
+ * A Pi-hole 6 API stand-in, behaving as a live FTL v6.7 did when probed: X-FTL-SID sessions,
+ * newest-first paging with a fixed cursor and a `start` offset, `*name` as a plain suffix match,
+ * search over exact and regex entries plus adlist (gravity) names, and regex deny entries.
+ * @param {{ password?: string, queries?: any[], gravity?: Record<string, string> }} [options]
+ *   gravity maps an exact name to the address of the adlist that blocks it
  */
-export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub() } = {}) {
+export function fakePihole({ password = "pihole-pass", queries = [], gravity = {} } = {}) {
+  const state = { queries: [...queries], gravity: { ...gravity }, domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [] };
+  const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const listed = (type, kind) => state.domains.filter((d) => d.type === type && d.kind === kind);
+  const fetchImpl = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method ?? "GET";
+    const path = url.pathname.replace(/^\/api\//, "");
+    state.requests.push(`${method} ${path}`);
+    const body = init.body ? JSON.parse(String(init.body)) : undefined;
+    if (path === "auth" && method === "POST") {
+      if (body?.password !== password) return json(401, { session: { valid: false } });
+      const sid = `sid-${state.logins += 1}`;
+      state.sessions.add(sid);
+      return json(200, { session: { valid: true, totp: false, sid, csrf: "x", validity: 1800 } });
+    }
+    const sid = /** @type {any} */ (init.headers)?.["X-FTL-SID"];
+    if (!state.sessions.has(sid)) return json(401, { error: { key: "unauthorized", message: "Unauthorized" } });
+    if (path === "auth" && method === "DELETE") { state.sessions.delete(sid); state.logouts += 1; return new Response(null, { status: 204 }); }
+    if (path === "info/version") return json(200, { version: { core: { local: { version: "v6.4.3" } }, ftl: { local: { version: "v6.7" } }, web: { local: { version: "v6.5" } } } });
+    if (path === "queries") {
+      const p = url.searchParams;
+      const domain = p.get("domain");
+      let rows = state.queries.filter((q) => (p.get("disk") === "true" ? q.onDisk !== false : q.inMemory !== false));
+      if (p.get("from")) rows = rows.filter((q) => q.time >= Number(p.get("from")));
+      if (p.get("until")) rows = rows.filter((q) => q.time <= Number(p.get("until")));
+      if (domain) rows = rows.filter((q) => (domain.startsWith("*") ? q.domain.endsWith(domain.slice(1)) : q.domain === domain));
+      rows = rows.sort((a, b) => b.id - a.id);
+      const cursor = p.get("cursor") ? Number(p.get("cursor")) : rows[0]?.id ?? null;
+      const pinned = rows.filter((q) => cursor === null || q.id <= cursor);
+      const start = Number(p.get("start") ?? 0);
+      const length = Number(p.get("length") ?? 100);
+      return json(200, { queries: pinned.slice(start, start + length).map(({ onDisk: _onDisk, inMemory: _inMemory, ...q }) => q), cursor, recordsTotal: state.queries.length, recordsFiltered: pinned.length, draw: 0 });
+    }
+    if (path.startsWith("search/")) {
+      const name = decodeURIComponent(path.slice("search/".length));
+      const domains = state.domains.filter((d) => (d.kind === "exact" ? d.domain === name : new RegExp(d.domain).test(name)));
+      const lists = state.gravity[name] ? [{ domain: name, address: state.gravity[name], type: "block", enabled: true }] : [];
+      return json(200, { search: { domains, gravity: lists, results: { domains: { exact: domains.filter((d) => d.kind === "exact").length, regex: domains.filter((d) => d.kind === "regex").length }, gravity: { allow: 0, block: lists.length }, total: domains.length + lists.length } } });
+    }
+    const listMatch = /^domains\/(allow|deny)\/(exact|regex)$/.exec(path);
+    if (listMatch && method === "GET") return json(200, { domains: listed(listMatch[1], listMatch[2]) });
+    if (listMatch && method === "POST") {
+      const items = Array.isArray(body.domain) ? body.domain : [body.domain];
+      if (items.some((item) => state.domains.some((d) => d.domain === item && d.type === listMatch[1] && d.kind === listMatch[2]))) return json(400, { error: { key: "database_error", message: "The item is already present" } });
+      for (const item of items) state.domains.push({ id: state.nextId++, domain: item, type: listMatch[1], kind: listMatch[2], comment: body.comment ?? null, enabled: body.enabled ?? true, groups: body.groups ?? [0] });
+      return json(201, { domains: [], processed: { success: items.map((item) => ({ item })), errors: [] } });
+    }
+    if (path === "domains:batchDelete" && method === "POST") {
+      state.domains = state.domains.filter((d) => !body.some((b) => b.item === d.domain && b.type === d.type && b.kind === d.kind));
+      return new Response(null, { status: 204 });
+    }
+    return json(404, { error: { key: "not_found", message: path } });
+  };
+  return { fetchImpl, state };
+}
+
+/**
+ * Everything the app needs, in memory, with the bundled indicator set seeded.
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object }} [options]
+ */
+export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {} } = {}) {
   const settings = createSettingsStore(db, { now });
   const audit = createAuditLog(db, { now });
   const auth = createAuth({ db, settings, audit, adminPassword, sessionSecret, now });
   const iocStore = createIocStore({ db, audit, now });
   iocStore.seedBundled();
   const updater = createIocUpdater({ fetchImpl });
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, now };
+  const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: piholeEnv, fetchImpl: piholeFetch, now });
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, now };
 }
