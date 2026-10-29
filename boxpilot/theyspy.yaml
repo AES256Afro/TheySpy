@@ -12,8 +12,8 @@ description: "Hunts for spyware and ad-intelligence traffic in your Pi-hole log,
 website: https://github.com/AES256Afro/TheySpy
 risk: low
 image:
-  reference: ghcr.io/aes256afro/theyspy:0.1.0
-  version: "0.1.0"
+  reference: ghcr.io/aes256afro/theyspy:0.2.0
+  version: "0.2.0"
 user: "1000:1000"
 ports:
   - id: web
