@@ -330,6 +330,7 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - **Exit:** each trigger fires once (no duplicates on restart); an MCP client can list devices, findings and matching KEV items.
 
 ### M10 — BoxPilot packaging and management (S)
+**Brought forward (29 Oct 2026):** tagged versions publish a signed image to `ghcr.io/aes256afro/theyspy`; 0.2.0 is pinned by digest in `boxpilot/theyspy.yaml` and proposed to BoxPilot in AES256Afro/BoxPilot#603. Still to do here: the backup hook and restore test, the "Spyware watch" agent template and approval cards, and the medium-risk manifest when M4 needs host networking.
 - Final catalog manifest + compose template, health check, backup hook (SQLite online backup), restore test.
 - BoxPilot agent template "Spyware watch" reading `/api/v1/summary`; approval cards for Pi-hole pushes.
 - Catalog PR to `AES256Afro/BoxPilot`.
