@@ -83,10 +83,11 @@ if (config.fleetAuto) {
   };
   const sync = quietly("sync", async () => { if (sentinel.effective().mode) await discovery.sync(); });
   const sweep = quietly("sweep", async () => { if (discovery.targets().length) await discovery.sweep(); });
-  // MAC vendor names from the IEEE registry: shortly after the first start, then monthly.
-  const vendors = quietly("vendors", async () => { await oui.update(); });
-  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000), setInterval(vendors, 30 * day)];
-  if (!oui.status().prefixes) timers.push(setTimeout(vendors, 60 * 1000));
+  // MAC vendor names from the IEEE registry: shortly after the first start, then monthly. Checked
+  // daily rather than with a 30-day timer: Node's timers stop at 2^31 - 1 ms (about 24.8 days) and
+  // treat anything longer as 1 ms.
+  const vendors = quietly("vendors", async () => { if (oui.isDue()) await oui.update(); });
+  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000), setInterval(vendors, day), setTimeout(vendors, 60 * 1000)];
   for (const t of timers) t.unref();
 }
 
