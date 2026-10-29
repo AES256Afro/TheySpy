@@ -1,18 +1,19 @@
-# BoxPilot catalog manifest for TheySpy (schemaVersion 2), to be proposed as BoxPilot/catalog/theyspy.yaml.
+# BoxPilot catalog manifest for TheySpy (schemaVersion 2); the copy in BoxPilot/catalog/theyspy.yaml.
+# The image is pinned to the digest the v0.2.0 release published (signed, with build provenance).
 # `npm run check:boxpilot` validates it with BoxPilot's own validateManifest (BOXPILOT_DIR, default ../BoxPilot).
 # Port 8797 is free in the BoxPilot catalog (BaselineWatch 8790, Protec 8765, BoxPilot itself 8787).
-# M0 runs in bridge mode with no extra capabilities. M4 (network discovery) switches to `network: host`
+# This version runs in bridge mode with no extra capabilities. M4 (network discovery) switches to `network: host`
 # with CAP_NET_RAW and CAP_NET_ADMIN, as NetAlertX does, and raises risk to medium.
 schemaVersion: 2
 id: theyspy
 name: TheySpy
 category: Security
 icon: "🕵️"
-description: "Hunts for spyware and ad-intelligence traffic in your Pi-hole log, keeps a list of every device on your network, and shows which CVEs and zero-days apply to each one. Blocklist library with per-device baselines."
+description: "Watches for ad-delivered spyware. Holds zero-breach's AdFection / Candiru indicators, kept current from signed releases you approve, and exports them for Pi-hole, AdGuard, dnsmasq, Amnesty's MVT and MISP. Pi-hole log hunting, a device list and CVE matching come in later versions."
 website: https://github.com/AES256Afro/TheySpy
 risk: low
 image:
-  reference: ghcr.io/aes256afro/theyspy:0.2.0
+  reference: ghcr.io/aes256afro/theyspy:0.2.0@sha256:f17046ce2c95db7d9f5bccc3568be4ea4dce442ad9ecdca0178e91e04fd9a7c4
   version: "0.2.0"
 user: "1000:1000"
 ports:
