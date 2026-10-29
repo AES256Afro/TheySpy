@@ -270,6 +270,22 @@ export const migrations = [
      detail TEXT NOT NULL DEFAULT '{}'
    );
    CREATE INDEX cve_events_at ON cve_events (at);`,
+  // M6: CVEs NVD lists for exact software versions (kept a week), and the owner's decisions about
+  // a CVE on a device: accepted (a known risk) or fixed (waiting for the next check to confirm).
+  `CREATE TABLE software_cves (
+     key TEXT PRIMARY KEY,
+     fetched_at TEXT NOT NULL,
+     cves TEXT NOT NULL
+   );
+   CREATE TABLE cve_decisions (
+     device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+     cve_id TEXT NOT NULL,
+     status TEXT NOT NULL CHECK (status IN ('accepted', 'fixed')),
+     note TEXT,
+     at TEXT NOT NULL,
+     actor TEXT NOT NULL,
+     PRIMARY KEY (device_id, cve_id)
+   );`,
 ];
 
 /**

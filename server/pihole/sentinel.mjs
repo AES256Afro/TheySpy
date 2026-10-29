@@ -106,8 +106,14 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       for (const observe of observers) observe(seen);
       watchState.lastError = null;
       lastPoll = started;
+      // A poll that reached Pi-hole is as good as the Test button: say so, so the screen does not
+      // keep showing "Not tested yet" (or an old failure) while everything works.
+      const last = settings.get("pihole_last_test");
+      const where = source().describe();
+      if (!last?.ok || last.where !== where) settings.set("pihole_last_test", { ok: true, mode: c.mode, where, via: "live watch", at: now().toISOString() });
     } catch (error) {
       watchState.lastError = error.message;
+      if (settings.get("pihole_last_test")?.ok !== false) sentinel.recordFailedTest(error.message);
     }
     watchState.lastPollAt = now().toISOString();
   }
@@ -146,6 +152,8 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       if (input.windowDays !== undefined) { const n = Number(input.windowDays); if (Number.isInteger(n) && n >= 1 && n <= 365) next.windowDays = n; else errors.push("window must be 1 to 365 days"); }
       if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400 });
       settings.set("pihole", next);
+      // A test of the old address or password says nothing about the new one.
+      if (["mode", "url", "password", "dbPath"].some((k) => input[k] !== undefined)) settings.delete("pihole_last_test");
       audit.record(actor, "pihole.settings_changed", null, { ...input, password: input.password === undefined ? undefined : "(changed)" });
       lastPoll = null;
       return sentinel.publicConfig();
