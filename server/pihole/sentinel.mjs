@@ -213,11 +213,72 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       settings.set("pihole_coverage", summary);
       return summary;
     },
+    /** The network's most-looked-up names, or [] when Pi-hole is not reachable over its API. */
+    async topDomains() {
+      const c = effective();
+      if (c.mode !== "api" || !c.url) return [];
+      try {
+        return await /** @type {ReturnType<typeof apiSource>} */ (source()).client().session((client) => client.topDomains(200));
+      } catch {
+        return [];
+      }
+    },
+
     lastCoverage: () => settings.get("pihole_coverage") ?? null,
     /** A push or rollback changes what Pi-hole blocks, so the last check no longer describes it. */
     markCoverageStale() {
       const coverage = settings.get("pihole_coverage");
       if (coverage) settings.set("pihole_coverage", { ...coverage, stale: true });
+    },
+
+    /** Pi-hole's adlists that TheySpy added (their comment starts with "TheySpy:"). */
+    async subscriptions() {
+      const s = source();
+      if (!s.canWrite) return [];
+      return /** @type {ReturnType<typeof apiSource>} */ (s).client().session(async (c) => (await c.listAdlists("block"))
+        .filter((l) => String(l.comment ?? "").startsWith(tag))
+        .map((l) => ({ address: l.address, entries: Number(l.number ?? 0), status: Number(l.status ?? 0), enabled: l.enabled !== false, updated: l.date_updated ? new Date(Number(l.date_updated) * 1000).toISOString() : null })));
+    },
+
+    /**
+     * Subscribes Pi-hole to one of TheySpy's compiled lists and rebuilds gravity, then confirms
+     * Pi-hole loaded it. Only with writes allowed, and only TheySpy's own /lists/ addresses.
+     * @param {string} address
+     * @param {string} label
+     */
+    async subscribe(address, label, actor) {
+      if (!effective().write) throw Object.assign(new Error("Changing Pi-hole is turned off. Allow it on the Pi-hole Sentinel screen first."), { status: 403 });
+      if (!/^https?:\/\/[^/]+\/lists\/[\w-]+\/[a-z]+\.(txt|hosts|adblock|dnsmasq|rpz)$/.test(address)) throw Object.assign(new Error("Only TheySpy's own list addresses can be added"), { status: 400 });
+      const s = source();
+      if (!s.canWrite) throw new PiholeError("Subscribing needs the Pi-hole API.");
+      return /** @type {ReturnType<typeof apiSource>} */ (s).client().session(async (c) => {
+        if (!(await c.listAdlists("block")).some((l) => l.address === address)) await c.addAdlist(address, `${tag} ${label}`);
+        const log = await c.updateGravity();
+        // Gravity logs "Target: <url>" then a line ending "Status: Retrieval successful" (or why it failed).
+        const after = log.indexOf(address) >= 0 ? log.slice(log.indexOf(address)).split("\n")[1] ?? "" : "";
+        const retrieval = after.includes("Status:") ? after.slice(after.lastIndexOf("Status:") + 7).trim() : null;
+        let loaded = null;
+        for (let i = 0; i < 15 && !loaded?.number; i += 1) {
+          loaded = (await c.listAdlists("block")).find((l) => l.address === address);
+          if (!loaded?.number) await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        audit.record(actor, "pihole.subscribed", null, { list: label, entries: Number(loaded?.number ?? 0) });
+        if (!loaded?.number) throw new PiholeError(`Pi-hole added the list but loaded no entries (${retrieval ?? "no status in its log"}). Check that Pi-hole can reach ${new URL(address).origin}.`);
+        return { entries: Number(loaded.number), retrieval };
+      });
+    },
+
+    async unsubscribe(address, actor) {
+      if (!effective().write) throw Object.assign(new Error("Changing Pi-hole is turned off."), { status: 403 });
+      const s = source();
+      return /** @type {ReturnType<typeof apiSource>} */ (s).client().session(async (c) => {
+        const list = (await c.listAdlists("block")).find((l) => l.address === address);
+        if (!list || !String(list.comment ?? "").startsWith(tag)) throw Object.assign(new Error("That list is not one TheySpy added"), { status: 404 });
+        await c.deleteAdlist(address);
+        await c.updateGravity();
+        audit.record(actor, "pihole.unsubscribed", null, { comment: list.comment });
+        return { removed: true };
+      });
     },
 
     /** What a push would add, from the latest coverage check: indicator domains not fully blocked and not allowlisted by the owner. */
@@ -334,6 +395,22 @@ export function piholeJobKinds(sentinel) {
         const c = await sentinel.coverage();
         log(`${c.blocked} of ${c.total} indicator domains are blocked; ${c.fullyBlocked} with their subdomains; ${c.allowlisted} are on your allowlist.`);
         return { total: c.total, blocked: c.blocked, fullyBlocked: c.fullyBlocked, allowlisted: c.allowlisted };
+      },
+    },
+    "pihole.subscribe": {
+      title: "Subscribe Pi-hole to a TheySpy list",
+      async run({ log, params, actor }) {
+        const result = await sentinel.subscribe(params.address, params.label, actor);
+        log(`Pi-hole loaded ${result.entries} entries from TheySpy's ${params.label} list.`);
+        return result;
+      },
+    },
+    "pihole.unsubscribe": {
+      title: "Remove a TheySpy list from Pi-hole",
+      async run({ log, params, actor }) {
+        await sentinel.unsubscribe(params.address, actor);
+        log(`Removed TheySpy's ${params.label ?? "list"} from Pi-hole and rebuilt gravity.`);
+        return { removed: true };
       },
     },
     "pihole.push": {
