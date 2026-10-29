@@ -59,6 +59,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
+          cache: npm
+      # The e2e serves TheySpy's compiled lists with the app's own Express routes.
+      - run: npm ci --omit=dev
       - run: sh scripts/e2e-pihole.sh
 
   # A version tag publishes ghcr.io/aes256afro/theyspy:<version>, the image BoxPilot's catalog
