@@ -310,6 +310,9 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - Feed page with filters (KEV, zero-day, EPSS ≥ x, vendor, "applies to my devices").
 - **Exit:** cold start fills KEV fully and the last 120 days of NVD in under 30 min without an API key; a CVE added to KEV shows up within one hour with the correct due date.
 
+### Website check (added 29 Oct 2026, 0.10.0)
+A website address in Targeted check runs a read-only check: PHP and CMS (WordPress, Drupal, Joomla) versions from headers and pages, PHP branch support dates, CVEs for the exact versions from NVD (`virtualMatchString`, flagged when in CISA KEV), and a fixed list of paths that should never be public (.env, .git/HEAD, phpinfo, PHPUnit eval-stdin.php, config backups, Adminer, phpMyAdmin, composer.lock, server-status, xmlrpc.php), with soft-404 detection. GET requests only; no payloads, logins or crawling; secrets found are never stored. Sites inside `TS_SCAN_RANGES` are checked directly; a public site needs its owner to publish a per-host token (HMAC of the host under TheySpy's key) at `/.well-known/theyspy-verification.txt` or as a DNS TXT record.
+
 ### M6 — Matching and This-Device check (M)
 - CPE/purl/version-range matcher with confidence levels; per-device CVE list; accept-risk / mark-fixed workflow.
 - This-Device page: UA-CH probe, UA fallback with confirm, GPC test, ad-domain probe, DNS-through-Pi-hole test, public IP ASN (offline ASN table; Starlink AS14593 flagged).
