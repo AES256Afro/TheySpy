@@ -15,6 +15,8 @@ const packageVersion = JSON.parse(readFileSync(path.join(root, "package.json"), 
 const local = [];
 if (raw.image?.version !== packageVersion) local.push(`image.version is ${raw.image?.version}, package.json is ${packageVersion}`);
 if (!String(raw.image?.reference ?? "").includes(`:${packageVersion}`)) local.push(`image.reference does not carry version ${packageVersion}`);
+const composeImage = /^\s*image:\s*(\S+)/m.exec(readFileSync(path.join(root, "docker-compose.yml"), "utf8"))?.[1];
+if (composeImage !== `ghcr.io/aes256afro/theyspy:${packageVersion}`) local.push(`docker-compose.yml image is ${composeImage}, expected ghcr.io/aes256afro/theyspy:${packageVersion}`);
 const looks = JSON.parse(readFileSync(path.join(root, "shared/looks.json"), "utf8")).looks.map((look) => look.id);
 const lookOptions = raw.env?.find((entry) => entry.name === "TS_LOOK")?.options ?? [];
 if (JSON.stringify(lookOptions) !== JSON.stringify(["auto", ...looks])) local.push(`TS_LOOK options ${JSON.stringify(lookOptions)} do not match shared/looks.json`);

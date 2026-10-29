@@ -12,8 +12,8 @@ description: "Hunts for spyware and ad-intelligence traffic in your Pi-hole log,
 website: https://github.com/AES256Afro/TheySpy
 risk: low
 image:
-  reference: ghcr.io/aes256afro/theyspy:0.1.0
-  version: "0.1.0"
+  reference: ghcr.io/aes256afro/theyspy:0.2.0
+  version: "0.2.0"
 user: "1000:1000"
 ports:
   - id: web
@@ -59,6 +59,11 @@ env:
     label: Accent colour (optional)
     description: "A colour such as #39c6ff. Empty uses the look's own accent."
     default: ""
+  - name: TS_IOC_AUTOCHECK
+    label: Check for indicator updates daily
+    type: boolean
+    default: "true"
+    description: Looks for a newer zero-breach indicator set once a day. An update waits on the Indicators screen until you apply it.
 signIn:
   path: /
   port: web
@@ -70,5 +75,7 @@ health:
 notes: >-
   Open the dashboard and sign in with the owner password from this card. Settings → Appearance
   picks the look and branding; the defaults for everyone can also be set here. Activity shows
-  every job and change. Pi-hole hunting arrives in M2, the blocklist library and baselines in M3,
+  every job and change. Indicators holds zero-breach's AdFection / Candiru set, checks GitHub daily
+  for a signed update (applied only when you approve it) and exports it for DNS filters, MVT and
+  MISP. Pi-hole hunting arrives in M2, the blocklist library and baselines in M3,
   network discovery in M4.

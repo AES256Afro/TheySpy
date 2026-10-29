@@ -43,6 +43,34 @@ export const migrations = [
      detail TEXT
    );
    CREATE INDEX audit_at ON audit_log (at DESC);`,
+  // M1: indicator sets. Every version ever fetched is kept with its raw text and provenance, so
+  // what was applied, and why it was trusted, can be shown later. `iocs` is the active set.
+  `CREATE TABLE ioc_versions (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     feed TEXT NOT NULL,
+     status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'superseded', 'rejected')),
+     sha256 TEXT NOT NULL,
+     asof TEXT,
+     count INTEGER NOT NULL,
+     raw TEXT NOT NULL,
+     provenance TEXT NOT NULL,
+     diff TEXT,
+     fetched_at TEXT NOT NULL,
+     decided_at TEXT,
+     decided_by TEXT
+   );
+   CREATE INDEX ioc_versions_feed ON ioc_versions (feed, status);
+   CREATE TABLE iocs (
+     value TEXT NOT NULL,
+     feed TEXT NOT NULL,
+     type TEXT NOT NULL CHECK (type IN ('domain', 'ip', 'sha256')),
+     tier TEXT NOT NULL,
+     confidence TEXT NOT NULL,
+     source TEXT NOT NULL,
+     version_id INTEGER NOT NULL REFERENCES ioc_versions (id),
+     PRIMARY KEY (feed, value)
+   );
+   CREATE INDEX iocs_value ON iocs (value);`,
 ];
 
 /**

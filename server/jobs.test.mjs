@@ -13,7 +13,7 @@ describe("job runner", () => {
     const done = jobs.get(queued.id);
     expect(done.status).toBe("succeeded");
     expect(done.log).toContain("Nothing to do");
-    expect(audit.list().map((entry) => entry.action).reverse()).toEqual(["job.queued", "job.started", "job.succeeded"]);
+    expect(audit.list().map((entry) => entry.action).filter((action) => action.startsWith("job.")).reverse()).toEqual(["job.queued", "job.started", "job.succeeded"]);
   });
 
   it("records a failing job as failed with its error", async () => {

@@ -273,6 +273,7 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - **Exit:** container starts, login works, a no-op job runs and shows in the audit log; switching look restyles every screen with no hard-coded colours left (lint rule); all looks pass the contrast check; BoxPilot manifest validates against BoxPilot's schema.
 
 ### M1 — Indicator engine (S)
+**Status (29 Oct 2026): done.** 405 indicators seeded from the bundled set, checked against zero-breach's signed v0.1.8 manifest. Updates come from signed releases (Ed25519 signature on `SHA256SUMS.txt`, verified in-process against the pinned key, so no `gpg` is needed) or from `main` (hash only, labelled as such). Every update is a pending version until the owner applies it. All seven exports match zero-breach's own files byte for byte.
 - Vendor zero-breach IOCs with licence files; importer keeps tier, confidence, citation.
 - IOC updater: fetch, SHA-256 verify, GPG verify, diff preview, apply.
 - Defang renderer; exports: hosts, Adblock, dnsmasq, plain, STIX 2.1, MISP.

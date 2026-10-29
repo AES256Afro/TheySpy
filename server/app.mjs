@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { appearanceOptions, effectiveAppearance, validateAppearance } from "./appearance.mjs";
 import { sessionCookie } from "./auth.mjs";
+import { iocRoutes } from "./iocs/routes.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -24,10 +25,11 @@ function readCookie(header, name) {
  *   audit: ReturnType<typeof import("./audit.mjs").createAuditLog>,
  *   auth: ReturnType<typeof import("./auth.mjs").createAuth>,
  *   jobs: ReturnType<typeof import("./jobs.mjs").createJobRunner>,
+ *   iocStore: ReturnType<typeof import("./iocs/store.mjs").createIocStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -107,9 +109,13 @@ export function createApp({ config, settings, audit, auth, jobs, staticDirectory
     return job ? res.json({ job }) : res.status(404).json({ error: "No such job" });
   });
   app.post("/api/jobs", requireOwner, (req, res) => {
-    const job = jobs.enqueue(String(req.body?.kind ?? ""), { actor: "owner" });
+    const kind = String(req.body?.kind ?? "");
+    if (!jobs.kinds.some((k) => k.id === kind && k.direct)) return res.status(400).json({ error: `"${kind}" cannot be started directly` });
+    const job = jobs.enqueue(kind, { actor: "owner" });
     res.status(202).json({ job });
   });
+
+  app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 
