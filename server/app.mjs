@@ -136,7 +136,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, jobs }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
 

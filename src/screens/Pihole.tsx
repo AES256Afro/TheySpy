@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useNames } from "../names.ts";
 import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 
 type Config = {
@@ -66,6 +67,7 @@ function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: stri
 }
 
 export function PiholeScreen() {
+  const names = useNames();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [hits, setHits] = useState<Hit[]>([]);
   const [busy, setBusy] = useState("");
@@ -174,7 +176,7 @@ export function PiholeScreen() {
                 <thead><tr><th>Device</th><th>Looked up</th><th>Indicator</th><th>Lookups</th><th>Pi-hole</th><th>Last seen</th></tr></thead>
                 <tbody>{hits.map((h) => (
                   <tr key={`${h.clientIp}|${h.domain}|${h.via}`}>
-                    <td><b>{h.clientName ?? h.clientIp}</b>{h.clientName && <div className="muted small mono">{h.clientIp}</div>}</td>
+                    <td><b>{names[h.clientIp]?.name ?? h.clientName ?? h.clientIp}</b><div className="muted small"><span className="mono">{h.clientIp}</span>{names[h.clientIp] ? ` · ${names[h.clientIp].network ?? ""} · name from ${names[h.clientIp].from}` : ""}</div></td>
                     <td className="mono" style={{ wordBreak: "break-all" }}>{h.domain}{h.via === "cname" && <div className="muted small">through a CNAME</div>}</td>
                     <td>{h.tier && <span className={`badge ${tierBadge[h.tier] ?? "b-info"}`}>{h.tier}</span>}<div className="muted small">{h.citation}</div></td>
                     <td className="mono">{h.lookups}</td>

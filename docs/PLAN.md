@@ -310,6 +310,9 @@ Sizes are relative (S ≈ 1 week of evenings, M ≈ 2, L ≈ 3+). Each milestone
 - Feed page with filters (KEV, zero-day, EPSS ≥ x, vendor, "applies to my devices").
 - **Exit:** cold start fills KEV fully and the last 120 days of NVD in under 30 min without an API key; a CVE added to KEV shows up within one hour with the correct due date.
 
+### Names and breadcrumbs (added 29 Oct 2026, 0.12.0)
+Every device has a name and a reason. In order: the owner's label in TheySpy, the owner's Pi-hole client label (Group management → Clients, matched by MAC or address), the router's name for it (reverse DNS asked of Pi-hole's gateway), Tailscale's (MagicDNS at 100.100.100.100), then a guess from the name, the MAC's maker or a private MAC. Each device says which network it is on: the router's LAN, Tailscale, a Docker network on the Pi-hole host (a `.1` gateway or a MAC starting 02:42; hidden from Fleet by default), or another private network. A device card shows its last 24 hours in Pi-hole: top sites, and what was blocked and by which list. Pi-hole Sentinel and Baselines show names from the Fleet instead of bare addresses.
+
 ### Website check (added 29 Oct 2026, 0.10.0)
 A website address in Targeted check runs a read-only check: PHP and CMS (WordPress, Drupal, Joomla) versions from headers and pages, PHP branch support dates, CVEs for the exact versions from NVD (`virtualMatchString`, flagged when in CISA KEV), and a fixed list of paths that should never be public (.env, .git/HEAD, phpinfo, PHPUnit eval-stdin.php, config backups, Adminer, phpMyAdmin, composer.lock, server-status, xmlrpc.php), with soft-404 detection. GET requests only; no payloads, logins or crawling; secrets found are never stored. Sites inside `TS_SCAN_RANGES` are checked directly; a public site needs its owner to publish a per-host token (HMAC of the host under TheySpy's key) at `/.well-known/theyspy-verification.txt` or as a DNS TXT record.
 

@@ -60,12 +60,12 @@ export function fakeGitHub(files = {}) {
  * A Pi-hole 6 API stand-in, behaving as a live FTL v6.7 did when probed: X-FTL-SID sessions,
  * newest-first paging with a fixed cursor and a `start` offset, `*name` as a plain suffix match,
  * search over exact and regex entries plus adlist (gravity) names, and regex deny entries.
- * @param {{ password?: string, queries?: any[], gravity?: Record<string, string>, network?: any[] }} [options]
+ * @param {{ password?: string, queries?: any[], gravity?: Record<string, string>, network?: any[], gateway?: string | null }} [options]
  *   gravity maps an exact name to the address of the adlist that blocks it; network is the network
  *   table in the API's shape
  */
-export function fakePihole({ password = "pihole-pass", queries = [], gravity = {}, network = [] } = {}) {
-  const state = { queries: [...queries], gravity: { ...gravity }, network: [...network], domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [], groups: [{ id: 0, name: "Default", comment: "The default group", enabled: true }], clients: [], adlists: [], gravityEntries: 3 };
+export function fakePihole({ password = "pihole-pass", queries = [], gravity = {}, network = [], gateway = null } = {}) {
+  const state = { queries: [...queries], gravity: { ...gravity }, network: [...network], gateway, domains: [], sessions: new Set(), nextId: 1, logins: 0, logouts: 0, requests: [], groups: [{ id: 0, name: "Default", comment: "The default group", enabled: true }], clients: [], adlists: [], gravityEntries: 3 };
   const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const listed = (type, kind) => state.domains.filter((d) => d.type === type && d.kind === kind);
   const fetchImpl = async (input, init = {}) => {
@@ -106,6 +106,7 @@ export function fakePihole({ password = "pihole-pass", queries = [], gravity = {
       return json(200, { search: { domains, gravity: lists, results: { domains: { exact: domains.filter((d) => d.kind === "exact").length, regex: domains.filter((d) => d.kind === "regex").length }, gravity: { allow: 0, block: lists.length }, total: domains.length + lists.length } } });
     }
     if (path === "network/devices") return json(200, { devices: state.network, took: 0 });
+    if (path === "network/gateway") return json(200, { gateway: state.gateway ? [{ family: "inet", interface: "eth0", address: state.gateway, local: [] }] : [], took: 0 });
     if (path === "stats/top_clients") {
       const byClient = new Map();
       for (const q of state.queries) { const e = byClient.get(q.client.ip) ?? { ip: q.client.ip, name: q.client.name ?? "", count: 0 }; e.count += 1; byClient.set(q.client.ip, e); }
@@ -168,7 +169,7 @@ export function fakeWeb(files = {}) {
 
 /**
  * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, reverseVia: (server: string, ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
  */
 export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] } = {}) {
   const settings = createSettingsStore(db, { now });
@@ -182,11 +183,11 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   library.seed();
   const baselines = createBaselines({ db, library, sentinel, settings, audit, now });
   const oui = createOui({ db, settings, fetchImpl: webFetch, now });
-  const fleet = createFleet({ db, audit, now, vendorOf: oui.vendorOf });
+  const fleet = createFleet({ db, audit, now, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
   const cves = createCveStore({ db, settings, audit, fetchImpl: webFetch, now, sleep: async () => {} });
   // No real network in tests: no neighbours, nothing answers, no names, unless a test says so.
   const { checkPortsImpl = async () => [], lookup = async () => null, ...probes } = network;
-  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, ...probes });
+  const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, reverseVia: async () => null, ...probes });
   // Websites in tests: the fake web, addresses from the test's lookup, no DNS TXT records.
   const software = createSoftwareLookup({ db, cves, fetchImpl: webFetch, now, sleep: async () => {} });
   const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges, fetchImpl: webFetch, now,
