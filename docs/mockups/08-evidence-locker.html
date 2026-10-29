@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Evidence Locker</title><link rel="stylesheet" href="mock.css">
+<style>
+  body { font-size: 13.5px; }
+  .tiers { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tier { flex: 1; min-width: 120px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .tier b { font: 700 22px var(--mono); display: block; } .tier span { font-size: 11.5px; color: var(--muted); }
+  .tier.hot { border-color: var(--accent); }
+  .split { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 14px; }
+  .split > * { min-width: 0; }
+  .item { padding: 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .item.on { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
+  .item .h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .item .mono { overflow-wrap: anywhere; }
+  pre { font: 12px/1.6 var(--mono); background: #0a0a08; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; margin: 0; color: #d8d2bd; }
+  pre .k { color: var(--accent); } pre .s { color: #9fc97a; } pre .c { color: var(--muted); }
+  .gaps li { margin: 4px 0; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+</style></head>
+<body class="t-evidence"><div class="app"><aside class="side" data-on="evidence"></aside>
+<main>
+  <div class="top">
+    <div><h1>Evidence locker</h1><div class="muted small mono">zero-breach 1.4.2 (sha256 verified) · IOC set 2026.10.21 · 405 indicators</div></div>
+    <div class="grow"></div>
+    <button class="btn">Export STIX 2.1</button><button class="btn">Export MISP</button><button class="btn primary">Scan enrolled devices</button>
+  </div>
+
+  <div class="tiers">
+    <div class="tier"><b>0</b><span>on-disk · spyware file hash</span></div>
+    <div class="tier"><b>0</b><span>persistence · COM / driver</span></div>
+    <div class="tier hot"><b style="color:var(--accent)">1</b><span>contacted · browser history</span></div>
+    <div class="tier hot"><b style="color:var(--accent)">2</b><span>dns-record · resolver / Pi-hole</span></div>
+    <div class="tier"><b>0</b><span>configured · hosts file</span></div>
+    <div class="tier"><b>1</b><span>referenced · cache / storage</span></div>
+    <div class="tier"><b style="color:var(--accent-2)">5</b><span>gaps · checks that could not run</span></div>
+  </div>
+
+  <div class="split">
+    <section class="card" style="padding:0">
+      <div class="item on"><div class="h"><span class="badge b-crit">contacted</span><b>Work laptop</b><span class="muted small" style="margin-left:auto">today 08:02</span></div><div class="muted small mono">Edge history → noas-cdn-07[.]example</div></div>
+      <div class="item"><div class="h"><span class="badge b-high">dns-record</span><b>Pixel 9 (Kitchen)</b><span class="muted small" style="margin-left:auto">yesterday</span></div><div class="muted small mono">Pi-hole → noas-edge[.]example ×3</div></div>
+      <div class="item"><div class="h"><span class="badge b-high">dns-record</span><b>Work laptop</b><span class="muted small" style="margin-left:auto">today 08:02</span></div><div class="muted small mono">Windows DNS cache → noas-cdn-07[.]example</div></div>
+      <div class="item"><div class="h"><span class="badge b-med">referenced</span><b>MacBook Pro</b><span class="muted small" style="margin-left:auto">2 days</span></div><div class="muted small mono">Chrome HTTP cache key → ctl-sync[.]example</div></div>
+      <div class="item"><div class="h"><span class="badge b-info">lead</span><b>Work laptop</b><span class="muted small" style="margin-left:auto">today</span></div><div class="muted small mono">Signed driver abused by actor present — not proof</div></div>
+    </section>
+
+    <div class="stack">
+      <div class="banner bad"><div><b>Work laptop: browser visited an AdFection delivery host.</b> A <em>contacted</em> finding means the browser loaded a URL on this host, not that spyware is installed. No on-disk or persistence evidence was found, but 2 checks could not run (below). Treat as serious: isolate, preserve, get expert help.
+        <div class="row" style="margin-top:10px"><button class="btn primary">Isolate (Pi-hole: block all for this client)</button><button class="btn">Preserve evidence bundle</button><button class="btn">Access Now helpline</button></div></div></div>
+
+      <section class="card">
+        <header><h2>Finding</h2><span class="muted small mono">finding--8d1c… · defanged</span></header>
+<pre><span class="c"># agent report, zero-breach exit code 2 (indicator matched)</span>
+{
+  <span class="k">"evidence"</span>: <span class="s">"contacted"</span>,
+  <span class="k">"source"</span>: <span class="s">"edge:History.urls"</span>,
+  <span class="k">"indicator"</span>: <span class="s">"noas-cdn-07[.]example"</span>,
+  <span class="k">"tier"</span>: 1, <span class="k">"confidence"</span>: <span class="s">"high"</span>,
+  <span class="k">"citation"</span>: <span class="s">"Citizen Lab, Exposing AdFection (2026)"</span>,
+  <span class="k">"first_seen"</span>: <span class="s">"2026-10-21T19:22:51Z"</span>, <span class="k">"visits"</span>: 1,
+  <span class="k">"cookie_values_read"</span>: false
+}</pre>
+      </section>
+
+      <div class="grid g2">
+        <section class="card">
+          <header><h2>Gaps on this scan</h2><span class="badge b-med">2</span></header>
+          <ul class="gaps small">
+            <li>DNS client logging is off — older lookups cannot be checked. <a>Turn on</a></li>
+            <li>Firefox profile locked (browser open) — retry when closed.</li>
+          </ul>
+          <div class="muted small">A gap is never counted as clean.</div>
+        </section>
+        <section class="card">
+          <header><h2>Chain of custody</h2></header>
+          <div class="list small mono">
+            <div><span class="grow">report.json</span><span class="muted">sha256 4be1…09fa</span></div>
+            <div><span class="grow">agent signature</span><span style="color:var(--ok)">valid · key ws-07</span></div>
+            <div><span class="grow">zero-breach.py</span><span style="color:var(--ok)">matches release hash</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <p class="note">Mockup 8 of 13 · Evidence tiers and gap handling follow zero-breach. Illustrative data; indicators are fictional.</p>
+</main></div><script src="nav.js"></script></body></html>

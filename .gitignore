@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+*.local.md
+.env
+.DS_Store
+*.tsbuildinfo
+.boxpilot/
+.claude/.cc-writes
+.claude/settings.local.json

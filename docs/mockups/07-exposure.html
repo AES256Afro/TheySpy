@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Ad Exposure</title><link rel="stylesheet" href="mock.css">
+<style>
+  .pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .pillar .score { font-size: 34px; font-weight: 800; }
+  .pillar ul { padding-left: 0; list-style: none; margin: 10px 0 0; font-size: 13px; }
+  .pillar li { display: flex; gap: 8px; padding: 5px 0; }
+  .matrix th, .matrix td { text-align: center; } .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .cell { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
+  .c-ok { background: var(--ok); } .c-bad { background: var(--crit); } .c-warn { background: var(--high); } .c-na { background: var(--panel-2); color: var(--muted); }
+  .kit { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .kit .k { width: 40px; height: 40px; border-radius: 10px; background: var(--panel-2); display: grid; place-items: center; font-size: 18px; flex: none; }
+  @media (max-width: 1000px) { .pillars { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .pillars { grid-template-columns: 1fr; } }
+</style></head>
+<body class="t-light"><div class="app"><aside class="side" data-on="exposure"></aside>
+<main>
+  <div class="top">
+    <div><h1>Ad exposure</h1><div class="muted small">“There is currently no consistently safe way to expose your users and networks to targeted ads.” — Citizen Lab. Each recommendation below is a live check.</div></div>
+  </div>
+
+  <div class="pillars">
+    <section class="card pillar"><h3>Block at gateway</h3><div class="score" style="color:var(--ok)">92</div><div class="bar"><i style="width:92%;background:var(--ok)"></i></div>
+      <ul><li>✓ Pi-hole answering for 26/27 devices</li><li>✓ OISD big + HaGeZi TIF</li><li>✓ zero-breach denylist pushed</li><li style="color:var(--high)">! 1 device bypasses (Private DNS)</li></ul></section>
+    <section class="card pillar"><h3>Block on devices</h3><div class="score" style="color:var(--high)">58</div><div class="bar"><i style="width:58%;background:var(--high)"></i></div>
+      <ul><li>✓ uBlock Origin on 2 laptops</li><li style="color:var(--crit)">✕ Phones: no on-device blocker</li><li style="color:var(--high)">! Ad ID not deleted on 2 of 4 phones</li></ul></section>
+    <section class="card pillar"><h3>Low-tracking browsers</h3><div class="score" style="color:var(--high)">61</div><div class="bar"><i style="width:61%;background:var(--high)"></i></div>
+      <ul><li>✓ GPC sent by 3 of 7 browsers</li><li style="color:var(--crit)">✕ 3 browsers behind a KEV fix</li><li>✓ Third-party cookies off on 5</li></ul></section>
+    <section class="card pillar"><h3>Scrutinize ad traffic</h3><div class="score" style="color:var(--crit)">40</div><div class="bar"><i style="width:40%;background:var(--crit)"></i></div>
+      <ul><li>✓ Live IOC watch on Pi-hole</li><li style="color:var(--crit)">✕ Egress is Starlink (IP-targetable)</li><li style="color:var(--high)">! No zero-byte ad-response monitoring yet</li></ul></section>
+  </div>
+
+  <div class="grid g3" style="margin-top:14px">
+    <section class="card span2">
+      <header><h2>Per-device checklist</h2><span class="muted small">✓ pass · ✕ fail · ! partial · – not applicable</span></header>
+      <div class="tbl-wrap"><table class="matrix">
+        <thead><tr><th>Device</th><th>Gateway DNS</th><th>Blocker</th><th>Ad ID off</th><th>GPC</th><th>Patched (KEV)</th><th>IOC clean</th><th>Scan ≤ 7 d</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr><td>Pixel 9 (Kitchen)</td><td><span class="cell c-warn">!</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="badge b-crit">31</span></td></tr>
+          <tr><td>iPhone 16</td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="badge b-med">57</span></td></tr>
+          <tr><td>MacBook Pro</td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="badge b-med">68</span></td></tr>
+          <tr><td>Work laptop</td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-warn">!</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-bad">✕</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="badge b-med">63</span></td></tr>
+          <tr><td>LG TV</td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-na">–</span></td><td><span class="cell c-warn">!</span></td><td><span class="cell c-na">–</span></td><td><span class="cell c-warn">!</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-na">–</span></td><td><span class="badge b-med">55</span></td></tr>
+          <tr><td>BoxPilot server</td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-na">–</span></td><td><span class="cell c-na">–</span></td><td><span class="cell c-na">–</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="cell c-ok">✓</span></td><td><span class="badge b-ok">91</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section class="card">
+      <header><h2>Hardening kits</h2></header>
+      <div class="stack" style="gap:10px">
+        <div class="kit"><div class="k">⌘</div><div class="grow"><b>Apple profile</b><div class="muted small">Turns off personalised ads; sets DNS to Pi-hole over the LAN.</div></div><button class="btn">.mobileconfig</button></div>
+        <div class="kit"><div class="k">🤖</div><div class="grow"><b>Android steps</b><div class="muted small">Delete advertising ID, set Private DNS off at home.</div></div><button class="btn">Open</button></div>
+        <div class="kit"><div class="k">⊞</div><div class="grow"><b>Windows policy</b><div class="muted small">Advertising ID off, Edge tracking prevention strict.</div></div><button class="btn">.reg</button></div>
+        <div class="kit"><div class="k">🛰</div><div class="grow"><b>Starlink egress</b><div class="muted small">Route browsing via WireGuard exit so ad bidders don’t see a Starlink IP.</div></div><button class="btn">Guide</button></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mockup 7 of 13 · Illustrative data.</p>
+</main></div><script src="nav.js"></script></body></html>

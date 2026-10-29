@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Weekly Briefing</title><link rel="stylesheet" href="mock.css">
+<style>
+  :root { --paper: #f6f1e7; --ink: #2b261d; --rule: #d9cfbd; --hl: #efc9c4; --red: #a8322a; }
+  body { background: var(--paper); color: var(--ink); font: 17px/1.65 'Source Serif 4', Georgia, serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 60px; }
+  .mast { border-bottom: 3px double var(--ink); padding-bottom: 12px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .mast h1 { font: 700 54px/1 'Oswald', Impact, sans-serif; letter-spacing: -.01em; text-transform: none; }
+  .mast .meta { margin-left: auto; text-align: right; font-size: 13px; }
+  .back { font: 13px var(--sans); color: var(--ink); opacity: .7; }
+  h2.hd { font: 700 30px/1.15 'Oswald', Impact, sans-serif; margin: 28px 0 10px; }
+  .cols { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin-top: 18px; }
+  .lede { font-size: 20px; }
+  mark { background: var(--hl); padding: 2px 0; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  ul.recs { padding-left: 20px; } ul.recs li { margin: 10px 0; }
+  .aside { border-left: 1px solid var(--rule); padding-left: 24px; font-size: 15px; }
+  .aside h3 { font: 700 13px var(--sans); text-transform: uppercase; letter-spacing: .1em; color: var(--ink); margin: 0 0 8px; }
+  .fig { font: 700 46px/1 'Oswald', sans-serif; }
+  .figcap { font-size: 13px; margin-bottom: 18px; }
+  table.ledger { font-size: 15px; } table.ledger td, table.ledger th { border-color: var(--rule); padding: 8px 6px; color: var(--ink); }
+  table.ledger th { font-family: var(--sans); color: var(--ink); opacity: .7; }
+  .stamp { display: inline-block; border: 2px solid var(--red); color: var(--red); font: 700 12px var(--sans); letter-spacing: .1em; padding: 2px 8px; transform: rotate(-2deg); }
+  u { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } .aside { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 16px; } .mast h1 { font-size: 40px; } }
+  @media print { .back { display: none; } }
+</style></head>
+<body data-fixed-look><div class="wrap">
+  <a class="back" href="index.html">← All mockups</a>
+  <div class="mast"><h1><span data-brand-name>TheySpy</span> Briefing</h1><span class="stamp">HOME NETWORK · WEEK 44</span>
+    <div class="meta">Week ending Sunday 2 November 2026<br>Generated 07:00 · printable</div></div>
+
+  <div class="cols">
+    <article>
+      <h2 class="hd">One Phone Asked For A Spyware Ad Server. Nothing Else Did.</h2>
+      <p class="lede">On Tuesday evening the kitchen Pixel looked up a host from the AdFection indicator set three times in seven seconds. Your Pi-hole lists did not cover it, so the lookups were answered. <mark><b>A DNS lookup is not an infection</b>, but it means an ad on that phone reached the delivery network.</mark></p>
+      <p>The domain is now blocked, along with 26 other indicator domains your lists were missing. The phone has no agent, so TheySpy cannot see further; the next step is a <u>Mobile Verification Toolkit</u> check with the STIX bundle from the Evidence page.</p>
+
+      <h2 class="hd">Patch Two Browsers And One Phone This Week</h2>
+      <p>Two flaws that are being exploited in the wild touch your devices. Both have fixes already:</p>
+      <ul class="recs">
+        <li><b>Chrome V8 type confusion (CVE-2026-4127):</b> <mark>on the MacBook Pro, the work laptop and the Pixel. Restart Chrome after it updates.</mark> CISA wants federal systems fixed by 17 November.</li>
+        <li><b>WebKit use-after-free (CVE-2026-4092):</b> iPhone 16 and iPad, fixed in iOS 19.0.3.</li>
+        <li><b>NAS firmware (CVE-2026-3810):</b> the Synology is only reachable on the LAN, which lowers the risk, but update DSM.</li>
+      </ul>
+
+      <h2 class="hd">Your Internet Address Is A Target Signal</h2>
+      <p>Reuters reported this week that an ad-tech firm alleged to work with spyware vendors was the top bidder on Starlink users’ ad traffic in more than a hundred countries. Your public address belongs to Starlink. Gateway blocking already strips most ad traffic; routing browsing through a VPN exit removes the satellite signature for what gets through.</p>
+    </article>
+
+    <aside class="aside">
+      <h3>At a glance</h3>
+      <div class="fig">64<span style="font-size:22px">/100</span></div><div class="figcap">Network posture, up from 52 last week</div>
+      <div class="fig">3</div><div class="figcap">Indicator lookups, one device, one domain</div>
+      <div class="fig">27</div><div class="figcap">Devices seen; 2 new (an Espressif board and a phone with a private MAC)</div>
+      <h3>Exploited bugs on your devices</h3>
+      <table class="ledger"><tbody>
+        <tr><td>Chrome</td><td style="text-align:right">3 devices</td></tr>
+        <tr><td>iOS / iPadOS</td><td style="text-align:right">2 devices</td></tr>
+        <tr><td>NAS firmware</td><td style="text-align:right">1 device</td></tr>
+      </tbody></table>
+      <h3 style="margin-top:18px">Sources this week</h3>
+      <p style="font-size:13.5px">Citizen Lab, <i>Exposing AdFection</i> · Reuters, 27 Oct · CISA KEV · Chrome Releases · Apple security releases · zero-breach IOC set 2026.10.21</p>
+    </aside>
+  </div>
+  <p class="note" style="color:var(--ink);opacity:.6">Mockup 9 of 13 · Editorial look for the emailed or printed digest. Illustrative data.</p>
+</div><script src="nav.js"></script></body></html>

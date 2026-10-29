@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mockups",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8797", "--bind", "127.0.0.1", "--directory", "docs"],
+      "port": 8797
+    },
+    {
+      "name": "theyspy",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["TS_HOST=127.0.0.1", "TS_PORT=8798", "TS_DATA_DIR=data", "node", "server/index.mjs"],
+      "port": 8798
+    }
+  ]
+}

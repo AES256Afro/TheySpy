@@ -1,0 +1,14 @@
+# Standalone: `docker compose up -d`, then open http://<this machine>:8797.
+# Without TS_ADMIN_PASSWORD the first start prints a generated password once: `docker compose logs theyspy`.
+services:
+  theyspy:
+    build: .
+    image: ghcr.io/aes256afro/theyspy:0.1.0
+    restart: unless-stopped
+    ports:
+      - "8797:8797"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/data

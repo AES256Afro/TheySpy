@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · This Device</title><link rel="stylesheet" href="mock.css">
+<style>
+  .hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; }
+  .devicecard { display: flex; gap: 18px; align-items: center; }
+  .glyph { width: 84px; height: 84px; border-radius: 20px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; color: #fff; font-size: 38px; flex: none; }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .check { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .check:last-child { border-bottom: 0; }
+  .ic { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff; }
+  .ic.ok { background: var(--ok); } .ic.bad { background: var(--crit); } .ic.warn { background: var(--high); } .ic.na { background: var(--muted); }
+  .live { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .06em; }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+</style></head>
+<body class="t-light"><div class="app"><aside class="side" data-on="device"></aside>
+<main>
+  <div class="top">
+    <div><h1>This device</h1><div class="muted small">What applies to the screen you are reading this on. Nothing is saved unless you press “Save as device”.</div></div>
+    <div class="grow"></div><button class="btn">Save as device</button><button class="btn primary">Run check</button>
+  </div>
+
+  <div class="hero">
+    <section class="card">
+      <div class="devicecard"><div class="glyph">▭</div>
+        <div><span class="live">● READ FROM YOUR BROWSER</span><h2 id="devname" style="font-size:20px;margin-top:4px">Detecting…</h2><div class="muted small" id="devsub"></div></div></div>
+      <dl class="kv" id="facts"></dl>
+      <div class="muted small" style="margin-top:12px">Exact versions come from User-Agent Client Hints. Safari freezes the macOS version in its user agent, so on Safari TheySpy asks you to confirm the version or run the agent.</div>
+    </section>
+    <section class="card">
+      <header><h2>Vulnerabilities for this browser + OS</h2><span class="badge b-high">2 apply</span></header>
+      <div class="list small">
+        <div><span class="badge b-zd">0-DAY</span><span class="mono">CVE-2026-4127</span><span class="grow trunc">V8 type confusion</span><span class="muted">fixed in 141.0.7390.65</span></div>
+        <div><span class="badge b-high">High</span><span class="mono">CVE-2026-4101</span><span class="grow trunc">Skia out-of-bounds write</span><span class="muted">same fix</span></div>
+        <div><span class="badge b-ok">OS</span><span class="grow">No known-exploited CVEs for this OS build</span></div>
+      </div>
+      <div class="banner warn" style="margin-top:12px"><b>Restart the browser to finish updating.</b>&nbsp;The fixed build is already downloaded on most machines.</div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:14px">
+    <header><h2>Ad-targeting checks for this browser</h2><span class="muted small">from the Citizen Lab defender guidance</span></header>
+    <div class="check"><div class="ic" id="gpc-ic">…</div><div><b>Global Privacy Control</b><div class="muted small" id="gpc-txt">Checking <span class="mono">navigator.globalPrivacyControl</span>…</div></div><a class="small">How to turn on</a></div>
+    <div class="check"><div class="ic ok">✓</div><div><b>Ad and ADINT domains blocked</b><div class="muted small">6 of 6 probe images on known ad-exchange hosts failed to load (same-site and cross-site). Your DNS or blocker is working.</div></div><span class="badge b-ok">blocked</span></div>
+    <div class="check"><div class="ic ok">✓</div><div><b>DNS goes through Pi-hole</b><div class="muted small">The test name <span class="mono">probe-7f3a.theyspy.lan</span> was seen in Pi-hole’s log from this client within 2 s.</div></div><span class="badge b-ok">yes</span></div>
+    <div class="check"><div class="ic warn">!</div><div><b>Public IP is IP-targetable</b><div class="muted small">Egress <span class="mono">203.0.113.77</span> belongs to AS14593 (SpaceX Starlink). Reuters reported an ADINT bidder was the top buyer of Starlink ad traffic in 100+ countries. Consider a VPN or relay for browsing.</div></div><span class="badge b-high">Starlink</span></div>
+    <div class="check"><div class="ic na">?</div><div><b>Advertising ID</b><div class="muted small">A web page cannot read this. Run the agent, or answer: is “Personalized ads” / advertising ID turned off on this device?</div></div><div class="row"><button class="btn">Off</button><button class="btn">On</button></div></div>
+  </section>
+  <p class="note">Mockup 6 of 13 · The device panel and GPC check are live from your browser; everything else is illustrative.</p>
+</main></div>
+<script src="nav.js"></script>
+<script>
+(async () => {
+  const facts = [];
+  const ua = navigator.userAgentData;
+  let name = 'Unknown browser', sub = navigator.platform || '';
+  if (ua && ua.getHighEntropyValues) {
+    try {
+      const h = await ua.getHighEntropyValues(['platformVersion', 'fullVersionList', 'architecture', 'model', 'bitness']);
+      // Skip the GREASE entry ("Not?A_Brand" and variants); prefer the vendor brand over Chromium.
+      const real = (h.fullVersionList || []).filter(x => !/brand/i.test(x.brand));
+      const b = real.find(x => x.brand !== 'Chromium') || real[0];
+      if (b) name = `${b.brand} ${b.version}`;
+      sub = `${ua.platform} ${h.platformVersion || ''}`;
+      facts.push(['Browser', name], ['Platform', `${ua.platform} ${h.platformVersion}`], ['Architecture', `${h.architecture || '—'} ${h.bitness ? h.bitness + '-bit' : ''}`], ['Model', h.model || '—'], ['Mobile', ua.mobile ? 'yes' : 'no'], ['Source', 'Client Hints (exact)']);
+    } catch (e) { facts.push(['Source', 'Client Hints refused']); }
+  } else {
+    const m = navigator.userAgent.match(/(Firefox|Edg|Chrome|Version)\/([\d.]+)/);
+    name = m ? `${m[1] === 'Version' ? 'Safari' : m[1]} ${m[2]}` : 'Browser';
+    facts.push(['Browser', name], ['User agent', navigator.userAgent], ['Source', 'User agent (OS version may be frozen) — confirm']);
+  }
+  facts.push(['Language', navigator.language], ['Screen', `${screen.width}×${screen.height} @${devicePixelRatio}x`], ['Time zone', Intl.DateTimeFormat().resolvedOptions().timeZone]);
+  document.getElementById('devname').textContent = name;
+  document.getElementById('devsub').textContent = sub;
+  document.getElementById('facts').innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd class="${k === 'User agent' ? 'mono' : ''}">${String(v).replace(/</g, '&lt;')}</dd>`).join('');
+  const gpc = navigator.globalPrivacyControl;
+  const ic = document.getElementById('gpc-ic'), txt = document.getElementById('gpc-txt');
+  if (gpc === true) { ic.className = 'ic ok'; ic.textContent = '✓'; txt.textContent = 'On. Sites are told not to sell or share your data.'; }
+  else if (gpc === false) { ic.className = 'ic bad'; ic.textContent = '✕'; txt.textContent = 'Supported but off.'; }
+  else { ic.className = 'ic bad'; ic.textContent = '✕'; txt.textContent = 'Not supported by this browser. Brave, Firefox (setting), DuckDuckGo and Safari with an extension send it.'; }
+})();
+</script></body></html>

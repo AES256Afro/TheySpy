@@ -1,0 +1,46 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # BoxPilot's catalog validator checks boxpilot/theyspy.yaml. If the repository is not
+      # reachable the step is skipped and the manifest still gets its local checks.
+      - uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: AES256Afro/BoxPilot
+          path: .boxpilot
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+        env:
+          BOXPILOT_DIR: .boxpilot
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t theyspy:ci .
+      - name: Container starts and answers /healthz
+        run: |
+          docker run -d --name theyspy -p 8797:8797 theyspy:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8797/healthz && exit 0; sleep 1; done
+          docker logs theyspy; exit 1

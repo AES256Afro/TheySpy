@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Appearance</title><link rel="stylesheet" href="mock.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  .layout > * { min-width: 0; }
+  .looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .look { all: unset; cursor: pointer; display: block; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
+  .look.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .look .cap { padding: 9px 11px; font-size: 12px; color: var(--muted); }
+  .look .cap b { display: block; color: var(--text); font-size: 13.5px; }
+  .mini { height: 104px; display: grid; grid-template-columns: 34px 1fr; background: var(--bg); color: var(--text); }
+  .mini.t-glass { background: radial-gradient(180px 120px at 0% 0%, #2a3f7a, transparent 70%), radial-gradient(160px 110px at 100% 100%, #5b2a6e, transparent 70%), #0c1022; }
+  .mini .ms { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 5px; padding: 8px 6px; }
+  .mini .ms i { height: 5px; border-radius: 3px; background: var(--line); } .mini .ms i:first-child { background: var(--accent); }
+  .mini .mb { padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .mini .mc { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px; display: flex; flex-direction: column; gap: 4px; }
+  .mini .mc u { height: 4px; border-radius: 2px; background: var(--muted); opacity: .5; text-decoration: none; }
+  .mini .mc s { height: 10px; width: 60%; border-radius: 2px; background: var(--accent); text-decoration: none; }
+  .mini .mc s.c { background: var(--crit); width: 40%; }
+  .mini.t-paper .mc s { height: 6px; }
+  .auto-grid { height: 104px; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .auto-grid > div { height: 100%; }
+  .field { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .field:last-child { border-bottom: 0; }
+  .field label { font-weight: 600; font-size: 13px; } .field .hint { grid-column: 2; font-size: 11.5px; color: var(--muted); margin-top: -4px; }
+  .inp { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--text); font: inherit; width: 100%; }
+  .sw { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .sw.on { border-color: var(--text); }
+  .glyphs button { all: unset; cursor: pointer; width: 34px; height: 34px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--panel-2); border: 1px solid var(--line); font-size: 17px; }
+  .glyphs button.on { border-color: var(--accent); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { all: unset; cursor: pointer; padding: 7px 12px; font-size: 13px; color: var(--muted); }
+  .seg button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  .sticky { position: sticky; top: 16px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .sticky { position: static; } }
+  @media (max-width: 560px) { .field { grid-template-columns: 1fr; } .field .hint { grid-column: 1; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="appearance"></aside>
+<main>
+  <div class="top">
+    <div><h1>Appearance &amp; branding</h1><div class="muted small">Saved in this browser, so a phone and a wall screen can differ. The owner sets the default for everyone with <span class="mono">TS_LOOK</span> and <span class="mono">TS_BRAND_*</span> (or from BoxPilot’s Config).</div></div>
+    <div class="grow"></div><button class="btn" id="reset">Reset to defaults</button>
+  </div>
+
+  <div class="layout">
+    <div class="stack">
+      <section class="card">
+        <header><h2>Look</h2><span class="muted small">Every mockup’s style is a look. Changes apply to every screen at once.</span></header>
+        <div class="looks" id="looks"></div>
+      </section>
+
+      <section class="card">
+        <header><h2>Branding</h2></header>
+        <div class="field"><label for="name">Name</label><input class="inp" id="name" maxlength="28"><div class="hint">Shown in the sidebar, page titles, the briefing masthead and notifications.</div></div>
+        <div class="field"><label for="tagline">Tagline</label><input class="inp" id="tagline" maxlength="40" placeholder="e.g. Home network watch"></div>
+        <div class="field"><label>Logo</label>
+          <div class="row"><div class="glyphs row" id="glyphs"></div><button class="btn">Upload SVG / PNG…</button></div>
+          <div class="hint">An uploaded logo is stored in <span class="mono">/data/branding</span> and is backed up with everything else.</div></div>
+        <div class="field"><label>Accent colour</label>
+          <div class="row" id="accents"></div>
+          <div class="hint">Overrides the look’s own accent. Contrast is checked against the look’s background.</div></div>
+      </section>
+
+      <section class="card">
+        <header><h2>Layout</h2></header>
+        <div class="field"><label for="home">Home screen</label><select class="inp" id="home"></select><div class="hint">What opens first and where the logo links. Any screen can be home.</div></div>
+        <div class="field"><label>Density</label><div class="seg" id="density"><button data-d="comfortable">Comfortable</button><button data-d="compact">Compact</button></div></div>
+        <div class="field"><label>Briefing look</label><div class="seg"><button class="on">Editorial paper</button><button>Match look</button></div><div class="hint">The emailed and printed digest keeps the paper look unless you choose otherwise.</div></div>
+      </section>
+    </div>
+
+    <div class="stack sticky">
+      <section class="card">
+        <header><h2>Preview</h2><span class="muted small" id="pv-look"></span></header>
+        <div class="row" style="margin-bottom:12px"><span class="eye" style="width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff" data-brand-glyph></span><div><b data-brand-name></b><div class="muted small" id="pv-tag"></div></div></div>
+        <div class="grid g2">
+          <div class="card kpi" style="padding:10px"><h3>Posture</h3><div class="v" style="font-size:24px;color:var(--high)">64</div></div>
+          <div class="card kpi" style="padding:10px"><h3>IOC hits</h3><div class="v" style="font-size:24px;color:var(--crit)">3</div></div>
+        </div>
+        <div class="banner bad" style="margin-top:10px"><span class="badge b-crit">IOC</span><span class="small">Pixel 9 looked up <span class="mono">noas-edge[.]example</span></span></div>
+        <div class="row" style="margin-top:10px"><span class="badge b-zd">0-DAY</span><span class="badge b-crit">KEV</span><span class="badge b-ok">clean</span><span class="badge b-info">new</span></div>
+        <div class="row" style="margin-top:12px"><button class="btn primary">Primary</button><button class="btn">Secondary</button><button class="btn danger">Block</button></div>
+      </section>
+      <section class="card">
+        <header><h2>Open a screen in this look</h2></header>
+        <div class="list small" id="jump"></div>
+      </section>
+    </div>
+  </div>
+  <p class="note">Mockup 13 of 13 · Working: choices persist in this browser and restyle every mockup.</p>
+</main></div>
+<script src="nav.js"></script>
+<script>
+const ACCENTS = ['', '#39c6ff', '#96c93d', '#f2b544', '#a8322a', '#ff5fa2', '#7c5cff', '#22c55e'];
+const GLYPHS = ['◉', '🕵️', '🛡️', '👁', '⌖', '◎', '🛰'];
+let p = tsPrefs();
+const $ = id => document.getElementById(id);
+function save() { tsSavePrefs(p); tsApply(p); paint(); }
+function paint() {
+  $('looks').innerHTML = TS_LOOKS.map(L => `<button class="look ${p.look === L.id ? 'on' : ''}" data-look="${L.id}">
+    ${L.id === 'auto'
+      ? '<div class="auto-grid"><div class="t-ops" style="background:var(--bg)"></div><div class="t-light" style="background:var(--bg)"></div><div class="t-paper" style="background:var(--bg)"></div></div>'
+      : `<div class="mini t-${L.id}"><div class="ms"><i></i><i></i><i></i><i></i></div><div class="mb"><div class="mc"><u></u><s></s></div><div class="mc"><u></u><s class="c"></s></div><div class="mc"><u></u><u></u></div><div class="mc"><u></u><s></s></div></div></div>`}
+    <div class="cap"><b>${L.name}</b>${L.desc}</div></button>`).join('');
+  $('glyphs').innerHTML = GLYPHS.map(g => `<button data-glyph="${g}" class="${p.glyph === g ? 'on' : ''}">${g}</button>`).join('');
+  $('accents').innerHTML = ACCENTS.map(a => a
+    ? `<button class="sw ${p.accent === a ? 'on' : ''}" data-accent="${a}" style="background:${a}" title="${a}"></button>`
+    : `<button class="btn ${!p.accent ? 'primary' : ''}" data-accent="">Look default</button>`).join('') +
+    `<input type="color" class="sw" id="custom" value="${p.accent || '#39c6ff'}" title="Custom colour">`;
+  document.querySelectorAll('#density button').forEach(b => b.classList.toggle('on', b.dataset.d === p.density));
+  $('pv-look').textContent = TS_LOOKS.find(l => l.id === p.look).name;
+  $('pv-tag').textContent = p.tagline || 'No tagline';
+  $('jump').innerHTML = TS_SCREENS.filter(s => s[0] !== '13-appearance').map(([f, , i, l]) => `<div><span>${i}</span><a class="grow" href="${f}.html">${l}</a>${f === p.home ? '<span class="badge b-info">home</span>' : ''}</div>`).join('');
+}
+$('name').value = p.name; $('tagline').value = p.tagline;
+$('home').innerHTML = TS_SCREENS.filter(s => s[0] !== '13-appearance').map(([f, , , l]) => `<option value="${f}" ${f === p.home ? 'selected' : ''}>${l}</option>`).join('');
+$('name').addEventListener('input', e => { p.name = e.target.value.trim() || 'TheySpy'; save(); });
+$('tagline').addEventListener('input', e => { p.tagline = e.target.value.trim(); save(); });
+$('home').addEventListener('change', e => { p.home = e.target.value; save(); });
+document.addEventListener('input', e => { if (e.target.id === 'custom') { p.accent = e.target.value; save(); } });
+document.addEventListener('click', e => {
+  const l = e.target.closest('[data-look]'); if (l) { p.look = l.dataset.look; save(); }
+  const g = e.target.closest('[data-glyph]'); if (g) { p.glyph = g.dataset.glyph; save(); }
+  const a = e.target.closest('[data-accent]'); if (a) { p.accent = a.dataset.accent; save(); }
+  const d = e.target.closest('[data-d]'); if (d) { p.density = d.dataset.d; save(); }
+  if (e.target.id === 'reset') { p = { ...TS_DEFAULTS }; $('name').value = p.name; $('tagline').value = ''; $('home').value = p.home; save(); }
+});
+paint();
+</script></body></html>

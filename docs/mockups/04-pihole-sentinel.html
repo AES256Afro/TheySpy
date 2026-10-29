@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Pi-hole Sentinel</title><link rel="stylesheet" href="mock.css">
+<style>
+  .conn { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .chart { width: 100%; height: 170px; }
+  .cov { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+  .cov div { background: var(--panel-2); border-radius: 10px; padding: 12px 6px; }
+  .cov b { font-size: 24px; display: block; }
+  .log td { font-size: 12.5px; padding: 7px 10px; }
+  .diff { font: 12px/1.6 var(--mono); background: var(--panel-2); border-radius: 8px; padding: 10px 12px; max-height: 150px; overflow: auto; }
+  .diff .add { color: var(--accent); }
+</style></head>
+<body class="t-pihole"><div class="app"><aside class="side" data-on="pihole"></aside>
+<main>
+  <div class="top">
+    <div><h1>Pi-hole Sentinel</h1>
+      <div class="conn muted"><span class="dot on"></span>Connected to Pi-hole v6.2 at <span class="mono">192.168.1.5:8084</span> · Host mode (per-device clients) · write access <b style="color:var(--accent)">on</b></div></div>
+    <div class="grow"></div>
+    <span class="chip on">Live watch · 30 s</span><button class="btn">Retro-hunt all history</button><button class="btn primary">Review denylist push</button>
+  </div>
+
+  <div class="grid g4">
+    <section class="card kpi"><h3>Queries scanned</h3><div class="v">1.42 M</div><div class="d">90 days of FTL history</div></section>
+    <section class="card kpi"><h3>IOC hits</h3><div class="v" style="color:var(--accent-2)">7</div><div class="d">2 domains · 2 clients · last 21:14 yesterday</div></section>
+    <section class="card kpi"><h3>Ad / ADINT blocked</h3><div class="v">12.4%</div><div class="d">of today’s 48,210 queries</div></section>
+    <section class="card kpi"><h3>Bypass suspects</h3><div class="v" style="color:var(--high)">1</div><div class="d">Pixel 9 — volume dropped 80% (Private DNS?)</div></section>
+
+    <section class="card span3">
+      <header><h2>Queries vs ad-tech vs indicator hits</h2><div class="row"><span class="chip">24 h</span><span class="chip on">7 d</span><span class="chip">30 d</span></div></header>
+      <svg class="chart" viewBox="0 0 700 170" preserveAspectRatio="none">
+        <g stroke="var(--line)" stroke-width="1"><line x1="0" y1="40" x2="700" y2="40"/><line x1="0" y1="85" x2="700" y2="85"/><line x1="0" y1="130" x2="700" y2="130"/></g>
+        <path d="M0,90 C60,70 120,95 180,80 S300,60 360,75 S480,95 540,70 S640,60 700,72 L700,160 L0,160Z" fill="color-mix(in srgb, var(--accent) 18%, transparent)"/>
+        <path d="M0,90 C60,70 120,95 180,80 S300,60 360,75 S480,95 540,70 S640,60 700,72" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M0,140 C80,135 140,142 200,136 S320,130 380,138 S500,134 560,128 S650,134 700,132" fill="none" stroke="var(--med)" stroke-width="2" stroke-dasharray="5 4"/>
+        <g fill="var(--accent-2)"><circle cx="232" cy="150" r="5"/><circle cx="612" cy="150" r="7"/><circle cx="622" cy="150" r="4"/></g>
+      </svg>
+      <div class="row small muted"><span style="color:var(--accent)">━ all queries</span><span style="color:var(--med)">┅ ad / ADINT domains</span><span style="color:var(--accent-2)">● indicator hit</span></div>
+    </section>
+    <section class="card">
+      <header><h2>IOC coverage</h2><span class="muted small">291 reviewed domains</span></header>
+      <div class="cov"><div><b style="color:var(--accent)">264</b><span class="small muted">blocked by your lists</span></div><div><b style="color:var(--high)">27</b><span class="small muted">would resolve</span></div><div><b>111</b><span class="small muted">IPs (needs firewall)</span></div></div>
+      <div class="muted small" style="margin-top:10px">Gravity search via <span class="mono">/api/search</span>. HaGeZi TIF covers 241; OISD big 198.</div>
+    </section>
+
+    <section class="card span2">
+      <header><h2>Indicator hits</h2><a class="small">Export CSV</a></header>
+      <div class="tbl-wrap"><table class="log">
+        <thead><tr><th>Time</th><th>Client</th><th>Domain</th><th>Tier</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">28 Oct 21:14:09</td><td>Pixel 9 (Kitchen)</td><td class="mono">noas-edge[.]example</td><td><span class="badge b-crit">T1</span></td><td><span class="badge b-high">allowed</span></td></tr>
+          <tr><td class="mono">28 Oct 21:14:04</td><td>Pixel 9 (Kitchen)</td><td class="mono">noas-edge[.]example</td><td><span class="badge b-crit">T1</span></td><td><span class="badge b-high">allowed</span></td></tr>
+          <tr><td class="mono">28 Oct 21:14:02</td><td>Pixel 9 (Kitchen)</td><td class="mono">noas-edge[.]example</td><td><span class="badge b-crit">T1</span></td><td><span class="badge b-high">allowed</span></td></tr>
+          <tr><td class="mono">24 Oct 13:52:40</td><td>LG TV</td><td class="mono">ctl-bidder[.]example</td><td><span class="badge b-med">T3</span></td><td><span class="badge b-ok">blocked</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section class="card span2">
+      <header><h2>Denylist push — preview</h2><span class="badge b-info">needs approval</span></header>
+      <div class="small" style="margin-bottom:8px">Adds the 27 indicator domains your lists miss as exact deny entries, each commented <span class="mono">TheySpy: AdFection T1–T2</span>. Removing them later removes only these.</div>
+      <div class="diff"><div class="add">+ noas-edge[.]example</div><div class="add">+ noas-cdn-07[.]example</div><div class="add">+ ctl-sync[.]example</div><div class="add">+ adv-rtb-gw[.]example</div><div class="add">+ cdn-imp-track[.]example</div><div class="muted">… 22 more</div></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary">Approve and push 27</button><button class="btn">Also add zero-breach list as adlist</button><button class="btn">Cancel</button></div>
+    </section>
+
+    <section class="card span4">
+      <header><h2>Clients by ad-tech share</h2><span class="muted small">How much of each device’s DNS is ads, trackers and ADINT bidders</span></header>
+      <div class="list small">
+        <div><span style="width:160px">LG TV</span><div class="bar grow"><i style="width:41%;background:var(--high)"></i></div><span class="mono" style="width:48px;text-align:right">41%</span></div>
+        <div><span style="width:160px">Pixel 9 (Kitchen)</span><div class="bar grow"><i style="width:23%;background:var(--accent-2)"></i></div><span class="mono" style="width:48px;text-align:right">23%</span></div>
+        <div><span style="width:160px">iPad</span><div class="bar grow"><i style="width:18%"></i></div><span class="mono" style="width:48px;text-align:right">18%</span></div>
+        <div><span style="width:160px">MacBook Pro</span><div class="bar grow"><i style="width:6%"></i></div><span class="mono" style="width:48px;text-align:right">6%</span></div>
+        <div><span style="width:160px">BoxPilot server</span><div class="bar grow"><i style="width:1%"></i></div><span class="mono" style="width:48px;text-align:right">1%</span></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mockup 4 of 13 · Illustrative data. Domains are fictional and shown defanged.</p>
+</main></div><script src="nav.js"></script></body></html>

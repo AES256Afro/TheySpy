@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Blocklist Library</title><link rel="stylesheet" href="mock.css">
+<style>
+  .cats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .cat { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .cat:last-child { border-bottom: 0; }
+  .cat .n { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+  .tog { width: 30px; height: 17px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--line); position: relative; flex: none; }
+  .tog::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); }
+  .tog.on { background: var(--accent); border-color: var(--accent); } .tog.on::after { left: 15px; background: #04111f; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
+  .t-sec { color: var(--crit); } .t-priv { color: var(--accent); } .t-cont { color: var(--accent-2); }
+  .delta { font: 12px var(--mono); white-space: nowrap; } .delta .a { color: var(--ok); } .delta .r { color: var(--crit); }
+  .side2 { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; }
+  .side2 > * { min-width: 0; }
+  .cand { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .cand:last-child { border-bottom: 0; }
+  .url { font: 12px var(--mono); background: var(--panel-2); border-radius: 8px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; margin-top: 6px; overflow-wrap: anywhere; }
+  .url span { flex: 1; }
+  .pipeline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+  .pipeline b { background: var(--panel-2); border: 1px solid var(--line); padding: 5px 10px; border-radius: 8px; font-weight: 600; }
+  .pipeline i { color: var(--muted); font-style: normal; }
+  @media (max-width: 1100px) { .side2 { grid-template-columns: 1fr; } .cats { grid-template-columns: 1fr; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="blocklists"></aside>
+<main>
+  <div class="top">
+    <div><h1>Blocklist library</h1><div class="muted small">Every DNS blocklist TheySpy knows about, sorted into categories and kept up to date. New lists are found automatically and wait for your review.</div></div>
+    <div class="grow"></div>
+    <button class="btn">Add list by URL</button><button class="btn">Discover now</button><button class="btn primary">Update enabled lists</button>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:14px">
+    <section class="card kpi"><h3>Enabled lists</h3><div class="v">38</div><div class="d">3.12 M unique domains after dedupe</div></section>
+    <section class="card kpi"><h3>New candidates</h3><div class="v" style="color:var(--accent)">14</div><div class="d">found this week · FilterLists 9 · AdGuard 3 · Firebog 2</div></section>
+    <section class="card kpi"><h3>Quarantined updates</h3><div class="v" style="color:var(--high)">1</div><div class="d">held by the never-block gate</div></section>
+    <section class="card kpi"><h3>Health</h3><div class="v">35<span class="muted" style="font-size:16px"> / 38</span></div><div class="d">2 stale (&gt; 180 d) · 1 dead (3 failed fetches)</div></section>
+  </div>
+
+  <section class="card" style="margin-bottom:14px">
+    <div class="pipeline"><i>Pipeline</i><b>Discover</b><i>→</i><b>Candidate</b><i>→</i><b>Review</b><i>→</i><b>Fetch (ETag)</b><i>→</i><b>Parse 5 syntaxes</b><i>→</i><b>Diff + snapshot</b><i>→</i><b style="border-color:var(--high)">Gates</b><i>→</i><b>Compile by category</b><i>→</i><b style="border-color:var(--accent)">Serve to Pi-hole</b>
+      <span class="muted" style="margin-left:auto">Last run 06:00 · next 12:00 · 38 fetched, 29 unchanged (304)</span></div>
+  </section>
+
+  <div class="cats">
+    <section class="card"><header><h2 class="t-sec">Security</h2><span class="muted small">on in every baseline</span></header>
+      <div class="cat"><span class="tog on"></span>Spyware &amp; ADINT<span class="n">291 · 4 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Malware &amp; C2<span class="n">412k · 7 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Phishing &amp; scams<span class="n">288k · 5 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Cryptomining<span class="n">31k · 2 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Newly registered (≤ 30 d)<span class="n">1.9M · 1 list</span></div>
+      <div class="cat"><span class="tog"></span>DGA / parked<span class="n">640k · 1 list</span></div></section>
+    <section class="card"><header><h2 class="t-priv">Privacy</h2><span class="muted small">depends on baseline</span></header>
+      <div class="cat"><span class="tog on"></span>Ads<span class="n">604k · 9 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Trackers &amp; analytics<span class="n">350k · 8 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Ad-tech bidders (RTB)<span class="n">6.2k · 3 lists</span></div>
+      <div class="cat"><span class="tog on"></span>Telemetry (OS, TV, IoT)<span class="n">18k · 5 lists</span></div>
+      <div class="cat"><span class="tog"></span>Fingerprinting<span class="n">2.1k · 1 list</span></div>
+      <div class="cat"><span class="tog"></span>DoH / VPN bypass<span class="n">3.4k · 2 lists</span></div></section>
+    <section class="card"><header><h2 class="t-cont">Content</h2><span class="muted small">off unless you choose</span></header>
+      <div class="cat"><span class="tog"></span>Social media<span class="n">9.8k · 3 lists</span></div>
+      <div class="cat"><span class="tog"></span>Adult<span class="n">410k · 2 lists</span></div>
+      <div class="cat"><span class="tog"></span>Gambling<span class="n">38k · 2 lists</span></div>
+      <div class="cat"><span class="tog"></span>Dating<span class="n">4.1k · 1 list</span></div>
+      <div class="cat"><span class="tog"></span>Piracy<span class="n">22k · 1 list</span></div>
+      <div class="cat"><span class="tog"></span>Games<span class="n">7.5k · 1 list</span></div></section>
+  </div>
+
+  <div class="side2">
+    <section class="card">
+      <header><h2>Lists</h2><div class="row"><span class="chip on">Enabled 38</span><span class="chip">Candidates 14</span><span class="chip">Quarantined 1</span><span class="chip">Stale/dead 3</span><span class="chip">All 612</span></div></header>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>List</th><th>Categories</th><th>Syntax</th><th>Entries</th><th>Last change</th><th>Health</th><th>Licence</th></tr></thead>
+        <tbody>
+          <tr><td><b>zero-breach AdFection</b><div class="muted small">interplains · via IOC engine</div></td><td><div class="tags"><span class="tag t-sec">Spyware &amp; ADINT</span></div></td><td class="small">domains</td><td class="mono">291</td><td class="delta"><span class="a">+4</span> <span class="r">−1</span> · 8 d</td><td><span class="badge b-ok">ok</span></td><td class="small">CC0</td></tr>
+          <tr><td><b>HaGeZi Threat Intelligence Feeds</b><div class="muted small">hagezi · Firebog ticked</div></td><td><div class="tags"><span class="tag t-sec">Malware</span><span class="tag t-sec">Phishing</span><span class="tag t-sec">Spyware</span></div></td><td class="small">domains</td><td class="mono">~600k</td><td class="delta"><span class="a">+3,912</span> <span class="r">−2,104</span> · 6 h</td><td><span class="badge b-ok">ok</span></td><td class="small">GPL-3.0</td></tr>
+          <tr><td><b>OISD big</b><div class="muted small">oisd · AdGuard registry</div></td><td><div class="tags"><span class="tag t-priv">Ads</span><span class="tag t-priv">Trackers</span><span class="tag t-sec">Malware</span></div></td><td class="small">adblock</td><td class="mono">~250k</td><td class="delta"><span class="a">+1,204</span> <span class="r">−880</span> · 1 d</td><td><span class="badge b-ok">ok</span></td><td class="small">GPL-3.0</td></tr>
+          <tr><td><b>HaGeZi Multi PRO</b><div class="muted small">hagezi · FilterLists</div></td><td><div class="tags"><span class="tag t-priv">Ads</span><span class="tag t-priv">Trackers</span><span class="tag t-priv">Telemetry</span></div></td><td class="small">domains</td><td class="mono">~300k</td><td class="delta"><span class="a">+2,377</span> <span class="r">−1,915</span> · 6 h</td><td><span class="badge b-ok">ok</span></td><td class="small">GPL-3.0</td></tr>
+          <tr><td><b>URLhaus host file</b><div class="muted small">abuse.ch</div></td><td><div class="tags"><span class="tag t-sec">Malware &amp; C2</span></div></td><td class="small">hosts</td><td class="mono">~3k</td><td class="delta"><span class="a">+88</span> <span class="r">−102</span> · 2 h</td><td><span class="badge b-ok">ok</span></td><td class="small">CC0</td></tr>
+          <tr><td><b>Smart TV telemetry</b><div class="muted small">Perflyst</div></td><td><div class="tags"><span class="tag t-priv">Telemetry</span></div></td><td class="small">domains</td><td class="mono">~250</td><td class="delta">no change · 214 d</td><td><span class="badge b-med">stale</span></td><td class="small">MIT</td></tr>
+          <tr><td><b>Community Mega List</b><div class="muted small">example maintainer · FilterLists</div></td><td><div class="tags"><span class="tag t-priv">Ads</span><span class="tag t-priv">Trackers</span></div></td><td class="small">hosts</td><td class="mono">~900k</td><td class="delta"><span class="a">+41,050</span> <span class="r">−12</span> · held</td><td><span class="badge b-high">quarantined</span></td><td class="small">unknown</td></tr>
+        </tbody>
+      </table></div>
+      <div class="muted small" style="margin-top:8px">Entry counts are approximate and for illustration.</div>
+    </section>
+
+    <div class="stack">
+      <section class="card" style="border-color:var(--high)">
+        <header><h2>Quarantined update</h2><span class="badge b-high">review</span></header>
+        <div class="small"><b>Community Mega List</b> grew 4.8% overnight, and 3 new entries match your never-block set:</div>
+        <div class="list small mono" style="margin-top:6px">
+          <div><span class="grow">connectivitycheck.gstatic.com</span><span class="badge b-crit">OS check</span></div>
+          <div><span class="grow">ocsp.digicert.com</span><span class="badge b-crit">cert check</span></div>
+          <div><span class="grow">time.cloudflare.com</span><span class="badge b-crit">NTP</span></div>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn">Accept without these 3</button><button class="btn">Keep previous version</button><button class="btn danger">Disable list</button></div>
+      </section>
+
+      <section class="card">
+        <header><h2>New candidates</h2><a class="small">All 14 →</a></header>
+        <div class="cand"><div class="row"><b>RTB Bidder Endpoints</b><span class="badge b-info">FilterLists</span></div><div class="muted small">Ad-tech bidders · domains · MIT · updated 2 d ago · 71% overlap with your lists</div><div class="row" style="margin-top:6px"><button class="btn">Preview</button><button class="btn primary">Enable</button></div></div>
+        <div class="cand"><div class="row"><b>Fingerprinting Scripts DNS</b><span class="badge b-info">AdGuard registry</span></div><div class="muted small">Fingerprinting · adblock · tag “recommended” · 12% overlap</div></div>
+        <div class="cand"><div class="row"><b>Stalkerware Indicators</b><span class="badge b-info">GitHub</span></div><div class="muted small">Spyware · domains · goes to IOC review, keeps citations</div></div>
+      </section>
+
+      <section class="card">
+        <header><h2>Subscribe Pi-hole to TheySpy</h2></header>
+        <div class="small muted">Pi-hole fetches these on every gravity update. Each is the compiled, deduplicated, gated version.</div>
+        <div class="url"><span>http://boxpilot.lan:8797/lists/security.txt</span><button class="btn">Copy</button></div>
+        <div class="url"><span>http://boxpilot.lan:8797/lists/privacy.txt</span><button class="btn">Copy</button></div>
+        <div class="url"><span>http://boxpilot.lan:8797/lists/baseline-strict.txt</span><button class="btn">Copy</button></div>
+        <div class="row" style="margin-top:10px"><span class="muted small">Formats:</span><span class="chip on">domains</span><span class="chip">hosts</span><span class="chip">adblock</span><span class="chip">dnsmasq</span><span class="chip">RPZ</span></div>
+      </section>
+    </div>
+  </div>
+  <p class="note">Mockup 11 of 13 · List names in the quarantine and candidate panels are fictional; counts are illustrative.</p>
+</main></div><script src="nav.js"></script></body></html>

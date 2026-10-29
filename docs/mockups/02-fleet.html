@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Fleet</title><link rel="stylesheet" href="mock.css">
+<style>
+  .sweep { display: flex; gap: 12px; align-items: center; }
+  .sweep .bar { flex: 1; }
+  .src { display: inline-flex; gap: 3px; }
+  .src i { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: var(--panel-2); color: var(--muted); }
+  td .name { font-weight: 600; } td .sub { font-size: 11.5px; color: var(--muted); }
+  tr.sel td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .mini { display: flex; gap: 2px; align-items: flex-end; height: 18px; }
+  .mini i { width: 4px; background: var(--accent); border-radius: 1px; opacity: .7; }
+</style></head>
+<body><div class="app"><aside class="side" data-on="fleet"></aside>
+<main>
+  <div class="top">
+    <div><h1>Fleet</h1><div class="muted small">Every device seen on 192.168.1.0/24, merged by MAC from 5 sources</div></div>
+    <div class="grow"></div>
+    <button class="btn">Import from NetAlertX</button><button class="btn">Enroll agent</button><button class="btn primary">Sweep now</button>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:14px">
+    <section class="card kpi"><h3>Online</h3><div class="v">23</div><div class="d">27 known · 4 offline &gt; 24 h</div></section>
+    <section class="card kpi"><h3>At risk</h3><div class="v" style="color:var(--high)">5</div><div class="d">IOC contact or KEV match</div></section>
+    <section class="card kpi"><h3>With agent</h3><div class="v">6</div><div class="d">zero-breach scan ≤ 24 h</div></section>
+    <section class="card kpi"><h3>Unidentified</h3><div class="v" style="color:var(--accent)">2</div><div class="d">randomized or unknown OUI</div></section>
+  </div>
+
+  <section class="card" style="margin-bottom:14px">
+    <div class="sweep"><span class="badge b-info">SWEEPING</span><span class="small">ARP sweep 192.168.1.0/24 · 212 / 254 addresses</span><div class="bar"><i style="width:83%"></i></div><span class="muted small mono">00:41</span><button class="btn">Stop</button></div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div class="row"><span class="chip on">All</span><span class="chip">At risk</span><span class="chip">New</span><span class="chip">Phones</span><span class="chip">Computers</span><span class="chip">IoT</span><span class="chip">Offline</span></div>
+      <label class="search" style="max-width:280px">⌕ <input placeholder="Filter devices…"></label>
+    </header>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th></th><th>Device</th><th>Address</th><th>OS / firmware</th><th>Sources</th><th>DNS 24 h</th><th>CVEs</th><th>IOC</th><th>Exposure</th><th>Last seen</th></tr></thead>
+      <tbody>
+        <tr class="sel"><td><span class="dot bad"></span></td><td><div class="name">Pixel 9 (Kitchen)</div><div class="sub">Google · phone</div></td><td class="mono">192.168.1.42<br><span class="muted">a4:c1:38:…:19</span></td><td>Android 16 · Sep patch</td><td><span class="src"><i>ARP</i><i>PH</i><i>mDNS</i></span></td><td><div class="mini"><i style="height:30%"></i><i style="height:60%"></i><i style="height:45%"></i><i style="height:90%"></i><i style="height:70%"></i><i style="height:40%"></i></div></td><td><span class="badge b-high">2</span></td><td><span class="badge b-crit">3 hits</span></td><td><span class="badge b-crit">31</span></td><td class="small">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><div class="name">MacBook Pro</div><div class="sub">Apple · laptop · agent</div></td><td class="mono">192.168.1.20<br><span class="muted">f0:18:98:…:0c</span></td><td>macOS 26.0.1 · Chrome 141.0.7390</td><td><span class="src"><i>ARP</i><i>PH</i><i>AGT</i></span></td><td><div class="mini"><i style="height:50%"></i><i style="height:80%"></i><i style="height:65%"></i><i style="height:55%"></i><i style="height:75%"></i><i style="height:60%"></i></div></td><td><span class="badge b-zd">0-day</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-med">68</span></td><td class="small">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><div class="name">iPhone 16</div><div class="sub">Apple · phone · MVT import</div></td><td class="mono">192.168.1.44<br><span class="muted">private MAC</span></td><td>iOS 19.0.2</td><td><span class="src"><i>ARP</i><i>PH</i><i>MVT</i></span></td><td><div class="mini"><i style="height:20%"></i><i style="height:35%"></i><i style="height:60%"></i><i style="height:40%"></i><i style="height:30%"></i><i style="height:50%"></i></div></td><td><span class="badge b-zd">0-day</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-med">57</span></td><td class="small">2 min</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><div class="name">Synology NAS</div><div class="sub">Synology · storage</div></td><td class="mono">192.168.1.10<br><span class="muted">00:11:32:…:7a</span></td><td>DSM 7.2.1 (nmap CPE)</td><td><span class="src"><i>ARP</i><i>NMAP</i><i>SSDP</i></span></td><td><div class="mini"><i style="height:10%"></i><i style="height:15%"></i><i style="height:10%"></i><i style="height:20%"></i><i style="height:15%"></i><i style="height:10%"></i></div></td><td><span class="badge b-crit">KEV 1</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-med">60</span></td><td class="small">now</td></tr>
+        <tr><td><span class="dot on"></span></td><td><div class="name">BoxPilot server</div><div class="sub">Ubuntu 24.04 · agent</div></td><td class="mono">192.168.1.5<br><span class="muted">d8:3a:dd:…:01</span></td><td>Ubuntu 24.04.3 · kernel 6.8</td><td><span class="src"><i>ARP</i><i>AGT</i><i>NMAP</i></span></td><td><div class="mini"><i style="height:40%"></i><i style="height:40%"></i><i style="height:45%"></i><i style="height:40%"></i><i style="height:42%"></i><i style="height:40%"></i></div></td><td><span class="badge b-low">3 low</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-ok">91</span></td><td class="small">now</td></tr>
+        <tr><td><span class="dot on"></span></td><td><div class="name">LG TV</div><div class="sub">LG · TV</div></td><td class="mono">192.168.1.61<br><span class="muted">64:95:6c:…:aa</span></td><td>webOS (version hidden)</td><td><span class="src"><i>ARP</i><i>SSDP</i></span></td><td><div class="mini"><i style="height:70%"></i><i style="height:85%"></i><i style="height:90%"></i><i style="height:60%"></i><i style="height:95%"></i><i style="height:80%"></i></div></td><td><span class="badge b-info">product only</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-med">55</span></td><td class="small">now</td></tr>
+        <tr><td><span class="dot" style="background:var(--accent)"></span></td><td><div class="name">Unknown device</div><div class="sub">Espressif · new today 08:12</div></td><td class="mono">192.168.1.88<br><span class="muted">3c:a9:f4:…:21</span></td><td class="muted">—</td><td><span class="src"><i>ARP</i></span></td><td><div class="mini"><i style="height:5%"></i><i style="height:5%"></i><i style="height:60%"></i><i style="height:20%"></i><i style="height:5%"></i><i style="height:5%"></i></div></td><td class="muted">—</td><td><span class="badge b-ok">0</span></td><td class="muted">—</td><td class="small">now</td></tr>
+        <tr><td><span class="dot"></span></td><td><div class="name">Old Android tablet</div><div class="sub">Samsung · tablet</div></td><td class="mono">192.168.1.53<br><span class="muted">8c:79:f5:…:3e</span></td><td>Android 12 · no updates</td><td><span class="src"><i>PH</i></span></td><td class="muted small">offline</td><td><span class="badge b-crit">KEV 4</span></td><td><span class="badge b-ok">0</span></td><td><span class="badge b-crit">22</span></td><td class="small">6 days</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+  <p class="note">Mockup 2 of 13 · Sources: ARP sweep, PH = Pi-hole network table, mDNS/SSDP, NMAP service scan, AGT = TheySpy agent, MVT = Mobile Verification Toolkit import. Illustrative data.</p>
+</main></div><script src="nav.js"></script></body></html>

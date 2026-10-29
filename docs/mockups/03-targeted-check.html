@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Targeted Check</title><link rel="stylesheet" href="mock.css">
+<style>
+  .hero { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 0 22px; }
+  .bigsearch { width: min(720px, 100%); display: flex; gap: 8px; background: var(--panel); border: 1px solid var(--accent); border-radius: 14px; padding: 6px 6px 6px 16px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .bigsearch input { all: unset; flex: 1; font: 500 16px var(--mono); color: var(--text); }
+  .profiles { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .profile { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 12px; background: var(--panel); }
+  .profile.on { border-color: var(--accent); }
+  .profile b { display: block; font-size: 13px; }
+  .dossier { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; }
+  .dossier > * { min-width: 0; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; font-size: 13px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .tl { position: relative; padding-left: 18px; }
+  .tl::before { content: ''; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--line); }
+  .tl > div { position: relative; padding: 0 0 14px; font-size: 13px; }
+  .tl > div::before { content: ''; position: absolute; left: -17px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .tl > div.bad::before { background: var(--crit); } .tl > div.warn::before { background: var(--high); }
+  .ports { display: flex; flex-wrap: wrap; gap: 6px; }
+  .port { font: 600 12px var(--mono); padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
+  @media (max-width: 900px) { .dossier { grid-template-columns: 1fr; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="search"></aside>
+<main>
+  <div class="hero">
+    <h1>Targeted check</h1>
+    <div class="muted small">An IP, MAC, hostname, CIDR, CVE or domain. Active scans stay inside 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12.</div>
+    <div class="bigsearch"><input value="192.168.1.42"><button class="btn primary">Check</button></div>
+    <div class="profiles">
+      <div class="profile"><b>Quick</b>ARP + ping · passive</div>
+      <div class="profile on"><b>Standard</b>Top 100 ports + versions</div>
+      <div class="profile"><b>Deep</b>All ports + scripts · owner only</div>
+      <div class="profile"><b>DNS only</b>Pi-hole history, no packets</div>
+    </div>
+  </div>
+
+  <div class="dossier">
+    <div class="stack">
+      <section class="card">
+        <div class="row" style="margin-bottom:10px"><span class="dot bad"></span><h2>Pixel 9 (Kitchen)</h2></div>
+        <dl class="kv">
+          <dt>IP</dt><dd class="mono">192.168.1.42</dd>
+          <dt>MAC</dt><dd class="mono">a4:c1:38:5e:02:19</dd>
+          <dt>Vendor</dt><dd>Google LLC</dd>
+          <dt>Hostname</dt><dd class="mono">pixel-9.lan</dd>
+          <dt>OS</dt><dd>Android 16 · 2026-09-05 patch</dd>
+          <dt>Browser</dt><dd>Chrome 141.0.7390.54</dd>
+          <dt>First seen</dt><dd>12 Mar 2026</dd>
+          <dt>Owner</dt><dd>Household · tagged “family”</dd>
+        </dl>
+      </section>
+      <section class="card">
+        <header><h2>Exposure</h2><span class="badge b-crit">31 / 100</span></header>
+        <div class="list small">
+          <div><span class="dot bad"></span><span class="grow">Contacted AdFection indicator</span></div>
+          <div><span class="dot bad"></span><span class="grow">Advertising ID present (not deleted)</span></div>
+          <div><span class="dot warn"></span><span class="grow">Chrome behind KEV fix</span></div>
+          <div><span class="dot warn"></span><span class="grow">Private DNS set to dns.google — bypasses Pi-hole at times</span></div>
+          <div><span class="dot on"></span><span class="grow">Gateway ad-blocking</span></div>
+        </div>
+      </section>
+      <section class="card">
+        <header><h2>Open ports</h2><span class="muted small">standard · 14 s</span></header>
+        <div class="ports"><span class="port">none listening</span></div>
+        <div class="muted small" style="margin-top:8px">Phones rarely listen. Version data came from the Pi-hole client name and a manual profile.</div>
+      </section>
+    </div>
+
+    <div class="stack">
+      <div class="banner bad"><span class="badge b-crit">dns-record</span><div><b>3 lookups of <span class="mono">noas-edge[.]example</span></b> on 28 Oct, 21:14:02–21:14:09. Tier 1 · Citizen Lab AdFection (2026). A DNS record shows the phone asked for the name; it does not prove infection. Next step: run MVT on this phone with TheySpy’s STIX bundle.
+        <div class="row" style="margin-top:8px"><button class="btn danger">Block domain in Pi-hole</button><button class="btn">Download STIX for MVT</button><button class="btn">Get expert help</button></div></div></div>
+
+      <section class="card">
+        <header><h2>CVEs that apply</h2><span class="muted small">matched on Android 16 Sep patch + Chrome 141.0.7390.54</span></header>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>CVE</th><th>What</th><th>Signals</th><th>EPSS</th><th>Match</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">CVE-2026-4127</td><td>Chrome V8 type confusion</td><td><span class="badge b-zd">0-DAY</span> <span class="badge b-crit">KEV</span></td><td>0.71</td><td><span class="badge b-ok">exact</span></td><td>Chrome 141.0.7390.65</td></tr>
+            <tr><td class="mono">CVE-2026-3958</td><td>Android Framework privilege escalation</td><td><span class="badge b-high">High</span></td><td>0.08</td><td><span class="badge b-info">range</span></td><td>2026-10-01 patch</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="card">
+        <header><h2>Timeline</h2><span class="muted small">last 7 days</span></header>
+        <div class="tl">
+          <div class="bad"><b>28 Oct 21:14</b> · Pi-hole: 3× <span class="mono">noas-edge[.]example</span> (allowed)</div>
+          <div class="warn"><b>27 Oct 10:02</b> · CVE-2026-4127 added to CISA KEV · matches Chrome 141.0.7390.54</div>
+          <div><b>25 Oct 18:40</b> · Standard scan · no open ports</div>
+          <div><b>23 Oct 07:15</b> · Private DNS changed to dns.google (inferred: Pi-hole query volume dropped 80%)</div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <p class="note">Mockup 3 of 13 · Illustrative data.</p>
+</main></div><script src="nav.js"></script></body></html>

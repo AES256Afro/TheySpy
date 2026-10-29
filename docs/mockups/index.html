@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy Mockups</title><link rel="stylesheet" href="mock.css">
+<style>
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 60px; }
+  .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; margin-top: 22px; }
+  .tile { display: block; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .tile:hover { border-color: var(--accent); }
+  .thumb { height: 225px; overflow: hidden; position: relative; background: var(--bg); }
+  .thumb iframe { width: 1440px; height: 900px; border: 0; transform: scale(.25); transform-origin: 0 0; pointer-events: none; position: absolute; top: 0; left: 0; }
+  .cap { padding: 12px 14px; }
+  .cap b { display: block; font-size: 15px; } .cap span { font-size: 12.5px; color: var(--muted); }
+  @media (max-width: 420px) { .gal { grid-template-columns: 1fr; } }
+</style></head>
+<body><div class="wrap">
+  <div class="brand" style="padding:0"><span class="eye" data-brand-glyph>◉</span><span><span data-brand-name>TheySpy</span> — thirteen dashboard screens</span></div>
+  <p class="muted" style="max-width:760px">Each is a different primary screen for the same product, and each one’s style is a selectable look under <a href="13-appearance.html">Settings → Appearance</a>. All data is made up. See <a href="../PLAN.md">PLAN.md</a> for the architecture and milestones.</p>
+  <div class="gal" id="gal"></div>
+</div>
+<script>
+const m = [
+  ['01-command-center', 'Command Center', 'Posture score, live IOC alert, newest exploited CVEs, device grid.'],
+  ['02-fleet', 'Fleet', 'Every device merged from ARP, Pi-hole, mDNS, nmap, agents and MVT.'],
+  ['03-targeted-check', 'Targeted Check', 'Search one IP/MAC/host; scan profiles; full dossier and timeline.'],
+  ['04-pihole-sentinel', 'Pi-hole Sentinel', 'Retro-hunt the query log, IOC coverage, denylist push with preview.'],
+  ['05-vuln-intel', 'CVEs & Zero-days', 'Eleven feeds deduplicated; exploited first; devices affected per CVE.'],
+  ['06-this-device', 'This Device', 'Live Client Hints + GPC read from your browser; CVEs for this screen.'],
+  ['07-exposure', 'Ad Exposure', 'Citizen Lab guidance as four scored pillars and a per-device matrix.'],
+  ['08-evidence-locker', 'Evidence Locker', 'zero-breach findings by evidence tier, gaps, custody, STIX/MISP.'],
+  ['09-weekly-briefing', 'Weekly Briefing', 'Printable editorial digest in plain language.'],
+  ['10-in-boxpilot', 'In BoxPilot', 'App card, home widgets, approvals, and the Today view on a phone.'],
+  ['11-blocklists', 'Blocklist Library', 'Every list categorised; auto-discovered candidates, quarantine gates, Pi-hole subscription URLs.'],
+  ['12-baselines', 'Baselines', 'Four blocking levels per device or network, and the sites each would block on your traffic.'],
+  ['13-appearance', 'Appearance & Branding', 'Pick any mockup’s look for the whole app, plus name, logo, accent, home screen and density.'],
+];
+document.getElementById('gal').innerHTML = m.map(([f, t, d], i) =>
+  `<a class="tile" href="${f}.html"><div class="thumb"><iframe src="${f}.html" loading="lazy" tabindex="-1"></iframe></div>
+   <div class="cap"><b>${i + 1}. ${t}</b><span>${d}</span></div></a>`).join('');
+</script><script src="nav.js"></script></body></html>

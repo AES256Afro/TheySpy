@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · CVEs and Zero-Days</title><link rel="stylesheet" href="mock.css">
+<style>
+  .layout { display: grid; grid-template-columns: 230px 1fr; gap: 14px; }
+  .facet h3 { margin: 14px 0 8px; } .facet h3:first-child { margin-top: 0; }
+  .facet label { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; }
+  .facet label span.c { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .feeds { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12px; }
+  .feed b { display: block; font-size: 13px; }
+  .cve { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .cve:last-child { border-bottom: 0; }
+  .cve .t { font-weight: 600; } .cve .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .cve .side-r { text-align: right; font-size: 12px; }
+  .epss { display: inline-flex; align-items: center; gap: 6px; } .epss .bar { width: 70px; }
+  .cve > * { min-width: 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .cve { grid-template-columns: 1fr; } .cve .side-r { text-align: left; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="intel"></aside>
+<main>
+  <div class="top">
+    <div><h1>CVEs & zero-days</h1><div class="muted small">11 feeds · 248,903 CVEs · 1,512 known exploited · 38 match your devices</div></div>
+    <div class="grow"></div>
+    <label class="search">⌕ <input placeholder="CVE, product, vendor, CPE…"></label>
+  </div>
+
+  <div class="feeds">
+    <div class="feed"><span class="dot on"></span> <b>CISA KEV</b>+2 today · 4 min</div>
+    <div class="feed"><span class="dot on"></span> <b>NVD 2.0</b>+311 · 9 min</div>
+    <div class="feed"><span class="dot on"></span> <b>CVE List V5</b>+402 · 6 min</div>
+    <div class="feed"><span class="dot on"></span> <b>OSV.dev</b>+88 · 1 h</div>
+    <div class="feed"><span class="dot on"></span> <b>EPSS</b>daily · 07:00</div>
+    <div class="feed"><span class="dot on"></span> <b>Vendors (9)</b>Apple, MSRC, Chrome…</div>
+    <div class="feed"><span class="dot on"></span> <b>P0 In-the-Wild</b>+1 this week</div>
+    <div class="feed"><span class="dot warn"></span> <b>Research RSS</b>Citizen Lab, Amnesty, GTIG · 1 needs IOC review</div>
+  </div>
+
+  <div class="layout">
+    <aside class="card facet">
+      <h3>Show</h3>
+      <label><input type="checkbox" checked> Applies to my devices<span class="c">38</span></label>
+      <label><input type="checkbox" checked> Zero-day / exploited<span class="c">9</span></label>
+      <label><input type="checkbox"> Linked to a spyware campaign<span class="c">3</span></label>
+      <h3>Exploitation source</h3>
+      <label><input type="checkbox" checked> CISA KEV</label>
+      <label><input type="checkbox" checked> Vendor “actively exploited”</label>
+      <label><input type="checkbox" checked> Project Zero ITW</label>
+      <label><input type="checkbox" checked> Research report</label>
+      <h3>EPSS at least</h3>
+      <div class="row small"><input type="range" value="10" style="flex:1"><span class="mono">0.10</span></div>
+      <h3>Product</h3>
+      <label><input type="checkbox"> Chrome / Chromium<span class="c">6</span></label>
+      <label><input type="checkbox"> Apple iOS / macOS<span class="c">5</span></label>
+      <label><input type="checkbox"> Android<span class="c">4</span></label>
+      <label><input type="checkbox"> NAS / router firmware<span class="c">3</span></label>
+      <label><input type="checkbox"> Ubuntu packages<span class="c">20</span></label>
+    </aside>
+
+    <section class="card">
+      <header><h2>Sorted by: exploited first, then devices affected</h2><div class="row"><span class="chip on">Open 38</span><span class="chip">Accepted 4</span><span class="chip">Fixed 61</span></div></header>
+      <div class="cve">
+        <div><div class="meta"><span class="badge b-zd">0-DAY</span><span class="mono">CVE-2026-4127</span><span class="badge b-crit">CVSS 8.8</span><span class="badge b-crit">KEV · due 17 Nov</span><span class="chip">Chrome Releases</span><span class="chip">P0 ITW</span></div>
+          <div class="t" style="margin-top:6px">Type confusion in V8 lets a crafted page run code in the renderer</div>
+          <div class="muted small">Google: “aware that an exploit … exists in the wild.” Delivery via malicious ads is a known path for this class.</div></div>
+        <div class="side-r"><div class="badge b-high">3 devices</div><div class="muted" style="margin-top:6px">MacBook Pro · Work laptop · Pixel 9</div><div class="epss" style="margin-top:6px">EPSS<div class="bar"><i style="width:71%;background:var(--crit)"></i></div>0.71</div></div>
+      </div>
+      <div class="cve">
+        <div><div class="meta"><span class="badge b-zd">0-DAY</span><span class="mono">CVE-2026-4092</span><span class="badge b-crit">CVSS 8.8</span><span class="badge b-crit">KEV</span><span class="chip">Apple</span><span class="chip">Citizen Lab</span></div>
+          <div class="t" style="margin-top:6px">WebKit use-after-free reachable from web content</div>
+          <div class="muted small">Apple: “may have been exploited in an extremely sophisticated attack.” Linked in research to a mercenary-spyware chain.</div></div>
+        <div class="side-r"><div class="badge b-high">2 devices</div><div class="muted" style="margin-top:6px">iPhone 16 · iPad</div><div class="epss" style="margin-top:6px">EPSS<div class="bar"><i style="width:44%;background:var(--high)"></i></div>0.44</div></div>
+      </div>
+      <div class="cve">
+        <div><div class="meta"><span class="badge b-crit">KEV</span><span class="mono">CVE-2026-3810</span><span class="badge b-crit">CVSS 9.8</span><span class="chip">Synology</span></div>
+          <div class="t" style="margin-top:6px">Authentication bypass in NAS web interface</div>
+          <div class="muted small">Matched by nmap CPE <span class="mono">cpe:/o:synology:diskstation_manager:7.2.1</span> · fixed in 7.2.2-72806</div></div>
+        <div class="side-r"><div class="badge b-med">1 device</div><div class="muted" style="margin-top:6px">Synology NAS · LAN only</div><div class="epss" style="margin-top:6px">EPSS<div class="bar"><i style="width:62%;background:var(--crit)"></i></div>0.62</div></div>
+      </div>
+      <div class="cve">
+        <div><div class="meta"><span class="badge b-high">High</span><span class="mono">CVE-2026-3958</span><span class="chip">Android bulletin</span><span class="chip">OSV</span></div>
+          <div class="t" style="margin-top:6px">Framework privilege escalation</div>
+          <div class="muted small">No exploitation reported. Fixed in the 2026-10-01 patch level.</div></div>
+        <div class="side-r"><div class="badge b-med">2 devices</div><div class="muted" style="margin-top:6px">Pixel 9 · Old Android tablet</div><div class="epss" style="margin-top:6px">EPSS<div class="bar"><i style="width:8%"></i></div>0.08</div></div>
+      </div>
+      <div class="cve">
+        <div><div class="meta"><span class="badge b-med">Medium</span><span class="mono">CVE-2026-2215</span><span class="chip">Ubuntu USN</span><span class="chip">OSV</span></div>
+          <div class="t" style="margin-top:6px">OpenSSH agent forwarding information leak</div>
+          <div class="muted small">From agent package inventory: <span class="mono">pkg:deb/ubuntu/openssh-server@1:9.6p1-3ubuntu13.5</span></div></div>
+        <div class="side-r"><div class="badge b-low">1 device</div><div class="muted" style="margin-top:6px">BoxPilot server</div><div class="epss" style="margin-top:6px">EPSS<div class="bar"><i style="width:2%"></i></div>0.02</div></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mockup 5 of 13 · Illustrative data — CVE IDs and quotes are invented for layout.</p>
+</main></div><script src="nav.js"></script></body></html>

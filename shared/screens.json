@@ -1,0 +1,20 @@
+{
+  "$comment": "Every screen from docs/mockups, in sidebar order. `/` opens the home screen chosen in Appearance. `look` is the look it was designed in (used by the 'Per screen' look); `milestone` is when it gets real content (docs/PLAN.md §9).",
+  "groups": ["Watch", "Protect", "System"],
+  "screens": [
+    { "id": "overview", "path": "/overview", "label": "Overview", "icon": "◎", "group": "Watch", "look": "ops", "milestone": "M4", "mockup": "01-command-center", "summary": "Posture score, live indicator alerts, the newest exploited CVEs and every device at a glance." },
+    { "id": "fleet", "path": "/fleet", "label": "Fleet", "icon": "▦", "group": "Watch", "look": "ops", "milestone": "M4", "mockup": "02-fleet", "summary": "Every device on the network, merged by MAC from ARP, Pi-hole, mDNS, nmap, agents and MVT." },
+    { "id": "search", "path": "/check", "label": "Targeted check", "icon": "⌕", "group": "Watch", "look": "ops", "milestone": "M4", "mockup": "03-targeted-check", "summary": "Check one IP, MAC, hostname, CVE or domain: scan profiles, a full dossier and a timeline." },
+    { "id": "pihole", "path": "/pihole", "label": "Pi-hole Sentinel", "icon": "◍", "group": "Watch", "look": "pihole", "milestone": "M2", "mockup": "04-pihole-sentinel", "summary": "Hunt the Pi-hole query log for spyware and ADINT indicators, check coverage, push a denylist with a preview." },
+    { "id": "intel", "path": "/intel", "label": "CVEs & zero-days", "icon": "⚠", "group": "Watch", "look": "ops", "milestone": "M5", "mockup": "05-vuln-intel", "summary": "Eleven feeds deduplicated, exploited bugs first, with the devices each one affects." },
+    { "id": "device", "path": "/this-device", "label": "This device", "icon": "▭", "group": "Watch", "look": "light", "milestone": "M6", "mockup": "06-this-device", "summary": "What applies to the screen you are reading this on: browser and OS CVEs, GPC, ad blocking, Starlink egress." },
+    { "id": "exposure", "path": "/exposure", "label": "Ad exposure", "icon": "◐", "group": "Protect", "look": "light", "milestone": "M8", "mockup": "07-exposure", "summary": "Citizen Lab's defender guidance as four scored pillars and a per-device checklist, with hardening kits." },
+    { "id": "baselines", "path": "/baselines", "label": "Baselines", "icon": "▚", "group": "Protect", "look": "ops", "milestone": "M3", "mockup": "12-baselines", "summary": "Lockdown, Strict, Balanced and Essential, per device or network, with the sites each would block on your traffic." },
+    { "id": "blocklists", "path": "/blocklists", "label": "Blocklist library", "icon": "☰", "group": "Protect", "look": "ops", "milestone": "M3", "mockup": "11-blocklists", "summary": "Every DNS blocklist, categorised, auto-discovered, versioned and gated, served to Pi-hole." },
+    { "id": "evidence", "path": "/evidence", "label": "Evidence locker", "icon": "▤", "group": "Protect", "look": "evidence", "milestone": "M7", "mockup": "08-evidence-locker", "summary": "zero-breach findings by evidence tier, gaps, chain of custody, STIX and MISP exports." },
+    { "id": "briefing", "path": "/briefing", "label": "Briefing", "icon": "¶", "group": "Protect", "look": "paper", "milestone": "M9", "mockup": "09-weekly-briefing", "summary": "The daily or weekly digest in plain language, printable and emailed." },
+    { "id": "boxpilot", "path": "/boxpilot", "label": "BoxPilot", "icon": "▣", "group": "System", "look": "glass", "milestone": "M10", "mockup": "10-in-boxpilot", "summary": "How this copy is managed by BoxPilot: the summary its agents read, approvals and backups." },
+    { "id": "activity", "path": "/activity", "label": "Activity", "icon": "≡", "group": "System", "look": "ops", "milestone": "M0", "mockup": null, "summary": "Every job and every change, with who did it and when." },
+    { "id": "appearance", "path": "/appearance", "label": "Appearance", "icon": "✎", "group": "System", "look": "ops", "milestone": "M0", "mockup": "13-appearance", "summary": "Look, name, logo, accent, home screen and density." }
+  ]
+}

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Baselines</title><link rel="stylesheet" href="mock.css">
+<style>
+  .scope { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { all: unset; cursor: pointer; padding: 7px 12px; font-size: 13px; color: var(--muted); }
+  .seg button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  .tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .tier { all: unset; cursor: pointer; display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; position: relative; }
+  .tier:hover { border-color: var(--muted); }
+  .tier.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .tier .lvl { display: flex; gap: 3px; margin: 8px 0 10px; }
+  .tier .lvl i { flex: 1; height: 6px; border-radius: 3px; background: var(--panel-2); }
+  .tier h2 { font-size: 17px; }
+  .tier .sum { font-size: 12.5px; color: var(--muted); min-height: 54px; }
+  .tier .nums { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .tier .nums b { display: block; font-size: 18px; color: var(--text); }
+  .sugg { position: absolute; top: -9px; right: 12px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }
+  .layout > * { min-width: 0; }
+  .site b { font-weight: 600; } .site .sub { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+  .risk { font-size: 11px; font-weight: 700; white-space: nowrap; }
+  th { white-space: nowrap; }
+  .r-high { color: var(--crit); } .r-med { color: var(--high); } .r-low { color: var(--ok); }
+  .before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; }
+  .before-after div { background: var(--panel-2); border-radius: 10px; padding: 10px; }
+  .before-after b { font-size: 24px; display: block; }
+  tr.kept td { opacity: .45; } tr.kept td:last-child { opacity: 1; }
+  @media (max-width: 1100px) { .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)); } .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .tiers { grid-template-columns: 1fr; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="baselines"></aside>
+<main>
+  <div class="top">
+    <div><h1>Baselines</h1><div class="muted small">Suggested blocking levels. Pick one to see which sites it would block, based on the last <span id="win-l">7 days</span> of real DNS traffic.</div></div>
+  </div>
+
+  <div class="scope">
+    <span class="muted small">Apply to</span>
+    <div class="seg" id="scope"><button data-s="net">Whole network</button><button data-s="pixel" class="on">Pixel 9 (Kitchen)</button><button data-s="mac">MacBook Pro</button><button data-s="iot">Group: IoT (6)</button></div>
+    <span class="muted small" style="margin-left:10px">Traffic from</span>
+    <div class="seg" id="win"><button data-w="7" class="on">7 days</button><button data-w="14">14 days</button><button data-w="30">30 days</button></div>
+  </div>
+
+  <div class="tiers" id="tiers"></div>
+
+  <div class="layout">
+    <section class="card">
+      <header><h2 id="tbl-title">Sites this would block</h2><div class="row"><span class="chip on" data-f="all">All</span><span class="chip" data-f="new">Newly blocked</span><span class="chip" data-f="high">Might break</span></div></header>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Site</th><th>Category</th><th>Queries</th><th>Breakage risk</th><th>Today</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+      <div class="muted small" style="margin-top:10px">Grouped by site (registrable domain). Never-block endpoints such as OS connectivity checks, certificate checks and time servers are excluded from every baseline.</div>
+    </section>
+
+    <div class="stack">
+      <section class="card">
+        <header><h2>Impact</h2><span class="muted small" id="imp-scope"></span></header>
+        <div class="before-after"><div><span class="muted small">Blocked now</span><b>9.8%</b></div><div><span class="muted small">With <span id="imp-name"></span></span><b id="imp-after" style="color:var(--accent)"></b></div></div>
+        <div class="list small" style="margin-top:10px">
+          <div><span class="grow">Sites newly blocked</span><b id="imp-sites"></b></div>
+          <div><span class="grow">Might break something</span><b id="imp-high" style="color:var(--crit)"></b></div>
+          <div><span class="grow">Kept allowing (exceptions)</span><b id="imp-kept">0</b></div>
+        </div>
+      </section>
+      <section class="card" id="why">
+        <header><h2>Why this suggestion</h2></header>
+        <div class="small" id="why-txt"></div>
+      </section>
+      <section class="card">
+        <header><h2>Apply</h2></header>
+        <div class="stack" style="gap:8px">
+          <button class="btn" style="justify-content:center">Try in shadow mode for 7 days</button>
+          <button class="btn primary" style="justify-content:center" id="apply"></button>
+          <div class="muted small">Creates a Pi-hole group for this baseline, moves the client into it and attaches the compiled list. A snapshot is kept so Undo restores Pi-hole exactly.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <p class="note">Mockup 12 of 13 · Interactive: pick a baseline, scope or filter. Traffic counts are illustrative; malicious domains are fictional and defanged.</p>
+</main></div>
+<script src="nav.js"></script>
+<script>
+// Each site lists the least severe tier that blocks it (0 Essential … 3 Lockdown). Tiers are cumulative.
+const SITES = [
+  { s: 'noas-edge[.]example', sub: 'noas-edge[.]example', cat: 'Spyware & ADINT', t: 0, q: 3, seen: 'yesterday 21:14', risk: 'low', now: false },
+  { s: 'fresh-parcel-track[.]example', sub: 'login.fresh-parcel-track[.]example', cat: 'Phishing', t: 0, q: 2, seen: '3 d ago', risk: 'low', now: true },
+  { s: 'adnxs.com', sub: 'ib.adnxs.com, secure.adnxs.com', cat: 'Ad-tech bidder', t: 1, q: 418, seen: '2 min ago', risk: 'low', now: true },
+  { s: 'rubiconproject.com', sub: 'fastlane.rubiconproject.com', cat: 'Ad-tech bidder', t: 1, q: 236, seen: '4 min ago', risk: 'low', now: false },
+  { s: 'doubleclick.net', sub: 'googleads.g.doubleclick.net', cat: 'Ads', t: 1, q: 1240, seen: 'now', risk: 'low', now: true },
+  { s: 'app-measurement.com', sub: 'app-measurement.com', cat: 'Trackers & analytics', t: 1, q: 2310, seen: 'now', risk: 'low', now: false },
+  { s: 'crashlytics.com', sub: 'settings.crashlytics.com', cat: 'Telemetry', t: 2, q: 512, seen: '9 min ago', risk: 'low', now: false },
+  { s: 'googleadservices.com', sub: 'www.googleadservices.com', cat: 'Ads', t: 2, q: 96, seen: '1 h ago', risk: 'high', note: 'Sponsored results in Google Search stop opening', now: false },
+  { s: 'branch.io', sub: 'app.link, api2.branch.io', cat: 'Trackers & analytics', t: 2, q: 74, seen: 'today', risk: 'med', note: 'Some shopping and food app links open the store instead', now: false },
+  { s: 'youtube.com (history)', sub: 's.youtube.com', cat: 'Trackers & analytics', t: 2, q: 388, seen: 'now', risk: 'med', note: 'YouTube watch history stops updating', now: false },
+  { s: 'new-registered (≤14 d)', sub: '7 domains, e.g. qbx-deals-2026[.]example', cat: 'Newly registered', t: 2, q: 19, seen: 'today', risk: 'low', now: false },
+  { s: 'facebook.com', sub: 'facebook.com, graph.facebook.com', cat: 'Social media', t: 3, q: 1820, seen: 'now', risk: 'high', note: 'Facebook and “Log in with Facebook” stop working', now: false },
+  { s: 'instagram.com', sub: 'i.instagram.com, scontent-*.cdninstagram.com', cat: 'Social media', t: 3, q: 2960, seen: 'now', risk: 'high', note: 'Instagram app stops loading', now: false },
+  { s: 'dns.google', sub: 'dns.google', cat: 'DoH / VPN bypass', t: 3, q: 640, seen: 'now', risk: 'med', note: 'Android Private DNS falls back to Pi-hole (intended)', now: false },
+  { s: 'firebaselogging.googleapis.com', sub: 'firebaselogging-pa.googleapis.com', cat: 'Telemetry', t: 3, q: 704, seen: 'now', risk: 'med', note: 'Some apps retry and use more battery', now: false },
+];
+const TIERS = [
+  { id: 'essential', name: 'Essential', sev: 1, color: 'var(--ok)', sum: 'Security only: malware, phishing, spyware and ADINT. Ads still show. Nothing visible breaks.', after: '10.0%' },
+  { id: 'balanced', name: 'Balanced', sev: 2, color: 'var(--accent)', sum: 'Adds standard ads, trackers and ad-tech bidders. Recommended for most devices. Rare breakage.', after: '21.4%' },
+  { id: 'strict', name: 'Strict', sev: 3, color: 'var(--high)', sum: 'Very strong: aggressive ads and trackers, all telemetry, newly registered domains. Some sites need an exception.', after: '27.9%' },
+  { id: 'lockdown', name: 'Lockdown', sev: 4, color: 'var(--crit)', sum: 'Most severe: adds social media, DoH/VPN bypass and all vendor telemetry. IoT is allowlist-only. Things will break.', after: '41.6%' },
+];
+const SCOPES = {
+  net: { label: 'Whole network · 27 devices', sugg: 'balanced', mult: 6.1, why: 'Balanced is the safest default for a mixed household. Raise individual devices instead of the whole network.' },
+  pixel: { label: 'Pixel 9 (Kitchen)', sugg: 'strict', mult: 1, why: 'This phone looked up an AdFection indicator yesterday, still has its advertising ID, and 23% of its DNS is ad-tech. Strict removes nearly all ad delivery while keeping its apps working.' },
+  mac: { label: 'MacBook Pro', sugg: 'balanced', mult: 0.7, why: 'uBlock Origin already runs in its browser, and its ad-tech share is only 6%. Balanced covers the apps outside the browser.' },
+  iot: { label: 'IoT group · 6 devices', sugg: 'lockdown', mult: 0.4, skip: ['Social media', 'Phishing'], why: 'These devices talked to only 31 domains in 14 days. Lockdown makes them allowlist-only, so new telemetry or a compromised device cannot reach anything else.' },
+};
+let tier = 2, scope = 'pixel', win = 7, filter = 'all';
+const kept = new Set();
+const $ = id => document.getElementById(id);
+const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+function visible(t) { const skip = SCOPES[scope].skip || []; return SITES.filter(x => x.t <= t && !skip.includes(x.cat)); }
+function render() {
+  const sc = SCOPES[scope], k = (win / 7) * sc.mult;
+  $('tiers').innerHTML = TIERS.map((T, i) => {
+    const vs = visible(i), hi = vs.filter(x => x.risk === 'high').length;
+    return `<button class="tier ${i === tier ? 'on' : ''}" data-t="${i}">
+      ${T.id === sc.sugg ? '<span class="badge b-info sugg">Suggested</span>' : ''}
+      <h2>${T.name}</h2>
+      <div class="lvl">${[1, 2, 3, 4].map(n => `<i style="${n <= T.sev ? 'background:' + T.color : ''}"></i>`).join('')}</div>
+      <div class="sum">${T.sum}</div>
+      <div class="nums"><span><b>${vs.length}</b>sites</span><span><b>${T.after}</b>of queries</span><span><b style="color:${hi ? 'var(--crit)' : 'var(--ok)'}">${hi}</b>might break</span></div>
+    </button>`;
+  }).join('');
+  let rows = visible(tier);
+  if (filter === 'new') rows = rows.filter(x => !x.now);
+  if (filter === 'high') rows = rows.filter(x => x.risk !== 'low');
+  rows.sort((a, b) => ({ high: 0, med: 1, low: 2 }[a.risk] - { high: 0, med: 1, low: 2 }[b.risk]) || b.q - a.q);
+  $('rows').innerHTML = rows.map(x => {
+    const isKept = kept.has(x.s);
+    return `<tr class="${isKept ? 'kept' : ''}">
+      <td class="site"><b>${x.s}</b><div class="sub">${x.sub} · last ${x.seen}</div>${x.note ? `<div class="small" style="color:var(--high);margin-top:3px">${x.note}</div>` : ''}</td>
+      <td><span class="badge ${x.t === 0 ? 'b-crit' : 'b-info'}">${x.cat}</span></td>
+      <td class="mono">${fmt(Math.max(1, Math.round(x.q * k)))}</td>
+      <td><span class="risk r-${x.risk}">${{ high: '● High', med: '● Medium', low: '● Low' }[x.risk]}</span></td>
+      <td>${x.now ? '<span class="badge b-ok">already blocked</span>' : '<span class="badge b-high">new</span>'}</td>
+      <td><button class="btn" style="padding:5px 9px;font-size:12px" data-keep="${x.s}" title="Keep allowing this site here">${isKept ? 'Undo' : 'Allow'}</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="muted">Nothing in this filter.</td></tr>';
+  const T = TIERS[tier], vs = visible(tier).filter(x => !kept.has(x.s));
+  $('tbl-title').textContent = `Sites ${T.name} would block for ${sc.label}`;
+  $('imp-scope').textContent = `${sc.label} · ${win} d`;
+  $('imp-name').textContent = T.name; $('imp-after').textContent = T.after;
+  $('imp-sites').textContent = vs.filter(x => !x.now).length;
+  $('imp-high').textContent = vs.filter(x => x.risk === 'high').length;
+  $('imp-kept').textContent = kept.size;
+  $('why-txt').innerHTML = `<b>Suggested: ${TIERS.find(t => t.id === sc.sugg).name}.</b> ${sc.why}`;
+  $('apply').textContent = `Apply ${T.name} to ${sc.label.split(' ·')[0]}`;
+  $('win-l').textContent = `${win} days`;
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-t]'); if (t) { tier = +t.dataset.t; render(); }
+  const s = e.target.closest('[data-s]'); if (s) { scope = s.dataset.s; tier = TIERS.findIndex(x => x.id === SCOPES[scope].sugg); document.querySelectorAll('#scope button').forEach(b => b.classList.toggle('on', b === s)); render(); }
+  const w = e.target.closest('[data-w]'); if (w) { win = +w.dataset.w; document.querySelectorAll('#win button').forEach(b => b.classList.toggle('on', b === w)); render(); }
+  const f = e.target.closest('[data-f]'); if (f) { filter = f.dataset.f; document.querySelectorAll('[data-f]').forEach(c => c.classList.toggle('on', c === f)); render(); }
+  const k = e.target.closest('[data-keep]'); if (k) { const id = k.dataset.keep; kept.has(id) ? kept.delete(id) : kept.add(id); render(); }
+});
+render();
+</script></body></html>

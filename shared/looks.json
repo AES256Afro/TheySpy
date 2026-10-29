@@ -1,0 +1,183 @@
+{
+  "$comment": "The only place colours live. Every look is these tokens plus fonts and an optional page background; scripts/check-looks.mjs checks contrast for each one and that no colour is written anywhere else under src/.",
+  "fonts": {
+    "sans": "'Inter Variable', system-ui, sans-serif",
+    "mono": "'JetBrains Mono Variable', ui-monospace, monospace",
+    "serif": "'Source Serif 4 Variable', Georgia, serif",
+    "condensed": "'Oswald Variable', Impact, sans-serif"
+  },
+  "looks": [
+    {
+      "id": "ops",
+      "name": "Ops",
+      "description": "Dark navy, cyan accents.",
+      "tokens": {
+        "bg": "#0b1020",
+        "panel": "#121a2e",
+        "panel2": "#18223a",
+        "line": "#24304c",
+        "text": "#e6ebf5",
+        "muted": "#8f9bb7",
+        "accent": "#39c6ff",
+        "accent2": "#7c5cff",
+        "onAccent": "#04111f",
+        "crit": "#ff5c7a",
+        "high": "#ff9f43",
+        "med": "#ffd166",
+        "low": "#5ad1a0",
+        "ok": "#34d399"
+      },
+      "fonts": {
+        "body": "sans",
+        "heading": "sans"
+      }
+    },
+    {
+      "id": "light",
+      "name": "Daylight",
+      "description": "Clean and bright.",
+      "tokens": {
+        "bg": "#f5f7fb",
+        "panel": "#ffffff",
+        "panel2": "#eef2f8",
+        "line": "#dde3ee",
+        "text": "#172033",
+        "muted": "#5b667d",
+        "accent": "#1d5bd8",
+        "accent2": "#6d32d6",
+        "onAccent": "#ffffff",
+        "crit": "#ad1736",
+        "high": "#934106",
+        "med": "#6e5000",
+        "low": "#07664a",
+        "ok": "#08652f"
+      },
+      "fonts": {
+        "body": "sans",
+        "heading": "sans"
+      }
+    },
+    {
+      "id": "pihole",
+      "name": "Sentinel",
+      "description": "Deep green with Pi-hole lime.",
+      "tokens": {
+        "bg": "#0d1412",
+        "panel": "#131c19",
+        "panel2": "#1a2622",
+        "line": "#26352f",
+        "text": "#e3ece8",
+        "muted": "#8fa39b",
+        "accent": "#96c93d",
+        "accent2": "#f06262",
+        "onAccent": "#0d1412",
+        "crit": "#ff6b6b",
+        "high": "#ffa24d",
+        "med": "#ffd166",
+        "low": "#5ad1a0",
+        "ok": "#4fd69c"
+      },
+      "fonts": {
+        "body": "sans",
+        "heading": "sans"
+      }
+    },
+    {
+      "id": "evidence",
+      "name": "Evidence",
+      "description": "Charcoal and amber, forensic.",
+      "tokens": {
+        "bg": "#0e0e0c",
+        "panel": "#171713",
+        "panel2": "#22221c",
+        "line": "#2f2f27",
+        "text": "#ece7d6",
+        "muted": "#a39c86",
+        "accent": "#f2b544",
+        "accent2": "#e8814f",
+        "onAccent": "#171309",
+        "crit": "#ff6b6b",
+        "high": "#ffa24d",
+        "med": "#f2d06b",
+        "low": "#8fd18b",
+        "ok": "#7fd69a"
+      },
+      "fonts": {
+        "body": "sans",
+        "heading": "mono"
+      }
+    },
+    {
+      "id": "paper",
+      "name": "Briefing",
+      "description": "Editorial paper and serif.",
+      "tokens": {
+        "bg": "#f6f1e7",
+        "panel": "#fbf8f1",
+        "panel2": "#efe8da",
+        "line": "#ddd2bf",
+        "text": "#2b261d",
+        "muted": "#6b6150",
+        "accent": "#a8322a",
+        "accent2": "#3f5f8a",
+        "onAccent": "#ffffff",
+        "crit": "#a8322a",
+        "high": "#86420b",
+        "med": "#665209",
+        "low": "#2f6a44",
+        "ok": "#2f6a44"
+      },
+      "fonts": {
+        "body": "serif",
+        "heading": "condensed"
+      },
+      "radius": 4
+    },
+    {
+      "id": "glass",
+      "name": "Glass",
+      "description": "Frosted panels over a gradient.",
+      "tokens": {
+        "bg": "#0c1022",
+        "panel": "rgba(10,14,32,0.55)",
+        "panel2": "rgba(255,255,255,0.08)",
+        "line": "rgba(255,255,255,0.16)",
+        "text": "#eef1fb",
+        "muted": "#b9c1da",
+        "accent": "#7fd0ff",
+        "accent2": "#b48cff",
+        "onAccent": "#071022",
+        "crit": "#ff8fa3",
+        "high": "#ffb877",
+        "med": "#ffdb8f",
+        "low": "#86e3bd",
+        "ok": "#74e8b4"
+      },
+      "fonts": {
+        "body": "sans",
+        "heading": "sans"
+      },
+      "background": "radial-gradient(1200px 700px at 10% 0%, #263a72 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #522665 0%, transparent 55%), #0c1022",
+      "blur": true,
+      "radius": 16
+    }
+  ],
+  "glyphs": [
+    "◉",
+    "🕵️",
+    "🛡️",
+    "👁",
+    "⌖",
+    "◎",
+    "🛰"
+  ],
+  "accentPresets": [
+    "#39c6ff",
+    "#96c93d",
+    "#f2b544",
+    "#a8322a",
+    "#e0559a",
+    "#7c5cff",
+    "#16a34a"
+  ]
+}

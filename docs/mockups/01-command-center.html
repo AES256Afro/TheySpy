@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · Command Center</title><link rel="stylesheet" href="mock.css">
+<style>
+  .posture { display: grid; grid-template-columns: 170px 1fr; gap: 18px; align-items: center; }
+  .ring { position: relative; width: 160px; height: 160px; }
+  .ring b { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 40px; font-weight: 800; line-height: 1; }
+  .ring b small { color: var(--muted); font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .ticker { display: flex; gap: 10px; overflow: hidden; }
+  .heat { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
+  .heat i { aspect-ratio: 1; border-radius: 3px; background: var(--panel-2); }
+  .heat i.h1 { background: color-mix(in srgb, var(--high) 40%, var(--panel-2)); }
+  .heat i.h2 { background: var(--high); } .heat i.h3 { background: var(--crit); }
+  .devgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .dev { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12px; }
+  .dev .n { font-weight: 600; font-size: 12.5px; margin: 4px 0 2px; }
+  .dev.bad { border-color: var(--crit); } .dev.warn { border-color: var(--high); }
+  @media (max-width: 760px) { .posture { grid-template-columns: 1fr; justify-items: center; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="overview"></aside>
+<main>
+  <div class="top">
+    <div><h1>Command Center</h1><div class="muted small">Home network · 192.168.1.0/24 · Wed 29 Oct, 09:41</div></div>
+    <div class="grow"></div>
+    <label class="search">⌕ <input placeholder="IP, MAC, hostname, CVE or domain…"></label>
+    <button class="btn">Sweep network</button><button class="btn primary">Run full check</button>
+  </div>
+
+  <div class="banner bad" style="margin-bottom:14px">
+    <span class="badge b-crit">IOC HIT</span>
+    <div><b>Pixel 9 (Kitchen)</b> resolved <span class="mono">noas-edge[.]example</span> 3 times yesterday at 21:14. The domain is in the AdFection set (tier 1, Citizen Lab). Pi-hole did not block it.
+      <div class="row" style="margin-top:8px"><button class="btn danger">Block in Pi-hole</button><button class="btn">Open targeted check</button><span class="muted small">Evidence: dns-record</span></div></div>
+  </div>
+
+  <div class="grid g4">
+    <section class="card span2 posture">
+      <div class="ring">
+        <svg viewBox="0 0 160 160" width="160" height="160"><circle cx="80" cy="80" r="66" fill="none" stroke="var(--panel-2)" stroke-width="14"/>
+          <circle cx="80" cy="80" r="66" fill="none" stroke="var(--high)" stroke-width="14" stroke-linecap="round" stroke-dasharray="414" stroke-dashoffset="149" transform="rotate(-90 80 80)"/></svg>
+        <b>64<small>posture / 100</small></b>
+      </div>
+      <div class="stack" style="gap:10px">
+        <h2>Network posture: needs attention</h2>
+        <div class="list small">
+          <div><span class="dot bad"></span><span class="grow">1 device contacted an indicator</span><a>Review</a></div>
+          <div><span class="dot warn"></span><span class="grow">4 devices have known-exploited (KEV) CVEs</span><a>Patch list</a></div>
+          <div><span class="dot warn"></span><span class="grow">Public IP is Starlink (AS14593) — IP-targetable by ad bidders</span><a>Why</a></div>
+          <div><span class="dot on"></span><span class="grow">Gateway ad-blocking on · 291/291 IOC domains covered</span></div>
+        </div>
+      </div>
+    </section>
+    <section class="card kpi"><h3>Devices online</h3><div class="v">23</div><div class="d">of 27 known · <span style="color:var(--accent)">2 new today</span></div></section>
+    <section class="card kpi"><h3>Zero-days affecting you</h3><div class="v" style="color:var(--crit)">2</div><div class="d">Chrome V8 · iOS WebKit — both patched upstream</div></section>
+
+    <section class="card span2">
+      <header><h2>IOC contact — last 24 h (Pi-hole)</h2><span class="muted small">hour by hour</span></header>
+      <div class="heat">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="h1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="h1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="h3"></i><i class="h1"></i><i></i>
+      </div>
+      <div class="row small muted" style="margin-top:10px"><span>3 hits · 1 device · 1 domain</span><span>·</span><span>48,210 queries scanned</span><span>·</span><span>12.4% blocked</span></div>
+    </section>
+    <section class="card span2">
+      <header><h2>Newest exploited in the wild</h2><a class="small">All intel →</a></header>
+      <div class="list small">
+        <div><span class="badge b-zd">0-DAY</span><span class="mono">CVE-2026-4127</span><span class="grow trunc">Chrome V8 type confusion</span><span class="badge b-high">3 devices</span></div>
+        <div><span class="badge b-zd">0-DAY</span><span class="mono">CVE-2026-4092</span><span class="grow trunc">WebKit use-after-free (iOS 19.0.x)</span><span class="badge b-high">2 devices</span></div>
+        <div><span class="badge b-crit">KEV</span><span class="mono">CVE-2026-3810</span><span class="grow trunc">NAS firmware auth bypass</span><span class="badge b-med">1 device</span></div>
+        <div><span class="badge b-crit">KEV</span><span class="mono">CVE-2026-3771</span><span class="grow trunc">Router UPnP command injection</span><span class="badge b-ok">not present</span></div>
+      </div>
+    </section>
+
+    <section class="card span4">
+      <header><h2>Devices</h2><div class="row"><span class="chip on">All 27</span><span class="chip">At risk 5</span><span class="chip">New 2</span><span class="chip">Offline 4</span></div></header>
+      <div class="devgrid">
+        <div class="dev bad"><span class="dot bad"></span><div class="n">Pixel 9 (Kitchen)</div><div class="muted">IOC hit · 2 CVEs</div></div>
+        <div class="dev warn"><span class="dot warn"></span><div class="n">MacBook Pro</div><div class="muted">Chrome 0-day</div></div>
+        <div class="dev warn"><span class="dot warn"></span><div class="n">iPhone 16</div><div class="muted">iOS 0-day</div></div>
+        <div class="dev warn"><span class="dot warn"></span><div class="n">Synology NAS</div><div class="muted">KEV · firmware</div></div>
+        <div class="dev warn"><span class="dot warn"></span><div class="n">Work laptop</div><div class="muted">Chrome 0-day</div></div>
+        <div class="dev"><span class="dot on"></span><div class="n">BoxPilot server</div><div class="muted">clean · agent 2h</div></div>
+        <div class="dev"><span class="dot on"></span><div class="n">LG TV</div><div class="muted">product-only match</div></div>
+        <div class="dev"><span class="dot on"></span><div class="n">Thermostat</div><div class="muted">clean</div></div>
+        <div class="dev"><span class="dot on"></span><div class="n">HP printer</div><div class="muted">clean</div></div>
+        <div class="dev"><span class="dot on"></span><div class="n">iPad</div><div class="muted">clean · agent n/a</div></div>
+        <div class="dev" style="border-style:dashed"><span class="dot" style="background:var(--accent)"></span><div class="n">Unknown · 3c:a9:…</div><div class="muted">new · Espressif</div></div>
+        <div class="dev" style="border-style:dashed"><span class="dot" style="background:var(--accent)"></span><div class="n">Unknown · 8e:12:…</div><div class="muted">new · randomized MAC</div></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mockup 1 of 13 · Illustrative data — device names, CVE IDs and domains are made up.</p>
+</main></div><script src="nav.js"></script></body></html>
