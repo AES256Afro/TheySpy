@@ -1,4 +1,5 @@
-FROM node:24-alpine AS build
+# The web build is the same on every architecture, so it runs natively on the build machine.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./

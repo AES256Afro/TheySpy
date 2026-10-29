@@ -14,6 +14,7 @@ import { createSecretBox } from "../server/secrets.mjs";
 import express from "express";
 import { createBlocklistLibrary } from "../server/blocklists/library.mjs";
 import { publicListRoutes } from "../server/blocklists/routes.mjs";
+import { createBaselines } from "../server/blocklists/baselines.mjs";
 
 const url = process.env.PIHOLE_URL ?? "http://127.0.0.1:18053";
 const password = process.env.PIHOLE_PASSWORD ?? "";
@@ -33,7 +34,9 @@ sentinel.configure({ mode: "api", url, password, write: true }, "e2e");
 const snapshot = async () => createPiholeClient({ url, password }).session(async (c) => {
   const lists = {};
   for (const type of ["allow", "deny"]) for (const kind of ["exact", "regex"]) lists[`${type}/${kind}`] = (await c.listDomains(type, kind)).map(({ date_modified: _modified, ...rest }) => rest);
-  lists.adlists = (await c.listAdlists("block")).map((l) => `${l.id} ${l.address} ${l.enabled}`);
+  lists.adlists = (await c.listAdlists("block")).map((l) => `${l.id} ${l.address} ${l.enabled} ${JSON.stringify(l.groups)}`);
+  lists.groups = (await c.listGroups()).map((g) => `${g.id} ${g.name}`);
+  lists.clients = (await c.listClients()).map((x) => `${x.client} ${JSON.stringify(x.groups)} ${x.comment}`);
   return JSON.stringify(lists);
 });
 
@@ -107,9 +110,12 @@ step("rolled back: Pi-hole's lists are exactly as before the push");
 if (process.env.E2E_LISTS_HOST) {
   const library = createBlocklistLibrary({ db, settings, audit, iocStore });
   library.seed();
-  const app = express().use("/lists", publicListRoutes({ library }));
+  const baselines = createBaselines({ library, sentinel, settings, audit });
+  const app = express().use("/lists", publicListRoutes({ library, baselines }));
   const listServer = await new Promise((resolve) => { const s = app.listen(18797, "0.0.0.0", () => resolve(s)); });
-  const address = `http://${process.env.E2E_LISTS_HOST}:18797/lists/${library.listToken()}/spyware.txt`;
+  const origin = `http://${process.env.E2E_LISTS_HOST}:18797`;
+  // Adblock format, so Pi-hole also blocks each name's subdomains.
+  const address = `${origin}/lists/${library.listToken()}/spyware.adblock`;
   const beforeSubscribe = await snapshot();
   const subscribed = await sentinel.subscribe(address, "Spyware & ADINT", "e2e");
   assert.equal(subscribed.entries, 2, "Pi-hole loaded both indicator domains from TheySpy's list");
@@ -117,11 +123,37 @@ if (process.env.E2E_LISTS_HOST) {
   assert.deepEqual((await sentinel.subscriptions()).map((s) => s.address), [address]);
   const coverageNow = await sentinel.coverage();
   assert.equal(coverageNow.blocked, 2, "both domains now blocked by Pi-hole's gravity");
+  assert.equal(coverageNow.fullyBlocked, 2, "and their subdomains (Adblock-style entries)");
   assert.ok(coverageNow.results.every((r) => r.by.includes(address)), "blocked by TheySpy's list");
-  step("Pi-hole's own search shows both indicator domains blocked by TheySpy's list");
+  step("Pi-hole's own search shows both indicator domains and their subdomains blocked by TheySpy's list");
   await sentinel.unsubscribe(address, "e2e");
   assert.equal(await snapshot(), beforeSubscribe, "Pi-hole's lists are exactly as before the subscription");
   step("removed the subscription: Pi-hole's lists are exactly as before");
+
+  // M3 baselines: Essential for one device only. That device's lookups are blocked through its own
+  // Pi-hole group; another device's are not; removing it leaves groups, clients and lists as before.
+  const beforeBaseline = await snapshot();
+  const applied = await baselines.apply({ baselineId: "essential", client: "172.29.53.15", listsOrigin: origin }, "e2e");
+  assert.equal(applied.entries, 2);
+  step(`applied Essential to 172.29.53.15 through Pi-hole group "${applied.groupName}" (${applied.entries} entries)`);
+  const lookupFrom = (ip, name) => { try { execFileSync("docker", ["run", "--rm", "--network", process.env.E2E_DOCKER_NETWORK, "--ip", ip, "busybox:1.37", "nslookup", "-timeout=2", name, "172.29.53.2"], { stdio: "ignore" }); } catch { /* blocked names can exit non-zero */ } };
+  let mine = null;
+  let theirs = null;
+  for (let attempt = 1; attempt <= 6 && !(mine && theirs); attempt += 1) {
+    if (!mine) lookupFrom("172.29.53.15", "x.ads-sync.theyspy.test");
+    if (!theirs) lookupFrom("172.29.53.16", "y.ads-sync.theyspy.test");
+    await sentinel.watch.poll();
+    mine = sentinel.hits().find((h) => h.domain === "x.ads-sync.theyspy.test");
+    theirs = sentinel.hits().find((h) => h.domain === "y.ads-sync.theyspy.test");
+    if (!(mine && theirs)) await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  assert.ok(mine && theirs, "both lookups were seen");
+  assert.equal(mine.lastStatus, "GRAVITY", "the device with the baseline is blocked by it");
+  assert.notEqual(theirs.lastStatus, "GRAVITY", "another device is not");
+  step(`a subdomain lookup from 172.29.53.15 is blocked (${mine.lastStatus}); the same from 172.29.53.16 is not (${theirs.lastStatus})`);
+  await baselines.remove({ client: "172.29.53.15" }, "e2e");
+  assert.equal(await snapshot(), beforeBaseline, "groups, clients and lists exactly as before the baseline");
+  step("removed the baseline: Pi-hole's groups, clients and lists are exactly as before");
   listServer.close();
 }
 console.log("E2E OK");

@@ -1,6 +1,8 @@
 import express from "express";
 import { compiledLists } from "./library.mjs";
-import { categories, categoryIds, groups } from "./taxonomy.mjs";
+import { baselineById } from "./baselines.mjs";
+import { categories, categoryIds, groups, securityCategories } from "./taxonomy.mjs";
+import { defang } from "../iocs/parse.mjs";
 
 export const listFormats = Object.freeze({
   txt: { type: "text/plain", comment: "#", line: (d) => d, label: "Domains (Pi-hole, AdGuard Home, NextDNS)" },
@@ -15,23 +17,31 @@ const listDefinition = (name) => compiledLists[name] ?? (categoryIds.includes(na
 /**
  * GET /lists/<token>/<name>.<format>: what Pi-hole subscribes to. No sign-in (Pi-hole cannot sign
  * in); the random token in the path keeps the lists to people the owner gave the address to, and a
- * wrong token gets the same 404 as a wrong name.
- * @param {{ library: ReturnType<typeof import("./library.mjs").createBlocklistLibrary>, now?: () => Date }} deps
+ * wrong token gets the same 404 as a wrong name. Names are a category, "security", "recommended",
+ * or "baseline-<level>--<scope>" (a baseline with that scope's exceptions taken out).
+ * @param {{ library: ReturnType<typeof import("./library.mjs").createBlocklistLibrary>, baselines?: ReturnType<typeof import("./baselines.mjs").createBaselines>, now?: () => Date }} deps
  */
-export function publicListRoutes({ library, now = () => new Date() }) {
+export function publicListRoutes({ library, baselines, now = () => new Date() }) {
   const router = express.Router();
   router.get("/:token/:file", (req, res) => {
-    const m = /^([a-z]+)\.(txt|hosts|adblock|dnsmasq|rpz)$/.exec(req.params.file);
-    const definition = m && listDefinition(m[1]);
-    if (req.params.token !== library.listToken() || !definition) return res.status(404).type("text/plain").send("Not found\n");
-    const format = listFormats[m[2]];
-    const compiled = library.compile(definition.categories);
-    const etag = `"${compiled.etag}-${m[2]}"`;
+    const m = /^([a-z]+|baseline-([a-z]+)--(network|device-[0-9a-f-]+))\.(txt|hosts|adblock|dnsmasq|rpz)$/.exec(req.params.file);
+    let definition = null;
+    let compiled = null;
+    if (m && m[2] && baselines) {
+      compiled = baselines.compileFor(m[2], m[3]);
+      if (compiled) definition = { name: `${m[2][0].toUpperCase()}${m[2].slice(1)} baseline (${m[3]})`, description: "A TheySpy baseline: its categories, minus the sites kept allowed for this scope." };
+    } else if (m) {
+      definition = listDefinition(m[1]);
+      compiled = definition && library.compile(definition.categories);
+    }
+    if (req.params.token !== library.listToken() || !definition || !compiled) return res.status(404).type("text/plain").send("Not found\n");
+    const format = listFormats[m[4]];
+    const etag = `"${compiled.etag}-${m[4]}"`;
     res.set({ "Content-Type": `${format.type}; charset=utf-8`, ETag: etag, "Cache-Control": "no-cache" });
     if (req.get("if-none-match") === etag) return res.status(304).end();
     const c = format.comment;
     const head = [
-      `${c} TheySpy ${definition.name} list (${m[2]})`,
+      `${c} TheySpy ${definition.name} list (${m[4]})`,
       `${c} ${definition.description}`,
       `${c} ${compiled.domains.length} domains from ${compiled.sources} enabled lists, compiled ${now().toISOString()}.`,
       `${c} Names on TheySpy's never-block list (connectivity checks, certificates, updates, your pins) are left out.`,
@@ -48,14 +58,17 @@ export function publicListRoutes({ library, now = () => new Date() }) {
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  *   settings: ReturnType<typeof import("../db.mjs").createSettingsStore>,
  *   sentinel: ReturnType<typeof import("../pihole/sentinel.mjs").createSentinel>,
+ *   baselines: ReturnType<typeof import("./baselines.mjs").createBaselines>,
  * }} deps
  */
-export function blocklistRoutes({ library, jobs, settings, sentinel }) {
+export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }) {
   const router = express.Router();
   // The address Pi-hole uses to reach TheySpy can differ from the browser's (localhost, a proxy):
   // the owner can set it; otherwise the address this page was opened at is used.
   const origin = (req) => settings.get("lists_base_url") ?? `${req.protocol}://${req.get("host")}`;
-  const addressOf = (req, id) => `${origin(req)}/lists/${library.listToken()}/${id}.txt`;
+  // Adblock format: Pi-hole and AdGuard Home then block each name's subdomains too, as the source
+  // lists (mostly ||name^ rules) intend; a plain-domain list would block only the exact names.
+  const addressOf = (req, id) => `${origin(req)}/lists/${library.listToken()}/${id}.adblock`;
 
   router.get("/", (req, res) => {
     const base = `${origin(req)}/lists/${library.listToken()}`;
@@ -73,7 +86,7 @@ export function blocklistRoutes({ library, jobs, settings, sentinel }) {
       listsBaseUrlSet: Boolean(settings.get("lists_base_url")),
       pihole: { connected: sentinel.publicConfig().mode === "api", write: sentinel.publicConfig().write },
       subscriptions: [...Object.entries(compiledLists).map(([id, l]) => ({ id, name: l.name, description: l.description })), ...categories.map((c) => ({ id: c.id, name: c.name, description: c.description }))]
-        .map((l) => ({ ...l, url: `${base}/${l.id}.txt`, domains: (n.lists[l.id] ?? n.categories[l.id]).domains })),
+        .map((l) => ({ ...l, url: `${base}/${l.id}.adblock`, domains: (n.lists[l.id] ?? n.categories[l.id]).domains })),
       formats: Object.entries(listFormats).map(([id, f]) => ({ id, label: f.label })),
     });
   });
@@ -139,6 +152,35 @@ export function blocklistRoutes({ library, jobs, settings, sentinel }) {
   router.delete("/pihole", (req, res) => {
     const address = String(req.body?.address ?? "");
     res.status(202).json({ job: jobs.enqueue("pihole.unsubscribe", { actor: "owner", params: { address } }) });
+  });
+
+  // --- baselines -------------------------------------------------------------------------------
+  router.get("/baselines", async (_req, res) => {
+    res.json({ baselines: baselines.list(), categories, scopes: await baselines.scopes(), assignments: baselines.assignments(), pihole: { connected: sentinel.publicConfig().mode !== null, api: sentinel.publicConfig().mode === "api", write: sentinel.publicConfig().write } });
+  });
+  router.get("/baselines/preview", async (req, res) => {
+    const client = req.query.client ? String(req.query.client) : undefined;
+    if (client && !/^[0-9a-f.:]{2,45}$/i.test(client)) return res.status(400).json({ error: "client must be an IP address" });
+    const windowDays = Number(req.query.days ?? 7);
+    if (![1, 7, 14, 30].includes(windowDays)) return res.status(400).json({ error: "days must be 1, 7, 14 or 30" });
+    const preview = await baselines.preview({ client, windowDays });
+    // Security sites are spyware, malware and phishing names: they leave the server defanged, like indicators.
+    const safe = (site) => (site.categories.some((c) => securityCategories.includes(c)) ? { ...site, site: defang(site.site), names: site.names.map(defang) } : site);
+    res.json({ ...preview, levels: preview.levels.map((l) => ({ ...l, details: l.details.map(safe) })) });
+  });
+  router.put("/baselines/exceptions", (req, res) => {
+    const { scope, site, keep } = req.body ?? {};
+    if (typeof scope !== "string" || !/^(network|device-[0-9a-f-]+)$/i.test(scope) || typeof site !== "string" || !site) return res.status(400).json({ error: "scope and site are required" });
+    res.json({ exceptions: baselines.setException(scope, site.toLowerCase().replaceAll("[.]", "."), keep !== false, "owner") });
+  });
+  router.post("/baselines/apply", (req, res) => {
+    const { baselineId, client } = req.body ?? {};
+    if (!baselineById(baselineId)) return res.status(400).json({ error: "No such baseline" });
+    if (client && !/^[0-9a-f.:]{2,45}$/i.test(String(client))) return res.status(400).json({ error: "client must be an IP address" });
+    res.status(202).json({ job: jobs.enqueue("baselines.apply", { actor: "owner", params: { baselineId, client: client || undefined, listsOrigin: origin(req) } }) });
+  });
+  router.post("/baselines/remove", (req, res) => {
+    res.status(202).json({ job: jobs.enqueue("baselines.remove", { actor: "owner", params: { client: req.body?.client || undefined } }) });
   });
 
   router.put("/pins", (req, res) => {

@@ -9,7 +9,7 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 - Keep a list of every device on your network, and check any one in depth.
 - Gather CVEs and zero-days from 11 feeds and show which apply to your devices, including the one you are reading on.
 
-**Status: M3 part 1 (blocklist library), after M2 (Pi-hole Sentinel).** The Blocklist library finds DNS blocklists in three directories, keeps the enabled ones current behind safety checks, sorts them into categories, and serves compiled lists Pi-hole can subscribe to with one click. TheySpy connects to Pi-hole 6 (or reads its database file), hunts its DNS history and watches new queries for lookups of zero-breach's AdFection / Candiru indicators, shows which indicator domains Pi-hole already blocks, and adds the rest with your approval — and can take them out again. The Indicators screen keeps the set current from signed releases and exports it for DNS filters, MVT and MISP. Other screens say which milestone fills them.
+**Status: M3 (blocklist library and baselines), after M2 (Pi-hole Sentinel).** Baselines suggest a blocking level — Essential, Balanced, Strict or Lockdown — for the whole network or each device, show which sites each level would block on that device's real DNS traffic (and which might break something), let you keep any site allowed, and apply the level in Pi-hole with one click, for one device through its own Pi-hole group; removing it puts Pi-hole back exactly as it was. The Blocklist library finds DNS blocklists in three directories, keeps the enabled ones current behind safety checks, sorts them into categories, and serves compiled lists Pi-hole can subscribe to. TheySpy connects to Pi-hole 6 (or reads its database file), hunts its DNS history and watches new queries for lookups of zero-breach's AdFection / Candiru indicators, shows which indicator domains Pi-hole already blocks, and adds the rest with your approval — and can take them out again. The Indicators screen keeps the set current from signed releases and exports it for DNS filters, MVT and MISP. Other screens say which milestone fills them.
 
 ## Run it
 
@@ -17,7 +17,7 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 docker compose up -d
 ```
 
-Open `http://<this machine>:8797`. Without `TS_ADMIN_PASSWORD`, the first start prints a generated owner password once:
+Open `http://<this machine>:8797`. Images are published for amd64 and arm64 (a Raspberry Pi beside Pi-hole works). Without `TS_ADMIN_PASSWORD`, the first start prints a generated owner password once:
 
 ```bash
 docker compose logs theyspy

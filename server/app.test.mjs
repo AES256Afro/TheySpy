@@ -4,13 +4,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.mjs";
 import { readConfig } from "./config.mjs";
-import { testServices, vendored } from "./test-helpers.mjs";
+import { fakePihole, testServices, vendored } from "./test-helpers.mjs";
 
 const servers = [];
 afterEach(() => { for (const server of servers.splice(0)) server.close(); });
 
-async function start({ env = {}, staticDirectory } = {}) {
-  const services = testServices();
+async function start({ env = {}, staticDirectory, services: options = {} } = {}) {
+  const services = testServices(options);
   const config = readConfig({ TS_DATA_DIR: tmpdir(), ...env });
   const app = createApp({ config, ...services, ...(staticDirectory ? { staticDirectory } : { staticDirectory: path.join(tmpdir(), "theyspy-no-dist") }) });
   const server = app.listen(0, "127.0.0.1");
@@ -137,10 +137,28 @@ describe("HTTP API", () => {
     await request("POST", "/api/login", { password: "correct horse" });
     const overview = (await request("GET", "/api/blocklists")).body;
     expect(overview.sources.filter((s) => s.status === "enabled")).toHaveLength(7);
-    expect(overview.subscriptions.find((l) => l.id === "spyware").url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/lists\/[\w-]+\/spyware\.txt$/);
+    expect(overview.subscriptions.find((l) => l.id === "spyware").url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/lists\/[\w-]+\/spyware\.adblock$/);
     expect((await request("GET", "/api/blocklists/candidates?category=bypass")).body.candidates.map((c) => c.key)).toEqual(["adguard:hagezi_encrypted_dns_vpn_tor_proxy_bypass"]);
     expect((await request("POST", "/api/blocklists/sources", { url: "ftp://x" })).status).toBe(400);
     expect((await request("PUT", "/api/blocklists/pins", { pins: ["Example.COM", "not a name"] })).body).toEqual({ pins: ["example.com"] });
+  });
+
+  it("previews baselines with security names defanged, and checks what it is asked to apply", async () => {
+    const at = Date.parse("2026-10-28T10:00:00Z") / 1000;
+    const queries = [["fearevolve.com", 3], ["example.org", 4]].flatMap(([domain, count], j) => Array.from({ length: count }, (_, i) => ({ id: j * 10 + i + 1, time: at + i, type: "A", domain, cname: null, status: "FORWARDED", client: { ip: "192.168.1.42", name: null } })));
+    const { request, sentinel } = await start({ services: { piholeFetch: fakePihole({ queries }).fetchImpl, now: () => new Date("2026-10-29T12:00:00Z") } });
+    sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass", write: true }, "owner");
+    await request("POST", "/api/login", { password: "correct horse" });
+    const overview = (await request("GET", "/api/blocklists/baselines")).body;
+    expect(overview.baselines.map((b) => b.id)).toEqual(["essential", "balanced", "strict", "lockdown"]);
+    expect(overview.pihole).toEqual({ connected: true, api: true, write: true });
+    const preview = (await request("GET", "/api/blocklists/baselines/preview?client=192.168.1.42&days=7")).body;
+    expect(preview.totalQueries).toBe(7);
+    expect(preview.levels[0].details.map((s) => s.site)).toEqual(["fearevolve[.]com"]);
+    expect((await request("GET", "/api/blocklists/baselines/preview?days=3")).status).toBe(400);
+    expect((await request("PUT", "/api/blocklists/baselines/exceptions", { scope: "device-192-168-1-42", site: "fearevolve[.]com" })).body).toEqual({ exceptions: ["fearevolve.com"] });
+    expect((await request("POST", "/api/blocklists/baselines/apply", { baselineId: "extreme" })).status).toBe(400);
+    expect((await request("POST", "/api/blocklists/baselines/apply", { baselineId: "strict", client: "pixel; rm" })).status).toBe(400);
   });
 
   it("serves the app shell for client-side routes", async () => {
