@@ -15,6 +15,8 @@ import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createWebScanner } from "./web/scan.mjs";
+import { createSoftwareLookup } from "./cves/lookup.mjs";
+import { createDeviceCves } from "./cves/devices.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
@@ -34,8 +36,10 @@ const oui = createOui({ db, settings });
 const cves = createCveStore({ db, settings, audit, nvdApiKey: config.nvdApiKey });
 const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
-const web = createWebScanner({ db, cves, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges, nvdApiKey: config.nvdApiKey });
+const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey });
+const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
+const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit });
 const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
 
 if (auth.generatedPassword) {
@@ -43,7 +47,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });

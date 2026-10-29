@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { testClock, testServices } from "../test-helpers.mjs";
 import { fingerprint } from "./scan.mjs";
 
-const nvd = (ids) => Response.json({ totalResults: ids.length, vulnerabilities: ids.map(([id, score]) => ({ cve: { id, descriptions: [{ lang: "en", value: `${id} in PHP` }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: score, baseSeverity: score >= 9 ? "CRITICAL" : "HIGH" } }] } } })) });
+const nvd = (ids, vendor, product) => Response.json({ totalResults: ids.length, vulnerabilities: ids.map(([id, score]) => ({ cve: {
+  id, descriptions: [{ lang: "en", value: `${id} in ${product}` }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: score, baseSeverity: score >= 9 ? "CRITICAL" : "HIGH" } }] },
+  configurations: [{ nodes: [{ cpeMatch: [{ vulnerable: true, criteria: `cpe:2.3:a:${vendor}:${product}:*:*:*:*:*:*:*:*`, versionEndExcluding: "99" }] }] }],
+} })) });
 
 /** A small fake web: each site is a map of path → response; NVD answers by the version asked for. */
 function web(sites, requests = []) {
@@ -11,8 +14,8 @@ function web(sites, requests = []) {
     requests.push(`${init.method ?? "GET"} ${url.href}`);
     if (url.hostname === "services.nvd.nist.gov") {
       const match = url.searchParams.get("virtualMatchString");
-      if (match === "cpe:2.3:a:php:php:7.4.3") return nvd([["CVE-2024-4577", 9.8], ["CVE-2022-31626", 8.8]]);
-      if (match === "cpe:2.3:a:wordpress:wordpress:6.2") return nvd([["CVE-2023-38000", 5.4]]);
+      if (match === "cpe:2.3:a:php:php:7.4.3") return nvd([["CVE-2024-4577", 9.8], ["CVE-2022-31626", 8.8]], "php", "php");
+      if (match === "cpe:2.3:a:wordpress:wordpress:6.2") return nvd([["CVE-2023-38000", 5.4]], "wordpress", "wordpress");
       return nvd([]);
     }
     const site = sites[url.origin];
