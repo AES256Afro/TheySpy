@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 cleanup
 docker network create --subnet 172.29.53.0/24 "$net" >/dev/null
-docker run -d --name theyspy-e2e-pihole --network "$net" --ip 172.29.53.2 -p "127.0.0.1:$port:80" \
+docker run -d --name theyspy-e2e-pihole --network "$net" --ip 172.29.53.2 -p "127.0.0.1:$port:80" --add-host host.docker.internal:host-gateway \
   -e TZ=Etc/UTC -e FTLCONF_webserver_api_password="$password" -e FTLCONF_dns_upstreams='127.0.0.1#5353' \
   -e FTLCONF_dns_listeningMode=all "$image" >/dev/null
 
@@ -51,5 +51,5 @@ lookup 172.29.53.11 c2-node.theyspy.test
 lookup 172.29.53.11 c2-node.theyspy.test
 lookup 172.29.53.12 unrelated.theyspy.test
 
-PIHOLE_URL="http://127.0.0.1:$port" PIHOLE_PASSWORD="$password" E2E_SENT_AT="$sent_at" E2E_DOCKER_NETWORK="$net" \
+PIHOLE_URL="http://127.0.0.1:$port" PIHOLE_PASSWORD="$password" E2E_SENT_AT="$sent_at" E2E_DOCKER_NETWORK="$net" E2E_LISTS_HOST=host.docker.internal \
   node scripts/e2e-pihole.mjs

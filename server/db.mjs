@@ -110,6 +110,49 @@ export const migrations = [
      rolled_back_at TEXT,
      rolled_back_by TEXT
    );`,
+  // M3: the blocklist library. Every list TheySpy knows of (found in a directory, added by the
+  // owner, or built in), and each fetched version with its domains as one gzip blob, kept so a
+  // change can be diffed, held for review, or rolled back to.
+  `CREATE TABLE blocklist_sources (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     key TEXT NOT NULL UNIQUE,
+     directory TEXT NOT NULL,
+     name TEXT NOT NULL,
+     description TEXT,
+     url TEXT,
+     homepage TEXT,
+     license TEXT,
+     syntax TEXT,
+     categories TEXT NOT NULL,
+     curated INTEGER NOT NULL DEFAULT 0,
+     status TEXT NOT NULL CHECK (status IN ('candidate', 'enabled', 'disabled')),
+     deprecated INTEGER NOT NULL DEFAULT 0,
+     discovered_at TEXT NOT NULL,
+     etag TEXT,
+     last_modified TEXT,
+     last_checked_at TEXT,
+     last_changed_at TEXT,
+     failures INTEGER NOT NULL DEFAULT 0,
+     last_error TEXT,
+     active_version_id INTEGER
+   );
+   CREATE INDEX blocklist_sources_status ON blocklist_sources (status);
+   CREATE TABLE blocklist_versions (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     source_id INTEGER NOT NULL REFERENCES blocklist_sources (id),
+     status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'quarantined', 'rejected')),
+     sha256 TEXT NOT NULL,
+     count INTEGER NOT NULL,
+     added INTEGER NOT NULL,
+     removed INTEGER NOT NULL,
+     sample TEXT NOT NULL,
+     reasons TEXT NOT NULL,
+     domains BLOB NOT NULL,
+     fetched_at TEXT NOT NULL,
+     decided_at TEXT,
+     decided_by TEXT
+   );
+   CREATE INDEX blocklist_versions_source ON blocklist_versions (source_id, status);`,
 ];
 
 /**

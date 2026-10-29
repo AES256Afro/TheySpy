@@ -17,6 +17,8 @@ export function readConfig(env = process.env) {
     cookieSecure: env.TS_COOKIE_SECURE === "true",
     // Daily look for a newer indicator set (it is only offered for review, never applied).
     iocAutoCheck: env.TS_IOC_AUTOCHECK !== "false",
+    // Look for new blocklists daily and update the enabled ones every 6 hours.
+    blocklistsAuto: env.TS_BLOCKLISTS_AUTO !== "false",
     // Pi-hole: these override what the owner sets on the Pi-hole Sentinel screen.
     pihole: {
       url: env.TS_PIHOLE_URL?.trim() || undefined,

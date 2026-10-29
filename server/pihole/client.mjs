@@ -114,6 +114,12 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
       return out;
     },
 
+    /** The names the network looks up most (answered, not blocked). */
+    async topDomains(count = 200) {
+      const data = await call("GET", `stats/top_domains?count=${count}&blocked=false`);
+      return (data?.domains ?? []).map((d) => String(d.domain));
+    },
+
     /** Whether Pi-hole would block a name, and why: its own lists or its adlists (gravity). */
     async search(domain) {
       const data = await call("GET", `search/${encodeURIComponent(domain)}?partial=false&N=50`);
@@ -123,6 +129,34 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
     /** @param {"allow" | "deny"} type @param {"exact" | "regex"} kind */
     async listDomains(type, kind) {
       return (await call("GET", `domains/${type}/${kind}`))?.domains ?? [];
+    },
+
+    /** Pi-hole's adlists (subscriptions) of one type. */
+    async listAdlists(type = "block") {
+      return (await call("GET", `lists?type=${type}`))?.lists ?? [];
+    },
+
+    /** Subscribes Pi-hole to a list URL; the type goes in the query string, as FTL requires. */
+    async addAdlist(address, comment) {
+      await call("POST", "lists?type=block", { address, comment, groups: [0], enabled: true });
+    },
+
+    async deleteAdlist(address) {
+      await call("DELETE", `lists/${encodeURIComponent(address)}?type=block`);
+    },
+
+    /** Rebuilds gravity (downloads every adlist); returns Pi-hole's own log of it. */
+    async updateGravity() {
+      let response;
+      try {
+        response = await fetchImpl(new URL("action/gravity", base), { method: "POST", headers: { "user-agent": `TheySpy/${productVersion}`, ...(sid ? { "X-FTL-SID": sid } : {}) }, redirect: "error", signal: AbortSignal.timeout(10 * 60_000) });
+      } catch (error) {
+        throw new PiholeError(`Could not reach Pi-hole at ${base.origin}: ${error.cause?.code ?? error.message}`, { cause: error });
+      }
+      const text = await response.text();
+      if (!response.ok) throw new PiholeError(`Pi-hole answered ${response.status} to its gravity update`, { status: response.status });
+      // eslint-disable-next-line no-control-regex -- stripping the terminal colour codes in Pi-hole's gravity log
+      return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
     },
 
     /** Adds deny-regex entries in one request; returns what Pi-hole says it processed. */
