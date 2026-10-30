@@ -22,6 +22,7 @@ import { createDigest } from "./digest.mjs";
 import { createApiTokens } from "./integrations.mjs";
 import { createReadModel } from "./readmodel.mjs";
 import { createAgents } from "./agents.mjs";
+import { createExposure } from "./exposure.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
@@ -207,6 +208,7 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const digest = createDigest({ fleet, sentinel, cves, library, alerts, now });
   read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest, now });
   const tokens = createApiTokens({ db, audit, now });
+  const exposure = createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit, fetchImpl: webFetch, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, now };
 }

@@ -52,10 +52,11 @@ export function identifyBrowser({ userAgent = "", uaData = null }) {
  *   fleet: ReturnType<typeof import("./fleet/registry.mjs").createFleet>,
  *   sentinel: ReturnType<typeof import("./pihole/sentinel.mjs").createSentinel>,
  *   software: ReturnType<typeof import("./cves/lookup.mjs").createSoftwareLookup>,
+ *   remember?: (deviceId: number, observed: object) => void,
  *   now?: () => Date,
  * }} deps
  */
-export function thisDeviceRoutes({ fleet, sentinel, software, now = () => new Date() }) {
+export function thisDeviceRoutes({ fleet, sentinel, software, remember = () => {}, now = () => new Date() }) {
   const router = express.Router();
   const pending = new Map(); // token → issued at (ms); a token is good for ten minutes
 
@@ -94,6 +95,7 @@ export function thisDeviceRoutes({ fleet, sentinel, software, now = () => new Da
     }
     const gpc = req.get("sec-gpc") === "1" || body.gpc === true;
     const device = fleet.list().find((d) => d.ip === (dns.from ?? req.ip)) ?? null;
+    if (device) remember(device.id, { gpc, adBlocked: body.adBlocked === true, dnsThroughPihole: dns.checked ? Boolean(dns.throughPihole) : null, browser: browser ? `${browser.name} ${browser.version}` : null, browserExact: Boolean(browser?.exact), exploited: cves ? cves.filter((c) => c.kev).length : null, at: now().toISOString() });
     res.json({
       browser, os, gpc, adBlocked: body.adBlocked === true, dns, clientIp: req.ip,
       device: device ? { id: device.id, name: device.name, ip: device.ip } : null,

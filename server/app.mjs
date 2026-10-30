@@ -12,6 +12,7 @@ import { cveRoutes } from "./cves/routes.mjs";
 import { adProbeUrl, dnsCheckZone, thisDeviceRoutes } from "./thisdevice.mjs";
 import { integrationRoutes } from "./integrations.mjs";
 import { agentPublicRoutes, evidenceRoutes } from "./agent-routes.mjs";
+import { kits } from "./exposure.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -49,11 +50,12 @@ function readCookie(header, name) {
  *   tokens: ReturnType<typeof import("./integrations.mjs").createApiTokens>,
  *   advisories: ReturnType<typeof import("./cves/advisories.mjs").createAdvisories>,
  *   agents: ReturnType<typeof import("./agents.mjs").createAgents>,
+ *   exposure: ReturnType<typeof import("./exposure.mjs").createExposure>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -156,9 +158,18 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
   app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
-  app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
+  app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
 
   app.use("/api/evidence", requireOwner, evidenceRoutes({ agents }));
+
+  // Ad exposure: the checklist per device and for the network, the egress check, the kits.
+  app.get("/api/exposure", requireOwner, (_req, res) => res.json(exposure.overview()));
+  app.post("/api/exposure/egress", requireOwner, async (_req, res) => res.json(await exposure.checkEgress("owner")));
+  app.get("/api/exposure/kits/:id", requireOwner, (req, res) => {
+    const kit = kits[/** @type {keyof typeof kits} */ (req.params.id)];
+    if (!kit) return res.status(404).json({ error: "No such kit" });
+    res.type(kit.type).set("Content-Disposition", `attachment; filename="${kit.filename}"`).send(kit.body(sentinel.publicConfig().url ?? ""));
+  });
 
   // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
   app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(Number(req.query.days ?? 7) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
