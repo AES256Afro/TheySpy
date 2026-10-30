@@ -268,4 +268,21 @@ describe("HTTP API", () => {
     expect((await request("HEAD", "/")).status).toBe(200);
     expect((await request("GET", "/api/nope")).status).toBe(404);
   });
+  it("hands the owner a checked copy of the database", async () => {
+    const { request } = await start();
+    expect((await request("GET", "/api/backup")).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    const response = await request("GET", "/api/backup");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toMatch(/attachment; filename="theyspy-2026-10-29\.db"/);
+    expect(response.body.startsWith("SQLite format 3")).toBe(true);
+  });
+
+  it("slows down a caller guessing API tokens", async () => {
+    const { request } = await start();
+    const codes = [];
+    for (let i = 0; i < 32; i += 1) codes.push((await request("GET", "/api/v1/status", undefined, { authorization: "Bearer tsy_wrong" })).status);
+    expect(codes.slice(0, 31).every((c) => c === 401)).toBe(true);
+    expect(codes[31]).toBe(429);
+  });
 });

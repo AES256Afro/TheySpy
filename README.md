@@ -10,7 +10,17 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 - Check a website you run for PHP problems: an unsupported PHP version, its CVEs, a PHP CMS's version and CVEs, and files that should never be public (.env, .git, phpinfo, PHPUnit's eval-stdin.php, config backups). Sites on your network can be checked directly; a public site must be proved yours with a token file or DNS record.
 - Gather CVEs and zero-days from 11 feeds and show which apply to your devices, including the one you are reading on.
 
-**Status: M6 (CVEs matched to devices, and This device), after M5 part 1.** This device shows the CVEs that apply to the browser you are reading on, the one version that fixes them, and whether Global Privacy Control, ad blocking and DNS through Pi-hole are working. Targeted checks now list the CVEs for each product and version found on a device, which you can accept or mark fixed. CVEs & zero-days aggregates CISA's Known Exploited Vulnerabilities catalog (hourly; a new entry is flagged as a zero-day and logged), NVD 2.0 (every 2 hours, incrementally) and FIRST's EPSS scores (daily), with exploited bugs first. The Targeted check looks at one address, MAC, hostname, network or domain: whether it is up, what listens on it (with product versions from banners and certificates, and risky ports flagged), and what Pi-hole saw it look up; a domain check only reads Pi-hole's history. The Fleet screen lists every device on your network, merged by MAC from Pi-hole's network table, the neighbour table and sweeps of the networks you choose (an unprivileged probe of a few common ports, only inside `TS_SCAN_RANGES`); new devices are flagged and logged, and you can name, tag and trust each one. Baselines suggest a blocking level — Essential, Balanced, Strict or Lockdown — for the whole network or each device, show which sites each level would block on that device's real DNS traffic (and which might break something), let you keep any site allowed, and apply the level in Pi-hole with one click, for one device through its own Pi-hole group; removing it puts Pi-hole back exactly as it was. Try a level in shadow first (it counts what it would have blocked, changing nothing), or build your own from any categories. The Blocklist library finds DNS blocklists in three directories, keeps the enabled ones current behind safety checks, sorts them into categories, and serves compiled lists Pi-hole can subscribe to. TheySpy connects to Pi-hole 6 (or reads its database file), hunts its DNS history and watches new queries for lookups of zero-breach's AdFection / Candiru indicators, shows which indicator domains Pi-hole already blocks, and adds the rest with your approval — and can take them out again. The Indicators screen keeps the set current from signed releases and exports it for DNS filters, MVT and MISP. Other screens say which milestone fills them.
+**Status: 1.0.** All milestones in [docs/PLAN.md](docs/PLAN.md) are done:
+- Pi-hole hunting and blocking;
+- the blocklist library and baselines;
+- the device fleet and targeted checks;
+- CVE and zero-day matching (including the device you read on);
+- the endpoint agent and MVT import (Evidence locker);
+- ad-exposure scores and hardening kits;
+- alerts, the weekly briefing, a read-only API and MCP;
+- BoxPilot packaging with backup and restore.
+
+Start with [docs/GUIDE.md](docs/GUIDE.md). [SECURITY.md](SECURITY.md) has the threat model and the security review.
 
 ## Run it
 
@@ -63,13 +73,13 @@ npm run dev:server
 npm run dev
 ```
 
-The UI runs on 5173 and hands `/api` to the server on 8797. `sh scripts/e2e-pihole.sh` checks Pi-hole Sentinel against a real, offline Pi-hole 6 in Docker. `npm run check` builds, type-checks, tests, lints, checks every look's contrast (and that no colour is hard-coded outside `shared/looks.json`), and validates the BoxPilot manifest against BoxPilot's schema when a checkout is at `../BoxPilot` or `BOXPILOT_DIR`.
+The UI runs on 5173 and hands `/api` to the server on 8797. `sh scripts/e2e-pihole.sh` checks Pi-hole Sentinel against a real, offline Pi-hole 6 in Docker; `sh scripts/e2e-agent.sh` runs the real agent and scanner in a throwaway container; `sh scripts/e2e-restore.sh` backs up, wipes and restores the built image. `npm run check` builds, type-checks, tests, lints, checks every look's contrast (and that no colour is hard-coded outside `shared/looks.json`), validates the BoxPilot manifest against BoxPilot's schema when a checkout is at `../BoxPilot` or `BOXPILOT_DIR`, and runs the release checklist.
 
 ## Layout
 
 - `server/` Node 24 + Express 5 + `node:sqlite`: config, migrations, auth, jobs, audit, appearance, `iocs/` (indicators), `pihole/` (Pi-hole Sentinel) and `blocklists/` (the blocklist library).
 - `src/` React 19 UI. `shared/` holds the look tokens and screen list both sides read.
-- `boxpilot/` the BoxPilot catalog manifest. `third_party/zero-breach/` is the vendored indicator set, signatures and reference exports (see its README). `agent/` fills in at M7.
+- `boxpilot/` the BoxPilot catalog manifest. `third_party/zero-breach/` is the vendored indicator set, signatures and reference exports (see its README). `agent/` is the endpoint agent (one Python file).
 - `docs/` the plan and the 13 mockups.
 
 ## Licence
