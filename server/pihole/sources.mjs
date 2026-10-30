@@ -74,7 +74,7 @@ export function apiSource({ url, password, fetchImpl }) {
     /** The owner's names for clients in Pi-hole (Group management → Clients → comment), and the router. */
     async clientLabels() {
       return client().session(async (c) => ({
-        clients: (await c.listClients()).filter((x) => x.comment?.trim()).map((x) => ({ client: String(x.client), label: x.comment.trim() })),
+        clients: (await c.listClients()).map((x) => ({ client: String(x.client), label: x.comment?.trim() || null })),
         gateway: (await c.networkGateway().catch(() => null))?.address ?? null,
       }));
     },
