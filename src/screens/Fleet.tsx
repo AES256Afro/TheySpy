@@ -4,13 +4,13 @@ import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
   tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; sources: Record<string, string>; addresses?: number; randomisedMac: boolean; online: boolean; isNew: boolean; name: string;
-  nameFrom: string; names: { pihole?: string; router?: string; tailscale?: string; checkedAt?: string };
-  network: { kind: string; label: string; detail: string } | null; guess: { kind: string | null; label: string; from: string } | null;
+  nameFrom: string; names: { pihole?: string; piholeClient?: string; router?: string; tailscale?: string; checkedAt?: string };
+  network: { kind: string; label: string; detail: string } | null; guess: { kind: string | null; label: string; from: string } | null; inPihole: boolean;
 };
 type DeviceDetail = Device & { addressHistory: { ip: string; firstSeen: string; lastSeen: string }[]; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
 type FleetEvent = { id: number; deviceId: number; at: string; kind: string; detail: Record<string, unknown>; device: string };
 type Overview = {
-  devices: Device[]; counts: { total: number; online: number; isNew: number; untrusted: number; randomised: number };
+  devices: Device[]; counts: { total: number; online: number; isNew: number; untrusted: number; randomised: number; piholeUntrusted: number };
   targets: string[]; suggestions: { cidr: string; devices: number }[]; scanRanges: string[];
   lastSync: { at: string; pihole: number; arp: number; devices: number } | null;
   lastSweep: { at: string; networks: string[]; alive: number; withMac: number; newDevices: number } | null;
@@ -40,7 +40,7 @@ const shortMac = (mac: string) => `${mac.slice(0, 8)}:…:${mac.slice(-2)}`;
 
 export function FleetScreen() {
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted">("all");
+  const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted" | "pihole">("all");
   const [query, setQuery] = useState("");
   const [showContainers, setShowContainers] = useState(false);
   const [selected, setSelected] = useState<DeviceDetail | null>(null);
@@ -93,7 +93,7 @@ export function FleetScreen() {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (overview?.devices ?? []).filter((d) => (showContainers || d.network?.kind !== "docker") && (filter === "all" || (filter === "new" && d.isNew) || (filter === "online" && d.online) || (filter === "offline" && !d.online) || (filter === "untrusted" && !d.trusted))
+    return (overview?.devices ?? []).filter((d) => (showContainers || d.network?.kind !== "docker") && (filter === "all" || (filter === "new" && d.isNew) || (filter === "online" && d.online) || (filter === "offline" && !d.online) || (filter === "untrusted" && !d.trusted) || (filter === "pihole" && d.inPihole))
       && (!q || [d.name, d.ip, d.mac, d.hostname, d.vendor, d.owner, d.names.pihole, d.names.router, d.names.tailscale, d.network?.label, d.guess?.label, ...d.tags].some((v) => v?.toLowerCase().includes(q))));
   }, [overview, filter, query, showContainers]);
   const containers = (overview?.devices ?? []).filter((d) => d.network?.kind === "docker").length;
@@ -118,6 +118,13 @@ export function FleetScreen() {
         <section className="card"><h3>Private MACs</h3><div className="kpi">{counts.randomised}</div><p className="small muted">randomised addresses: no vendor, may change</p></section>
       </div>
 
+      {counts.piholeUntrusted > 0 && (
+        <div className="banner">
+          <span className="small grow">{counts.piholeUntrusted} device{counts.piholeUntrusted === 1 ? " is" : "s are"} already listed as clients in your Pi-hole but not trusted here. Devices you set up in Pi-hole are usually yours.</span>
+          <button className="btn small" type="button" onClick={() => setFilter("pihole")}>Show them</button>
+          <button className="btn small primary" type="button" onClick={() => act(async () => { const r = await api<{ trusted: number }>("POST", "/api/fleet/trust-pihole-clients"); return r; }, `Trusted ${counts.piholeUntrusted} device${counts.piholeUntrusted === 1 ? "" : "s"} listed in Pi-hole.`)}>Trust all {counts.piholeUntrusted}</button>
+        </div>
+      )}
       {counts.total === 0 && (
         <div className="banner warn"><span className="small">No devices yet. Connect Pi-hole on the <a href="/pihole">Pi-hole Sentinel</a> screen and press “Read Pi-hole now”, or choose a network to sweep below.</span></div>
       )}
@@ -126,7 +133,7 @@ export function FleetScreen() {
         <section className="card">
           <header>
             <div className="seg" role="group" aria-label="Filter devices">
-              {([["all", "All"], ["new", `New${counts.isNew ? ` (${counts.isNew})` : ""}`], ["online", "Online"], ["offline", "Offline"], ["untrusted", "Not trusted"]] as const).map(([id, label]) => (
+              {([["all", "All"], ["new", `New${counts.isNew ? ` (${counts.isNew})` : ""}`], ["online", "Online"], ["offline", "Offline"], ["untrusted", "Not trusted"], ["pihole", "In Pi-hole"]] as const).map(([id, label]) => (
                 <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>
               ))}
             </div>
@@ -142,6 +149,7 @@ export function FleetScreen() {
                   <button type="button" className="linkish" onClick={() => void open(d.id)}><b>{d.name}</b></button>
                   {d.isNew && <span className="badge b-high" style={{ marginLeft: 6 }}>new</span>}
                   {d.trusted && <span className="badge b-ok" style={{ marginLeft: 6 }}>trusted</span>}
+                  {d.inPihole && <span className="badge b-info" style={{ marginLeft: 6 }} title="You set this device up as a client in Pi-hole (Group management → Clients)">in Pi-hole</span>}
                   <div className="muted small" title={`Name from ${d.nameFrom}`}>{[d.kind ?? d.guess?.label, d.vendor, d.owner].filter(Boolean).join(" · ") || "not identified yet"}{d.tags.length ? ` · ${d.tags.join(", ")}` : ""}</div>
                   {d.network && <div className="small" title={d.network.detail}><span className={`badge ${networkBadge[d.network.kind] ?? "b-info"}`}>{d.network.label}</span></div>}
                 </td>
@@ -198,7 +206,7 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
       <p className="small muted">Called “{device.name}” from {device.nameFrom}.{device.guess ? ` Probably: ${device.guess.label} (from ${device.guess.from}).` : ""}</p>
       {device.network && <div className="banner"><span className="small"><b>{device.network.label}.</b> {device.network.detail}</span></div>}
       <div className="list small">
-        {device.names.pihole && <div><span className="grow muted">Your Pi-hole label</span><span>{device.names.pihole}</span></div>}
+        {device.inPihole && <div><span className="grow muted">In your Pi-hole</span><span>listed as a client{device.names.pihole ? ` named “${device.names.pihole}”` : ""}</span>{!device.trusted && <button className="btn small primary" type="button" onClick={() => onSave({ trusted: true })}>Trust</button>}</div>}
         {device.names.router && <div><span className="grow muted">Name on your router</span><span className="mono">{device.names.router}</span></div>}
         {device.names.tailscale && <div><span className="grow muted">Tailscale name</span><span className="mono">{device.names.tailscale}</span></div>}
         <div><span className="grow muted">Address</span><span className="mono">{device.ip ?? "—"}</span></div>

@@ -103,11 +103,15 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
   /** Names for devices from your Pi-hole client labels, your router and Tailscale. */
   async function learnNames(labels, gateway, log) {
     const devices = fleet.list();
-    const byMac = new Map(labels.map((l) => [l.client.toLowerCase(), l.label]));
+    // Every client you set up in Pi-hole (Group management → Clients), labelled or not: a device you
+    // already know, flagged so it can be trusted in one step.
+    const listed = new Map(labels.map((l) => [l.client.toLowerCase(), l]));
     let named = 0;
     for (const d of devices) {
-      const label = (d.mac && byMac.get(d.mac)) ?? (d.ip && byMac.get(d.ip)) ?? null;
-      if ((label ?? null) !== (d.names.pihole ?? null)) fleet.setNames(d.id, { pihole: label });
+      const entry = (d.mac && listed.get(d.mac)) ?? (d.ip && listed.get(d.ip)) ?? null;
+      const label = entry?.label ?? null;
+      const flag = entry ? "listed" : null;
+      if (label !== (d.names.pihole ?? null) || flag !== (d.names.piholeClient ?? null)) fleet.setNames(d.id, { pihole: label, piholeClient: flag });
       if (label) named += 1;
     }
     const stale = (d) => !d.names.checkedAt || now().getTime() - Date.parse(d.names.checkedAt) > 6 * 3_600_000;
