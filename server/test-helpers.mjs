@@ -16,6 +16,10 @@ import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createWebScanner } from "./web/scan.mjs";
 import { createSoftwareLookup } from "./cves/lookup.mjs";
 import { createDeviceCves } from "./cves/devices.mjs";
+import { createAlerts } from "./alerts.mjs";
+import { createDigest } from "./digest.mjs";
+import { createApiTokens } from "./integrations.mjs";
+import { createReadModel } from "./readmodel.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
@@ -169,9 +173,9 @@ export function fakeWeb(files = {}) {
 
 /**
  * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, reverseVia: (server: string, ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[] }} [options]
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, reverseVia: (server: string, ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[], ntfyFetch?: typeof fetch, ntfyEnv?: { url?: string, topic?: string, token?: string } }} [options]
  */
-export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] } = {}) {
+export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], ntfyFetch = async () => new Response("", { status: 200 }), ntfyEnv = {} } = {}) {
   const settings = createSettingsStore(db, { now });
   const audit = createAuditLog(db, { now });
   const auth = createAuth({ db, settings, audit, adminPassword, sessionSecret, now });
@@ -194,6 +198,11 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
     resolve: async (host) => { const ip = await lookup(host); return ip ? [ip] : []; }, resolveTxt: async () => [] });
   const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup, web });
   const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, now });
+  /** @type {any} */ let read;
+  const alerts = createAlerts({ db, settings, audit, secretBox: createSecretBox(auth.deriveKey("alerts")), env: ntfyEnv, names: () => fleet.namesByIp(), kevMatches: (ids) => read.kevMatches(ids), fetchImpl: ntfyFetch, now });
+  const digest = createDigest({ fleet, sentinel, cves, library, alerts, now });
+  read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest, now });
+  const tokens = createApiTokens({ db, audit, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, now };
 }

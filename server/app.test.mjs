@@ -230,6 +230,36 @@ describe("HTTP API", () => {
     expect((await request("POST", "/api/this-device/check", { token: again.token })).status).toBe(400); // tokens are single-use
   });
 
+  it("answers an MCP client with a token: devices, indicator lookups and exploited CVEs on devices (M9 exit criterion)", async () => {
+    const { request, fleet, cves, checker } = await start({ services: { network: { probeHost: async () => ({ port: 22, answer: "open" }), checkPortsImpl: async () => [{ port: 22, proto: "tcp", service: "ssh", banner: "SSH-2.0-OpenSSH_9.6p1", product: "OpenSSH", version: "9.6p1", tls: null, risk: null }] } } });
+    fleet.observe([{ ip: "192.168.8.140", mac: "30:c5:99:5e:fd:3a", seenAt: "2026-10-29T11:59:00.000Z" }], "pihole");
+    await checker.run({ query: "192.168.8.140", profile: "standard" }, "owner");
+    cves.applyKev({ version: "1", entries: [{ cveId: "CVE-2024-6387", added: "2024-07-01", due: "2024-07-22", ransomware: false, name: "OpenSSH regreSSHion", description: "x", action: "x", product: "openbsd:openssh", cwes: [] }] });
+
+    const mcp = (body, token) => request("POST", "/mcp", body, token ? { authorization: `Bearer ${token}`, "x-theyspy": "" } : { "x-theyspy": "" });
+    expect((await mcp({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })).status).toBe(401);
+    await request("POST", "/api/login", { password: "correct horse" });
+    const { token } = (await request("POST", "/api/briefing/tokens", { name: "BoxPilot agents" })).body;
+    expect(token).toMatch(/^tsy_/);
+
+    const init = (await mcp({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, token)).body;
+    expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", serverInfo: { name: "theyspy" }, capabilities: { tools: {} } });
+    expect((await mcp({ jsonrpc: "2.0", method: "notifications/initialized" }, token)).status).toBe(202);
+    const listed = (await mcp({ jsonrpc: "2.0", id: 2, method: "tools/list" }, token)).body.result.tools.map((t) => t.name);
+    expect(listed).toEqual(["list_devices", "list_indicator_lookups", "list_exploited_cves_on_devices", "check_domain", "get_status"]);
+    const call = async (name, args = {}) => (await mcp({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name, arguments: args } }, token)).body.result.structuredContent;
+    expect((await call("list_devices")).devices).toMatchObject([{ ip: "192.168.8.140", network: "Another private network" }]);
+    expect((await call("list_indicator_lookups")).lookups).toEqual([]);
+    expect((await call("list_exploited_cves_on_devices")).cves).toMatchObject([{ cveId: "CVE-2024-6387", software: "OpenSSH 9.6p1", due: "2024-07-22", confidence: "product" }]);
+    expect((await mcp({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "check_domain", arguments: { domain: "a b" } } }, token)).body.error.code).toBe(-32602);
+
+    // The JSON API takes the same token; a revoked token stops working.
+    expect((await request("GET", "/api/v1/devices", undefined, { authorization: `Bearer ${token}` })).body.devices).toHaveLength(1);
+    const id = (await request("GET", "/api/briefing")).body.tokens[0].id;
+    await request("DELETE", `/api/briefing/tokens/${id}`);
+    expect((await request("GET", "/api/v1/devices", undefined, { authorization: `Bearer ${token}` })).status).toBe(401);
+  });
+
   it("serves the app shell for client-side routes", async () => {
     const dist = mkdtempSync(path.join(tmpdir(), "theyspy-dist-"));
     writeFileSync(path.join(dist, "index.html"), "<!doctype html><title>shell</title>");
