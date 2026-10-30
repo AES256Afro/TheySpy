@@ -4,7 +4,7 @@ import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
   tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; sources: Record<string, string>; addresses?: number; randomisedMac: boolean; online: boolean; isNew: boolean; name: string;
-  nameFrom: string; names: { pihole?: string; piholeClient?: string; router?: string; tailscale?: string; checkedAt?: string };
+  nameFrom: string; names: { pihole?: string; piholeClient?: string; netalertx?: string; router?: string; tailscale?: string; checkedAt?: string };
   network: { kind: string; label: string; detail: string } | null; guess: { kind: string | null; label: string; from: string } | null; inPihole: boolean;
 };
 type DeviceDetail = Device & { addressHistory: { ip: string; firstSeen: string; lastSeen: string }[]; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
@@ -192,9 +192,54 @@ export function FleetScreen() {
                 <button className="btn small" type="button" disabled={Boolean(busy)} onClick={() => run("vendors", () => api("POST", "/api/fleet/vendors"))}>{busy === "vendors" ? "Loading…" : "Update"}</button></div>
             </div>
           </section>
+          <NetAlertXCard onChanged={() => void load()} />
         </div>
       </div>
     </div>
+  );
+}
+
+type NetAlertXConfig = { configured: boolean; url: string | null; hasToken: boolean; write: boolean; lastSync: { at: string; devices: number; added: number; named: number; filled: number; toFill: number } | null };
+type Fill = { mac: string; device: string; column: string; from: string; to: string };
+const columnLabel: Record<string, string> = { devName: "name", devOwner: "owner", devType: "type" };
+
+/** NetAlertX both ways: its devices and names come in; TheySpy fills only empty fields there. */
+function NetAlertXCard({ onChanged }: { onChanged: () => void }) {
+  const [config, setConfig] = useState<NetAlertXConfig | null>(null);
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [fills, setFills] = useState<Fill[] | null>(null);
+  const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const load = useCallback(async () => { const c = await api<NetAlertXConfig>("GET", "/api/fleet/netalertx"); setConfig(c); setUrl((u) => u || c.url || ""); }, []);
+  useEffect(() => { void load().catch(() => {}); }, [load]);
+  const step = async (fn: () => Promise<string>) => {
+    setNote(null);
+    try { setNote({ tone: "good", text: await fn() }); await load(); onChanged(); } catch (e) { setNote({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
+  };
+  if (!config) return null;
+  return (
+    <section className="card stack">
+      <h3>NetAlertX</h3>
+      <p className="small muted">Its devices join the Fleet, with the names, owners and types you gave them there. TheySpy can fill the same fields in NetAlertX where they are empty, never ones you filled, and only after you allow it.</p>
+      <div className="field"><label htmlFor="nax-url">API address</label><input id="nax-url" className="input" placeholder="http://192.168.1.5:20212" value={url} onChange={(e) => setUrl(e.target.value)} /><span className="hint">NetAlertX&apos;s API port (GRAPHQL_PORT), 20212 by default.</span></div>
+      <div className="field"><label htmlFor="nax-token">API token</label><input id="nax-token" className="input" type="password" autoComplete="off" placeholder={config.hasToken ? "Saved (leave empty to keep)" : "Settings → API → API_TOKEN"} value={token} onChange={(e) => setToken(e.target.value)} /></div>
+      <div className="row">
+        <button className="btn" type="button" onClick={() => step(async () => { await api("PUT", "/api/fleet/netalertx", { url, ...(token ? { token } : {}) }); setToken(""); const t = await api<{ devices: number }>("POST", "/api/fleet/netalertx/test"); return `Connected: NetAlertX lists ${t.devices} devices.`; })}>Save and test</button>
+        {config.configured && <button className="btn" type="button" onClick={() => step(async () => { const r = await api<{ devices: number; added: number; named: number; filled: number }>("POST", "/api/fleet/netalertx/sync"); return `Synced ${r.devices} devices: ${r.added} new here, ${r.named} named by NetAlertX, ${r.filled} with owner or type filled.`; })}>Sync now</button>}
+        {config.configured && <button className="btn" type="button" onClick={() => step(async () => { const r = await api<{ changes: Fill[] }>("GET", "/api/fleet/netalertx/preview"); setFills(r.changes); return r.changes.length ? `${r.changes.length} empty NetAlertX field(s) TheySpy could fill: see below.` : "Nothing to fill in NetAlertX."; })}>Preview filling NetAlertX</button>}
+      </div>
+      {config.lastSync && <span className="small muted">Last sync {ago(config.lastSync.at)}: {config.lastSync.devices} devices · runs every 30 minutes</span>}
+      {fills && fills.length > 0 && (
+        <>
+          <div className="list small">{fills.map((f) => <div key={`${f.mac}-${f.column}`}><span className="grow">{f.device}: {columnLabel[f.column] ?? f.column} <span className="muted">{f.from || "(empty)"}</span> → <b>{f.to}</b></span></div>)}</div>
+          {config.write
+            ? <div><button className="btn primary" type="button" onClick={() => step(async () => { const r = await api<{ filled: number }>("POST", "/api/fleet/netalertx/push"); setFills(null); return `Filled ${r.filled} field(s) in NetAlertX.`; })}>Fill these in NetAlertX</button></div>
+            : <div><button className="btn" type="button" onClick={() => step(async () => { await api("PUT", "/api/fleet/netalertx", { write: true }); return "TheySpy may now fill empty fields in NetAlertX. Press Fill when you are ready."; })}>Allow TheySpy to fill empty fields in NetAlertX</button></div>}
+        </>
+      )}
+      {config.write && <div><button className="btn small" type="button" onClick={() => step(async () => { await api("PUT", "/api/fleet/netalertx", { write: false }); setFills(null); return "TheySpy will not change NetAlertX."; })}>Stop TheySpy changing NetAlertX</button></div>}
+      {note && <div className={`banner ${note.tone}`} role="status"><span className="small">{note.text}</span></div>}
+    </section>
   );
 }
 

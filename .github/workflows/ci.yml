@@ -86,12 +86,26 @@ jobs:
       - run: npm ci --omit=dev
       - run: sh scripts/e2e-agent.sh
 
+  # NetAlertX both ways, for real: its devices and names come in, and TheySpy fills only empty fields
+  # there, one at a time, leaving everything the owner typed in NetAlertX as it was.
+  netalertx-e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: sh scripts/e2e-netalertx.sh
+
   # A version tag publishes ghcr.io/aes256afro/theyspy:<version>, the image BoxPilot's catalog
   # pins by digest. Same pipeline as BaselineWatch: signed keylessly with Sigstore, with an SBOM
   # and build provenance attached.
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [check, container, pihole-e2e, agent-e2e]
+    needs: [check, container, pihole-e2e, agent-e2e, netalertx-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read

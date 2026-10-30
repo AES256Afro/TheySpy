@@ -54,10 +54,11 @@ function readCookie(header, name) {
  *   exposure: ReturnType<typeof import("./exposure.mjs").createExposure>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
+ *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -158,7 +159,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
 

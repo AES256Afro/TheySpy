@@ -51,12 +51,13 @@ export function guessKind({ names = [], vendor = null, mac = null }) {
 /** "Mac.tail6233fa.ts.net" → "Mac"; "nas.lan" → "nas". */
 export const shortName = (name) => (name ? String(name).replace(/\.$/, "").split(".")[0] : name);
 
-const nameSources = [["pihole", "your Pi-hole label"], ["router", "your router"], ["tailscale", "Tailscale"], ["reverse", "reverse DNS"]];
+// NetAlertX's names are usually typed by the owner there too, so they come right after Pi-hole's labels.
+const nameSources = [["pihole", "your Pi-hole label"], ["netalertx", "NetAlertX"], ["router", "your router"], ["tailscale", "Tailscale"], ["reverse", "reverse DNS"]];
 
 /** The best name and where it came from: your label, then Pi-hole's, the router's, Tailscale's. */
 export function bestName({ label, names = {}, hostname, vendor, mac, ip }) {
   if (label) return { name: label, from: "your label in TheySpy" };
-  for (const [key, from] of nameSources) if (names[key]) return { name: key === "pihole" ? names[key] : shortName(names[key]), from };
+  for (const [key, from] of nameSources) if (names[key]) return { name: key === "pihole" || key === "netalertx" ? names[key] : shortName(names[key]), from };
   if (hostname && hostname !== "pi.hole") return { name: shortName(hostname), from: "Pi-hole's network table" };
   const kind = guessKind({ names: [hostname], vendor, mac });
   if (kind) return { name: `${kind.label} at ${ip}`, from: `a guess from ${kind.from}` };

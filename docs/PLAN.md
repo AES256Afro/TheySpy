@@ -380,7 +380,7 @@ Rate limits now cover agent enrollment and reports and wrong API tokens. Credent
 - **Exit:** external review of the scanning and Pi-hole write paths; 1.0 tag.
 
 ### Later
-AdGuard Home / Technitium / OPNsense (Unbound) connectors · Zeek/Suricata import for ad-impression traffic inspection · JA4 fingerprints · NetAlertX two-way sync · Protec inventory import · multi-site.
+AdGuard Home / Technitium / OPNsense (Unbound) connectors · Zeek/Suricata import for ad-impression traffic inspection · JA4 fingerprints · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · Protec inventory import · multi-site.
 
 ---
 
