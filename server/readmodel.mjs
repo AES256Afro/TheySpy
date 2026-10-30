@@ -25,13 +25,14 @@ export function createReadModel({ fleet, sentinel, cves, deviceCves, digest, now
     for (const device of realDevices()) {
       for (const item of deviceCves.inventory(device.id)) {
         for (const [vendor, product] of item.cpes) {
-          for (const row of cves.list({ kev: true, product: `${vendor}:${product}`, limit: 200 }).rows) {
+          for (const row of cves.list({ zeroDay: true, product: `${vendor}:${product}`, limit: 200 }).rows) {
             if (wanted && !wanted.has(row.cveId)) continue;
             if (!row.products.includes(`${vendor}:${product}`)) continue;
             const full = cves.get(row.cveId);
             const hit = full?.cpeMatches?.length ? matchSoftware({ vendor, product, version: item.version }, full.cpeMatches) : { confidence: "product", fixed: null };
             if (!hit) continue; // NVD's ranges say this version is not affected
-            out.push({ cveId: row.cveId, name: row.kev?.name ?? null, kevAdded: row.kev?.added ?? null, due: row.kev?.due ?? null, ransomware: row.kev?.ransomware ?? false,
+            out.push({ cveId: row.cveId, name: row.kev?.name ?? row.description?.slice(0, 120) ?? null, kevAdded: row.kev?.added ?? null, due: row.kev?.due ?? null, ransomware: row.kev?.ransomware ?? false,
+              reportedBy: row.zeroDaySources.map((s) => s.source),
               device: device.name, deviceIp: device.ip, software: `${item.product} ${item.version ?? "(version hidden)"}`, confidence: hit.confidence, fixed: hit.fixed ?? null });
           }
         }
