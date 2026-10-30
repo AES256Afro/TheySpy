@@ -40,7 +40,9 @@ If you run **NetAlertX**, connect it at the bottom of **Fleet** with its API add
 - **From NetAlertX:** its devices join the Fleet, with the names, owners and types you gave them there.
 - **To NetAlertX:** TheySpy can fill the same fields where they are empty. It never touches ones you filled, and only after you allow it and look at the preview.
 
-On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. **Trust all** next to that count marks them known in one step, so only new devices raise alerts.
+On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. Devices in your Pi-hole client list or your tailnet count as yours by themselves (unless you pressed **Stop trusting** on one), so only new devices raise alerts.
+
+**One device, all its addresses.** A phone or server seen at home and again over Tailscale is one device. TheySpy merges the two by itself when the names prove it: the Tailscale name is the one you gave it in Pi-hole, TheySpy, NetAlertX or your router (BigBox and bigbox.tail….ts.net). Pairs that only look alike (iPad and ipad173) are listed under **Same device?** with **Merge** and **Not the same**; a device's card also has **Same device as → Merge into…**. The list is grouped into **Home network** (with each device's Tailscale address under its home address) and **Tailscale only** (in your tailnet but not seen at home).
 
 ## 3. Alerts and the weekly briefing
 

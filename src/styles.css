@@ -161,6 +161,7 @@ tr.kept td:last-child { opacity: 1; }
 .src { display: inline-flex; gap: 3px; flex-wrap: wrap; }
 .src i { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: var(--panel-2); color: var(--muted); }
 tr.sel td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+tr.group th { background: var(--panel-2, transparent); text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding-top: 14px; }
 .compact-fields .field { grid-template-columns: 64px minmax(0, 1fr); padding: 7px 0; }
 .compact-fields .field .hint { grid-column: 2; }
 

@@ -33,7 +33,7 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
     res.json({
       devices,
       counts: { total: devices.length, online: devices.filter((d) => d.online).length, isNew: devices.filter((d) => d.isNew).length, untrusted: devices.filter((d) => !d.trusted).length, randomised: devices.filter((d) => d.randomisedMac).length, piholeUntrusted: devices.filter((d) => d.inPihole && !d.trusted).length },
-      targets: discovery.targets(), suggestions: discovery.suggestions(), scanRanges: discovery.scanRanges(),
+      targets: discovery.targets(), suggestions: discovery.suggestions(), mergeSuggestions: fleet.suggestions(), scanRanges: discovery.scanRanges(),
       lastSync: discovery.lastSync(), lastSweep: discovery.lastSweep(), events: fleet.recentEvents(20), vendors: oui.status(),
     });
   });
@@ -64,6 +64,11 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
   });
   router.put("/devices/:id", (req, res) => res.json({ device: fleet.edit(id(req), req.body ?? {}, "owner") }));
   router.delete("/devices/:id", (req, res) => { fleet.forget(id(req), "owner"); res.json({ forgotten: true }); });
+  // One device, all its addresses: certain duplicates are merged after each sync; these are the rest.
+  router.get("/merge-suggestions", (_req, res) => res.json({ suggestions: fleet.suggestions() }));
+  router.post("/consolidate", (_req, res) => res.json(fleet.consolidate("owner")));
+  router.post("/devices/:id/merge", (req, res) => res.json({ device: fleet.mergeDevices(id(req), Number(req.body?.into), "owner") }));
+  router.post("/not-same", (req, res) => { fleet.notSame(Number(req.body?.a), Number(req.body?.b), "owner"); res.json({ ok: true }); });
   router.post("/trust-pihole-clients", (_req, res) => res.json({ trusted: fleet.trustPiholeClients("owner") }));
   router.put("/targets", (req, res) => res.json({ targets: discovery.setTargets(req.body?.targets, "owner") }));
   router.post("/vendors", (_req, res) => res.status(202).json({ job: jobs.enqueue("fleet.oui", { actor: "owner" }) }));
