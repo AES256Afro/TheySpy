@@ -52,6 +52,9 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
   };
   const status = (feed) => settings.get(`cve_feed_${feed}`) ?? null;
   const setStatus = (feed, value) => settings.set(`cve_feed_${feed}`, { ...status(feed), ...value });
+  // A feed that worked is not shown as failing, whichever job ran it (the first-start load, a
+  // schedule, or Update now): an old error stayed on the CVEs screen after a good run.
+  const succeeded = (feed) => settings.delete(`cve_feed_${feed}_error`);
   const headers = (extra = {}) => ({ "user-agent": `TheySpy/${productVersion} (+https://github.com/AES256Afro/TheySpy)`, ...extra });
 
   async function get(url, init = {}, { attempts = 4 } = {}) {
@@ -186,11 +189,12 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
     async syncKev({ log = () => {} } = {}) {
       const previous = status("kev");
       const response = await get(feedUrls.kev, { headers: headers(previous?.etag ? { "if-none-match": previous.etag } : {}) });
-      if (response.status === 304) { setStatus("kev", { at: now().toISOString(), changed: false }); log("CISA KEV: unchanged."); return { changed: false, added: [] }; }
+      if (response.status === 304) { setStatus("kev", { at: now().toISOString(), changed: false }); succeeded("kev"); log("CISA KEV: unchanged."); return { changed: false, added: [] }; }
       if (!response.ok) throw new Error(`CISA KEV answered ${response.status}`);
       const parsed = parseKev(await response.text());
       const added = store.applyKev(parsed);
       setStatus("kev", { at: now().toISOString(), etag: response.headers.get("etag"), version: parsed.version, count: parsed.entries.length, added: added.length, changed: true });
+      succeeded("kev");
       log(`CISA KEV ${parsed.version}: ${parsed.entries.length} known exploited${added.length ? `, ${added.length} new: ${added.slice(0, 5).join(", ")}` : ""}.`);
       return { changed: true, added };
     },
@@ -203,6 +207,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       if (scores.size < 100_000) throw new Error(`The EPSS file looked wrong (${scores.size} scores)`);
       const updated = store.applyEpss(scores);
       setStatus("epss", { at: now().toISOString(), scoreDate, scores: scores.size, updated });
+      succeeded("epss");
       log(`EPSS ${scoreDate}: ${scores.size.toLocaleString()} scores; ${updated} changed here.`);
       return { scoreDate, updated };
     },
@@ -246,6 +251,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
         index = 0;
       }
       setStatus("nvd", { at: now().toISOString(), through: end.toISOString(), fetched, added, progress: null });
+      succeeded("nvd");
       return { fetched, added };
     },
 
