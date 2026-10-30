@@ -7,6 +7,8 @@ import { createNvdKey, feedUrls, nvdDate, parseEpss, parseKev, parseNvdCve } fro
 
 const day = 86_400_000;
 const nvdWindowDays = 120; // NVD's largest lastMod window
+// NVD allows 2,000 a page; a thousand halves each download, and slow pages were what stopped the first load.
+const nvdPageSize = 1000;
 
 /**
  * @param {{
@@ -65,6 +67,31 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       // NVD answers 403 or 503 when rate-limited or busy; wait and try again.
       if ((response.status === 403 || response.status === 429 || response.status >= 500) && attempt < attempts) { await sleep(30_000 * attempt); continue; }
       return response;
+    }
+  }
+
+  /**
+   * One page of NVD, read whole. A page of a thousand CVEs is a few megabytes and NVD is sometimes
+   * slow to send it; a body cut off by the timeout is fetched again (four tries) rather than ending
+   * the run. A refused API key is set aside and the page fetched without it.
+   */
+  async function nvdPage(url, log) {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        const withKey = nvdKey.current();
+        let response = await get(url, { headers: headers(withKey ? { apiKey: withKey } : {}) });
+        if (withKey && nvdKey.refused(response)) {
+          log("NVD refused the API key; carrying on without it (slower). Check the key in TheySpy's settings.");
+          await sleep(nvdKey.pause());
+          response = await get(url, { headers: headers() });
+        }
+        if (!response.ok) throw Object.assign(new Error(`NVD answered ${response.status}${response.status === 403 ? " (rate limited; an API key raises the limit)" : ""}`), { final: true });
+        return /** @type {any} */ (await response.json());
+      } catch (error) {
+        if (error.final || attempt >= 4) throw error;
+        log(`An NVD page was slow or cut off (${error.message}); fetching it again.`);
+        await sleep(15_000 * attempt);
+      }
     }
   }
 
@@ -188,33 +215,35 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
     async syncNvd({ days = nvdWindowDays, log = () => {} } = {}) {
       const previous = status("nvd");
       const end = now();
-      let start = previous?.through ? new Date(Date.parse(previous.through) - 5 * 60_000) : new Date(end.getTime() - days * day);
+      // A run that stopped part-way (a slow page, a restart) resumes where it was: the same window
+      // from the same page. The first load on BigBox started over from nothing each time and, with
+      // one slow page in every hundred, never finished.
+      const resume = previous?.progress?.window?.length === 2 ? previous.progress : null;
+      let start = resume ? new Date(resume.window[0]) : previous?.through ? new Date(Date.parse(previous.through) - 5 * 60_000) : new Date(end.getTime() - days * day);
+      let windowEnd = resume ? new Date(resume.window[1]) : null;
+      let index = resume ? Math.max(0, Number(resume.done) || 0) : 0;
+      if (resume) log(`Resuming NVD at ${index.toLocaleString()} of ${Number(resume.total ?? 0).toLocaleString()} (${resume.window[0].slice(0, 10)} → ${resume.window[1].slice(0, 10)}).`);
       const announce = Boolean(previous?.through);
       let fetched = 0;
       let added = 0;
       let requests = 0;
       while (start < end) {
-        const windowEnd = new Date(Math.min(end.getTime(), start.getTime() + nvdWindowDays * day));
-        for (let index = 0, total = 1; index < total; index += 2000) {
+        windowEnd ??= new Date(Math.min(end.getTime(), start.getTime() + nvdWindowDays * day));
+        for (let total = index + 1; index < total; index += nvdPageSize) {
           if (requests++) await sleep(nvdKey.pause());
-          const url = `${feedUrls.nvd}?lastModStartDate=${encodeURIComponent(nvdDate(start))}&lastModEndDate=${encodeURIComponent(nvdDate(windowEnd))}&startIndex=${index}&resultsPerPage=2000`;
-          const withKey = nvdKey.current();
-          let response = await get(url, { headers: headers(withKey ? { apiKey: withKey } : {}) });
-          if (withKey && nvdKey.refused(response)) {
-            log("NVD refused the API key; carrying on without it (slower). Check the key in TheySpy's settings.");
-            await sleep(nvdKey.pause());
-            response = await get(url, { headers: headers() });
-          }
-          if (!response.ok) throw new Error(`NVD answered ${response.status}${response.status === 403 ? " (rate limited; an API key raises the limit)" : ""}`);
-          const page = await response.json();
+          const url = `${feedUrls.nvd}?lastModStartDate=${encodeURIComponent(nvdDate(start))}&lastModEndDate=${encodeURIComponent(nvdDate(windowEnd))}&startIndex=${index}&resultsPerPage=${nvdPageSize}`;
+          const page = await nvdPage(url, log);
           total = Number(page.totalResults ?? 0);
           const rows = (page.vulnerabilities ?? []).map((v) => parseNvdCve(v.cve)).filter((r) => r.cveId);
           added += store.upsertNvd(rows, { announce }).added;
           fetched += rows.length;
-          log(`NVD ${start.toISOString().slice(0, 10)} → ${windowEnd.toISOString().slice(0, 10)}: ${Math.min(index + 2000, total).toLocaleString()} of ${total.toLocaleString()}.`);
-          setStatus("nvd", { at: now().toISOString(), progress: { window: [start.toISOString(), windowEnd.toISOString()], done: Math.min(index + 2000, total), total } });
+          const done = Math.min(index + nvdPageSize, total);
+          log(`NVD ${start.toISOString().slice(0, 10)} → ${windowEnd.toISOString().slice(0, 10)}: ${done.toLocaleString()} of ${total.toLocaleString()}.`);
+          setStatus("nvd", { at: now().toISOString(), progress: { window: [start.toISOString(), windowEnd.toISOString()], done, total } });
         }
         start = windowEnd;
+        windowEnd = null;
+        index = 0;
       }
       setStatus("nvd", { at: now().toISOString(), through: end.toISOString(), fetched, added, progress: null });
       return { fetched, added };
