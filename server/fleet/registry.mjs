@@ -222,13 +222,15 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       const rows = fleet.list().filter((d) => d.network?.kind !== "docker");
       const skip = notSame();
       const out = [];
+      // Names someone or something gave the device; never a guess like "Phone, tablet or laptop at …".
+      const given = (d) => [d.label, d.hostname, d.names?.pihole, d.names?.netalertx, d.names?.router, d.names?.tailscale].filter((v) => typeof v === "string" && v).map(loose).filter((x) => x.length >= 4);
       for (let i = 0; i < rows.length; i += 1) {
         for (let j = i + 1; j < rows.length; j += 1) {
           const [a, b] = [rows[i], rows[j]];
           if (skip.has([a.id, b.id].sort((x, y) => x - y).join("-"))) continue;
           if (a.mac && b.mac && !a.randomisedMac && !b.randomisedMac) continue; // two real MACs are two devices
-          const la = [a.name, ...Object.values(a.names ?? {}).filter((v) => typeof v === "string" && !/^(listed|\d{4}-)/.test(v))].map(loose).filter((x) => x.length >= 4);
-          const lb = [b.name, ...Object.values(b.names ?? {}).filter((v) => typeof v === "string" && !/^(listed|\d{4}-)/.test(v))].map(loose).filter((x) => x.length >= 4);
+          const la = given(a);
+          const lb = given(b);
           const close = la.some((x) => lb.some((y) => x === y || x.endsWith(y) || y.endsWith(x)));
           if (!close) continue;
           // Keep the record with a home address and a MAC; fold the other into it.
