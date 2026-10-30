@@ -31,6 +31,10 @@ TheySpy needs Pi-hole 6.
    - **Subscribe** adds TheySpy's compiled lists (Blocklist library).
    - **Baselines** apply a blocking level per device.
 
+If you run **NetAlertX**, connect it at the bottom of **Fleet** with its API address (port 20212) and API token:
+- **From NetAlertX:** its devices join the Fleet, with the names, owners and types you gave them there.
+- **To NetAlertX:** TheySpy can fill the same fields where they are empty. It never touches ones you filled, and only after you allow it and look at the preview.
+
 On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. **Trust all** next to that count marks them known in one step, so only new devices raise alerts.
 
 ## 3. Alerts and the weekly briefing
