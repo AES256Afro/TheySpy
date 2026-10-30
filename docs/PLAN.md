@@ -369,6 +369,11 @@ Rate limits now cover agent enrollment and reports and wrong API tokens. Credent
 - **Failing feeds** are shown on the CVEs screen, and cleared when they work again.
 - **Pacing.** Every outside service is paced (`server/pacing.mjs`): a gap, an hourly budget, and holding back when a service says to slow down.
 - **Settings.** Saving one setting keeps the others: tested for Pi-hole, alerts and appearance. BoxPilot's side of the same rule is AES256Afro/BoxPilot#623.
+
+**1.3.1:** with a working key, BigBox's first NVD load reached 10,000 of 100,181 before one slow page timed out. Every run then started again from zero. Now:
+- a page cut off by the timeout is fetched again (up to four tries);
+- pages are 1,000 records rather than 2,000;
+- a stopped load resumes from the window and page it reached.
 - Threat model of TheySpy, outbound allowlist enforcement, secrets at rest, rate limits, CSP.
 - Reproducible build, SBOM, cosign, release checklist (modelled on zero-breach's `release_check.py`).
 - Docs: install, Pi-hole setup, agent rollout, "what a finding means", when to call Access Now.
