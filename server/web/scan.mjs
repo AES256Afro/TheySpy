@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { promises as dnsPromises } from "node:dns";
 import net from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
 import { productVersion } from "../shared.mjs";
 import { inCidr } from "../fleet/addresses.mjs";
 
@@ -74,6 +75,30 @@ export function fingerprint(headers, body) {
   return found;
 }
 
+// Addresses no website check may reach unless they are inside the owner's scan ranges: private,
+// loopback, link-local (cloud metadata), carrier-grade NAT, documentation, multicast and reserved.
+const nonPublic = new net.BlockList();
+for (const [a, p] of /** @type {[string, number][]} */ ([["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]])) nonPublic.addSubnet(a, p, "ipv4");
+for (const [a, p] of /** @type {[string, number][]} */ ([["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["64:ff9b::", 96], ["2001:db8::", 32]])) nonPublic.addSubnet(a, p, "ipv6");
+
+/** @param {string} ip */
+export function isPublicAddress(ip) {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return isPublicAddress(mapped[1]);
+  const family = net.isIP(ip);
+  return family !== 0 && !nonPublic.check(ip, family === 6 ? "ipv6" : "ipv4");
+}
+
+/**
+ * A connection pool that only ever connects to the addresses that were checked, so the name cannot
+ * be pointed somewhere else (DNS rebinding) between the check and the requests.
+ * @param {string[]} addresses
+ */
+function pinnedTo(addresses) {
+  const list = addresses.map((address) => ({ address, family: net.isIP(address) }));
+  return new Agent({ connect: { lookup: (_host, options, callback) => (options?.all ? callback(null, list) : callback(null, list[0].address, list[0].family)) } });
+}
+
 /**
  * @param {{
  *   db: import("node:sqlite").DatabaseSync,
@@ -87,7 +112,7 @@ export function fingerprint(headers, body) {
  *   now?: () => Date,
  * }} deps
  */
-export function createWebScanner({ db, software: lookup, audit, verificationKey, scanRanges, fetchImpl = fetch, resolve, resolveTxt, now = () => new Date() }) {
+export function createWebScanner({ db, software: lookup, audit, verificationKey, scanRanges, fetchImpl = /** @type {typeof fetch} */ (/** @type {unknown} */ (undiciFetch)), resolve, resolveTxt, now = () => new Date() }) {
   const lookupAll = resolve ?? (async (host) => (await dnsPromises.lookup(host, { all: true })).map((a) => a.address));
   const txt = resolveTxt ?? ((host) => dnsPromises.resolveTxt(host));
   const q = {
@@ -98,19 +123,23 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
   /** The token a site's owner publishes to prove control: stable per host, secret to everyone else. */
   const tokenFor = (host) => createHmac("sha256", verificationKey).update(host.toLowerCase()).digest("hex").slice(0, 32);
 
-  /** Fetches one path on the site: GET only, same-site redirects only, a size cap and a timeout. */
-  async function get(origin, path) {
+  /**
+   * Fetches one path on the site: GET only, same-origin redirects only, a size cap and a timeout,
+   * connecting only to the checked addresses.
+   * @param {string} origin @param {string} path @param {Agent} dispatcher
+   */
+  async function get(origin, path, dispatcher) {
     let url = new URL(path, origin);
     for (let hop = 0; hop < 4; hop += 1) {
       let response;
       try {
-        response = await fetchImpl(url, { method: "GET", redirect: "manual", headers: { "user-agent": userAgent, accept: "*/*" }, signal: AbortSignal.timeout(10_000) });
+        response = await fetchImpl(url, /** @type {RequestInit} */ (/** @type {unknown} */ ({ dispatcher, method: "GET", redirect: "manual", headers: { "user-agent": userAgent, accept: "*/*" }, signal: AbortSignal.timeout(10_000) })));
       } catch (error) {
         return { status: 0, headers: new Headers(), body: "", error: error.cause?.code ?? error.message, url: String(url) };
       }
       if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
         const next = new URL(response.headers.get("location"), url);
-        if (next.hostname !== url.hostname) return { status: response.status, headers: response.headers, body: "", url: String(url), offsite: String(next) };
+        if (next.origin !== url.origin) return { status: response.status, headers: response.headers, body: "", url: String(url), offsite: String(next) };
         url = next;
         continue;
       }
@@ -137,12 +166,27 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
     const host = new URL(origin).hostname;
     const addresses = net.isIP(host) ? [host] : await lookupAll(host).catch(() => []);
     if (!addresses.length) throw Object.assign(new Error(`${host} does not resolve`), { status: 400 });
-    if (addresses.every((a) => scanRanges.some((r) => inCidr(a, r)))) return { how: "on this network", addresses };
+    const dispatcher = pinnedTo(addresses);
+    try {
+      return await verify(origin, host, addresses, dispatcher);
+    } catch (error) {
+      void dispatcher.close();
+      throw error;
+    }
+  }
+
+  /** @param {string} origin @param {string} host @param {string[]} addresses @param {Agent} dispatcher */
+  async function verify(origin, host, addresses, dispatcher) {
+    if (addresses.every((a) => scanRanges.some((r) => inCidr(a, r)))) return { how: "on this network", addresses, dispatcher };
+    // Outside the scan ranges only public addresses: a TXT record proves control of a name, not of
+    // whatever address the name is pointed at (this host, a container, a cloud metadata service).
+    const internal = addresses.filter((a) => !isPublicAddress(a));
+    if (internal.length) throw Object.assign(new Error(`${host} points at ${internal.join(", ")}, which is not a public address and not inside the networks TheySpy may scan (TS_SCAN_RANGES).`), { status: 403 });
     const token = tokenFor(host);
-    const file = await get(origin, "/.well-known/theyspy-verification.txt");
-    if (file.status === 200 && file.body.includes(token)) return { how: "verification file", addresses };
+    const file = await get(origin, "/.well-known/theyspy-verification.txt", dispatcher);
+    if (file.status === 200 && file.body.includes(token)) return { how: "verification file", addresses, dispatcher };
     const records = await txt(host).catch(() => []);
-    if (records.some((r) => r.join("").trim() === `theyspy-verification=${token}`)) return { how: "DNS TXT record", addresses };
+    if (records.some((r) => r.join("").trim() === `theyspy-verification=${token}`)) return { how: "DNS TXT record", addresses, dispatcher };
     throw Object.assign(new Error(`${host} is not on your network, so TheySpy needs proof the site is yours before checking it. Publish ${token} at ${new URL("/.well-known/theyspy-verification.txt", origin)} or as a DNS TXT record "theyspy-verification=${token}", then check again.`), { status: 403, verification: { host, token } });
   }
 
@@ -157,58 +201,62 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
       let origin;
       try { origin = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).origin; } catch { throw Object.assign(new Error(`"${url}" is not a website address`), { status: 400 }); }
       const access = await authorize(origin);
-      const started = now();
-      const id = Number(q.start.run(origin, started.toISOString(), actor).lastInsertRowid);
-      log(`Checking ${origin} (${access.how}).`);
+      try {
+        const started = now();
+        const id = Number(q.start.run(origin, started.toISOString(), actor).lastInsertRowid);
+        log(`Checking ${origin} (${access.how}).`);
 
-      const home = await get(origin, "/");
-      if (!home.status) throw Object.assign(new Error(`Could not reach ${origin}: ${home.error}`), { status: 502 });
-      const software = fingerprint(home.headers, home.body);
-      // A soft-404 page answers 200 for everything; remember it so a probe is not taken for a hit.
-      const missing = await get(origin, `/theyspy-${tokenFor(origin).slice(0, 8)}-does-not-exist.php`);
+        const home = await get(origin, "/", access.dispatcher);
+        if (!home.status) throw Object.assign(new Error(`Could not reach ${origin}: ${home.error}`), { status: 502 });
+        const software = fingerprint(home.headers, home.body);
+        // A soft-404 page answers 200 for everything; remember it so a probe is not taken for a hit.
+        const missing = await get(origin, `/theyspy-${tokenFor(origin).slice(0, 8)}-does-not-exist.php`, access.dispatcher);
 
-      const findings = [];
-      for (const probe of probes) {
-        const r = await get(origin, probe.path);
-        if (r.status !== 200 || (missing.status === 200 && r.body === missing.body)) continue;
-        if (!probe.detect(r.body, r)) continue;
-        findings.push({ path: probe.path, severity: probe.severity, title: probe.title, evidence: probe.evidence(r.body), fix: probe.fix });
-        const version = probe.path.includes("info.php") ? phpinfoVersion(r.body) : null;
-        if (version && !software.some((s) => s.product === "PHP" && s.version)) software.unshift({ product: "PHP", version, cpe: ["php", "php"], source: `${probe.path}` });
-      }
-      if (software.some((s) => s.product === "WordPress" && !s.version)) {
-        const readme = await get(origin, "/readme.html");
-        const v = readme.status === 200 ? /Version\s+([\d.]+)/i.exec(readme.body)?.[1] : null;
-        if (v) Object.assign(software.find((s) => s.product === "WordPress"), { version: v, source: "readme.html" });
-      }
-      if (!home.headers.get("strict-transport-security") && origin.startsWith("https:")) findings.push({ path: "/", severity: "low", title: "No HSTS header", evidence: "Strict-Transport-Security is missing", fix: "Send Strict-Transport-Security so browsers always use HTTPS." });
-      if (/PHP\//i.test(home.headers.get("x-powered-by") ?? "")) findings.push({ path: "/", severity: "low", title: "PHP announces its version", evidence: `X-Powered-By: ${home.headers.get("x-powered-by")}`, fix: "Set expose_php = Off in php.ini." });
-
-      for (const s of software) {
-        if (s.product === "PHP" && s.version) {
-          const branch = s.version.split(".").slice(0, 2).join(".");
-          const ends = phpSupportEnds[branch] ?? null;
-          s.supportEnds = ends;
-          s.supported = ends ? ends >= started.toISOString().slice(0, 10) : null;
-          if (s.supported === false) findings.push({ path: "/", severity: "high", title: `PHP ${branch} no longer gets security fixes`, evidence: `support ended ${ends}`, fix: `Upgrade to a supported PHP branch (${Object.entries(phpSupportEnds).filter(([, d]) => d >= started.toISOString().slice(0, 10)).map(([b]) => b).join(", ")}).` });
+        const findings = [];
+        for (const probe of probes) {
+          const r = await get(origin, probe.path, access.dispatcher);
+          if (r.status !== 200 || (missing.status === 200 && r.body === missing.body)) continue;
+          if (!probe.detect(r.body, r)) continue;
+          findings.push({ path: probe.path, severity: probe.severity, title: probe.title, evidence: probe.evidence(r.body), fix: probe.fix });
+          const version = probe.path.includes("info.php") ? phpinfoVersion(r.body) : null;
+          if (version && !software.some((s) => s.product === "PHP" && s.version)) software.unshift({ product: "PHP", version, cpe: ["php", "php"], source: `${probe.path}` });
         }
-        if (s.version) {
-          try {
-            s.cves = await lookup.lookup({ vendor: s.cpe[0], product: s.cpe[1], version: s.version });
-            log(`${s.product} ${s.version}: ${s.cves.length} CVEs in NVD${s.cves.some((c) => c.kev) ? `, ${s.cves.filter((c) => c.kev).length} known exploited` : ""}.`);
-          } catch (error) {
-            s.cvesError = error.message;
+        if (software.some((s) => s.product === "WordPress" && !s.version)) {
+          const readme = await get(origin, "/readme.html", access.dispatcher);
+          const v = readme.status === 200 ? /Version\s+([\d.]+)/i.exec(readme.body)?.[1] : null;
+          if (v) Object.assign(software.find((s) => s.product === "WordPress"), { version: v, source: "readme.html" });
+        }
+        if (!home.headers.get("strict-transport-security") && origin.startsWith("https:")) findings.push({ path: "/", severity: "low", title: "No HSTS header", evidence: "Strict-Transport-Security is missing", fix: "Send Strict-Transport-Security so browsers always use HTTPS." });
+        if (/PHP\//i.test(home.headers.get("x-powered-by") ?? "")) findings.push({ path: "/", severity: "low", title: "PHP announces its version", evidence: `X-Powered-By: ${home.headers.get("x-powered-by")}`, fix: "Set expose_php = Off in php.ini." });
+
+        for (const s of software) {
+          if (s.product === "PHP" && s.version) {
+            const branch = s.version.split(".").slice(0, 2).join(".");
+            const ends = phpSupportEnds[branch] ?? null;
+            s.supportEnds = ends;
+            s.supported = ends ? ends >= started.toISOString().slice(0, 10) : null;
+            if (s.supported === false) findings.push({ path: "/", severity: "high", title: `PHP ${branch} no longer gets security fixes`, evidence: `support ended ${ends}`, fix: `Upgrade to a supported PHP branch (${Object.entries(phpSupportEnds).filter(([, d]) => d >= started.toISOString().slice(0, 10)).map(([b]) => b).join(", ")}).` });
           }
+          if (s.version) {
+            try {
+              s.cves = await lookup.lookup({ vendor: s.cpe[0], product: s.cpe[1], version: s.version });
+              log(`${s.product} ${s.version}: ${s.cves.length} CVEs in NVD${s.cves.some((c) => c.kev) ? `, ${s.cves.filter((c) => c.kev).length} known exploited` : ""}.`);
+            } catch (error) {
+              s.cvesError = error.message;
+            }
+          }
+          delete s.cpe;
         }
-        delete s.cpe;
+        const order = { critical: 0, high: 1, medium: 2, low: 3 };
+        findings.sort((a, b) => order[a.severity] - order[b.severity]);
+        const result = { kind: "website", url: origin, access: access.how, status: home.status, software, findings, durationMs: now().getTime() - started.getTime() };
+        q.finish.run(now().toISOString(), JSON.stringify(result), id);
+        audit.record(actor, "web.checked", origin, { id, findings: findings.length, access: access.how });
+        log(`${findings.length} finding${findings.length === 1 ? "" : "s"}${findings.some((f) => f.severity === "critical") ? ", critical ones first" : ""}.`);
+        return { id, query: origin, profile: "web", ...result };
+      } finally {
+        void access.dispatcher.close();
       }
-      const order = { critical: 0, high: 1, medium: 2, low: 3 };
-      findings.sort((a, b) => order[a.severity] - order[b.severity]);
-      const result = { kind: "website", url: origin, access: access.how, status: home.status, software, findings, durationMs: now().getTime() - started.getTime() };
-      q.finish.run(now().toISOString(), JSON.stringify(result), id);
-      audit.record(actor, "web.checked", origin, { id, findings: findings.length, access: access.how });
-      log(`${findings.length} finding${findings.length === 1 ? "" : "s"}${findings.some((f) => f.severity === "critical") ? ", critical ones first" : ""}.`);
-      return { id, query: origin, profile: "web", ...result };
     },
   };
   return scanner;

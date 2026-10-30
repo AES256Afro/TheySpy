@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import express from "express";
+import { createRateLimit } from "./ratelimit.mjs";
 import { productVersion } from "./shared.mjs";
 
 // Reading TheySpy from other tools (docs/PLAN.md M9): a read-only JSON API at /api/v1 and an MCP
@@ -69,14 +70,32 @@ const tools = [
     inputSchema: { type: "object", properties: {} } },
 ];
 
+/** A domain name of at least two labels; defanged dots ("[.]") are accepted. @param {unknown} value */
+const isDomain = (value) => typeof value === "string" && /^(?=.{3,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(value.replace(/\[\.\]/g, "."));
+
 /**
  * /api/v1 (JSON) and /mcp (Model Context Protocol, streamable HTTP, JSON responses).
  * @param {{ tokens: ReturnType<typeof createApiTokens>, read: ReadModel }} deps
  */
 export function integrationRoutes({ tokens, read }) {
+  // Wrong tokens count against the caller's address; after 30 in ten minutes it is told to wait.
+  const failures = createRateLimit({ limit: 30, windowMs: 10 * 60_000 });
+  const blocked = new Map();
+  const perToken = createRateLimit({ limit: 120, windowMs: 60_000 });
   const requireToken = (req, res, next) => {
+    const ip = req.ip ?? "unknown";
+    const until = blocked.get(ip) ?? 0;
+    if (until && until <= Date.now()) blocked.delete(ip);
+    if (until > Date.now()) return res.set("Retry-After", String(Math.ceil((until - Date.now()) / 1000))).status(429).json({ error: "Too many wrong tokens; try again shortly" });
     const who = tokens.verify(req.get("authorization"));
-    if (!who) return res.status(401).set("WWW-Authenticate", 'Bearer realm="TheySpy"').json({ error: "A TheySpy API token is required (Briefing → API and MCP)" });
+    if (!who) {
+      const wait = failures.hit(ip);
+      if (wait) blocked.set(ip, Date.now() + wait * 1000);
+      return res.status(401).set("WWW-Authenticate", 'Bearer realm="TheySpy"').json({ error: "A TheySpy API token is required (Briefing → API and MCP)" });
+    }
+    // A valid token still gets a budget: each domain check pages through Pi-hole's history.
+    const wait = perToken.hit(String(who.id));
+    if (wait) return res.set("Retry-After", String(wait)).status(429).json({ error: "Too many requests for this token; try again shortly" });
     req.token = who;
     next();
   };
@@ -86,7 +105,10 @@ export function integrationRoutes({ tokens, read }) {
   api.get("/devices", (req, res) => res.json({ devices: read.devices({ onlineOnly: req.query.online === "1" }) }));
   api.get("/indicator-lookups", (req, res) => res.json({ lookups: read.indicatorLookups(Number(req.query.days ?? 30)) }));
   api.get("/exploited-on-devices", (_req, res) => res.json({ cves: read.exploitedOnDevices() }));
-  api.get("/domains/:domain", async (req, res) => res.json(await read.checkDomain(req.params.domain)));
+  api.get("/domains/:domain", async (req, res) => {
+    if (!isDomain(req.params.domain)) return res.status(400).json({ error: "domain must be a domain name, e.g. example.com" });
+    res.json(await read.checkDomain(req.params.domain));
+  });
   api.get("/status", (_req, res) => res.json(read.status()));
 
   async function call(name, args = {}) {
@@ -95,7 +117,7 @@ export function integrationRoutes({ tokens, read }) {
       case "list_indicator_lookups": return { lookups: read.indicatorLookups(Math.min(Math.max(Number(args.days ?? 30) || 30, 1), 365)) };
       case "list_exploited_cves_on_devices": return { cves: read.exploitedOnDevices() };
       case "check_domain": {
-        if (typeof args.domain !== "string" || !/^[a-z0-9.[\]-]{3,253}$/i.test(args.domain)) throw Object.assign(new Error("domain must be a domain name"), { code: -32602 });
+        if (!isDomain(args.domain)) throw Object.assign(new Error("domain must be a domain name"), { code: -32602 });
         return read.checkDomain(args.domain);
       }
       case "get_status": return read.status();
