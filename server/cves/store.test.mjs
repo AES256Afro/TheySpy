@@ -159,6 +159,7 @@ describe("CVE feeds", () => {
     // A later first load that dies part-way picks up from the page it reached, not from zero.
     requests.length = 0;
     const fresh = testServices({ webFetch: fetchImpl, now: testClock("2026-10-30T13:00:00.000Z") });
+    fresh.settings.set("cve_feed_nvd_error", { at: "2026-10-30T09:43:34.119Z", error: "NVD answered 404" });
     failures = {};
     stopAt = 2000;
     await expect(fresh.cves.syncNvd({ days: 30 })).rejects.toThrow(/Could not reach/);
@@ -168,6 +169,8 @@ describe("CVE feeds", () => {
     const resumed = [];
     expect(await fresh.cves.syncNvd({ days: 30, log: (l) => resumed.push(l) })).toEqual({ fetched: 1500, added: 1500 });
     expect(requests).toEqual([2000, 3000]);
+    // An error from an earlier run goes once a run succeeds, whichever job ran it.
+    expect(fresh.cves.stats().errors).toEqual({});
     expect(resumed[0]).toMatch(/^Resuming NVD at 2,000 of 3,500/);
     expect(fresh.cves.stats().feeds.nvd).toMatchObject({ through: expect.any(String), progress: null });
   });
