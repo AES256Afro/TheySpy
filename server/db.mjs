@@ -312,6 +312,62 @@ export const migrations = [
      last_used_at TEXT,
      revoked_at TEXT
    );`,
+  // M7: endpoint agents and evidence. An agent enrolls once with a single-use token and signs each
+  // report with its own key. Findings are what agents and MVT imports found on a device: a contact
+  // with an indicator, or a gap (a check that could not run, which is never reported as clean).
+  // Inventory is the software an agent or the owner says a device runs, for CVE matching.
+  `CREATE TABLE agent_tokens (
+     hash TEXT PRIMARY KEY,
+     label TEXT,
+     created_at TEXT NOT NULL,
+     expires_at TEXT NOT NULL,
+     used_at TEXT
+   );
+   CREATE TABLE agents (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     device_id INTEGER REFERENCES devices (id) ON DELETE SET NULL,
+     name TEXT NOT NULL,
+     platform TEXT,
+     secret_sealed TEXT NOT NULL,
+     enrolled_at TEXT NOT NULL,
+     last_report_at TEXT,
+     last_verdict TEXT,
+     revoked_at TEXT
+   );
+   CREATE TABLE agent_reports (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     agent_id INTEGER NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+     at TEXT NOT NULL,
+     verdict TEXT NOT NULL,
+     report TEXT NOT NULL
+   );
+   CREATE TABLE findings (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     device_id INTEGER REFERENCES devices (id) ON DELETE CASCADE,
+     source TEXT NOT NULL,
+     source_ref TEXT,
+     kind TEXT NOT NULL CHECK (kind IN ('contacted', 'gap')),
+     indicator TEXT,
+     tier TEXT,
+     confidence TEXT,
+     location TEXT,
+     detail TEXT,
+     at TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'dismissed')),
+     note TEXT
+   );
+   CREATE INDEX findings_device ON findings (device_id, at);
+   CREATE TABLE inventory_items (
+     device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+     vendor TEXT NOT NULL,
+     product TEXT NOT NULL,
+     version TEXT,
+     label TEXT,
+     source TEXT NOT NULL,
+     seen_at TEXT NOT NULL,
+     PRIMARY KEY (device_id, vendor, product, source)
+   );
+   ALTER TABLE devices ADD COLUMN profile TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 /**
