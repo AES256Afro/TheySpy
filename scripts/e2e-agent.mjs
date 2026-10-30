@@ -7,7 +7,9 @@ const step = (text) => console.log(`- ${text}`);
 let cookie = "";
 /** @returns {Promise<any>} */
 async function api(method, path, body) {
-  const response = await fetch(base + path, { method, headers: { "content-type": "application/json", "x-theyspy": "1", ...(cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  // The lab container takes a minute; the server may close the idle keep-alive socket meanwhile.
+  const send = () => fetch(base + path, { method, headers: { "content-type": "application/json", "x-theyspy": "1", ...(cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const response = await send().catch((error) => { if (error.cause?.code === "UND_ERR_SOCKET") return send(); throw error; });
   const set = response.headers.get("set-cookie");
   if (set) cookie = set.split(";")[0];
   if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);

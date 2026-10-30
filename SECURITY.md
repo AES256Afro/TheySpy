@@ -106,3 +106,5 @@ Nothing found allowed an unauthenticated or token-only caller to change Pi-hole,
 | Low | `/api/v1/domains/:domain` took any string, and a valid token was unlimited | Domain validation, and a per-token rate limit |
 
 Also tightened: baseline clients must be real IP addresses, and wrong API tokens are rate-limited per address.
+
+**30 October 2026, 1.0.1:** 1.0.0 shipped undici 8.9.0, which has known advisories, among them GHSA-2m5v-pch6-74hx (TLS options dropped in `Agent`, the pattern the website check's pinned connections use). It now ships 8.12.3, and CI fails on any `npm audit` advisory in production dependencies.
