@@ -363,6 +363,12 @@ A website address in Targeted check runs a read-only check: PHP and CMS (WordPre
 Rate limits now cover agent enrollment and reports and wrong API tokens. Credentials were already sealed at rest (AES-256-GCM), and the CSP and SBOM, cosign and provenance were already in place. `scripts/release-check.mjs` (part of `npm run check`) checks that the version agrees everywhere, that the scanner verifies, that the docs exist and that no secret is tracked. [docs/GUIDE.md](GUIDE.md) covers install, Pi-hole, alerts, agent rollout, phones, what each finding means, when to call Access Now, and backups.
 
 **1.1.0:** the outbound allowlist is enforced in-process (`server/egress.mjs`, `TS_EGRESS`). It was checked against every live feed with enforcement on: indicators, KEV, EPSS, NVD, the vendor and research advisories, OUI, the three blocklist directories, the seven default lists, Cloudflare's trace and SpaceX's geofeed. One redirect host, `feeds.feedburner.com`, was found that way and added.
+
+**1.3.0 (30 Oct 2026):**
+- **NVD keys.** NVD answered 404 "Invalid apiKey" to BigBox's key, and the first CVE load had stopped for a day without the screen saying so. A refused key is now set aside: NVD is read without it (slower), the CVEs screen says why, and the key is tried again a day later. Checked against real NVD with an invalid key.
+- **Failing feeds** are shown on the CVEs screen, and cleared when they work again.
+- **Pacing.** Every outside service is paced (`server/pacing.mjs`): a gap, an hourly budget, and holding back when a service says to slow down.
+- **Settings.** Saving one setting keeps the others: tested for Pi-hole, alerts and appearance. BoxPilot's side of the same rule is AES256Afro/BoxPilot#623.
 - Threat model of TheySpy, outbound allowlist enforcement, secrets at rest, rate limits, CSP.
 - Reproducible build, SBOM, cosign, release checklist (modelled on zero-breach's `release_check.py`).
 - Docs: install, Pi-hole setup, agent rollout, "what a finding means", when to call Access Now.

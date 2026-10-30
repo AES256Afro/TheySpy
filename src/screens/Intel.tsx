@@ -9,7 +9,8 @@ type Cve = {
 type Feed = { at?: string; version?: string; count?: number; added?: number; through?: string; fetched?: number; progress?: { done: number; total: number } | null; scoreDate?: string; scores?: number; updated?: number } | null;
 type Overview = {
   total: number; rows: Cve[];
-  stats: { total: number; kev: number; zeroDays: number; epssHigh: number; kevThisWeek: number; feeds: { kev: Feed; nvd: Feed; epss: Feed }; apiKey: boolean };
+  stats: { total: number; kev: number; zeroDays: number; epssHigh: number; kevThisWeek: number; feeds: { kev: Feed; nvd: Feed; epss: Feed }; apiKey: boolean;
+    errors?: Record<string, { at: string; error: string }>; nvdKey?: { configured: boolean; rejected: boolean; rejectedAt: string | null; message: string | null } };
   events: { cveId: string; at: string; kind: string; detail: Record<string, unknown>; title: string | null }[];
   attributions: string[];
   research: { source: string; title: string; url: string; at: string | null; cves: string[] }[];
@@ -24,6 +25,8 @@ function ago(iso?: string) {
   return s < 90 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
 }
 const productLabel = (p: string) => p.split(":").map((x) => x.replace(/_/g, " ")).join(" · ");
+
+const feedNames: Record<string, string> = { kev: "CISA KEV", nvd: "NVD", epss: "EPSS", advisories: "vendor advisories", first: "first CVE load" };
 
 export function IntelScreen() {
   const [data, setData] = useState<Overview | null>(null);
@@ -71,12 +74,18 @@ export function IntelScreen() {
         <button className="btn primary" type="button" disabled={busy} onClick={update}>{busy ? "Updating…" : "Update now"}</button>
       </div>
       {message && <div className={`banner ${message.tone}`} role="status"><span className="small">{message.text}</span></div>}
+      {stats.nvdKey?.rejected && (
+        <div className="banner bad" role="alert"><span className="small">NVD refused the API key ({stats.nvdKey.message ?? "invalid"}), so TheySpy is reading NVD without it: slower, but nothing is missed. Check the key (it must be activated from NVD&apos;s e-mail), or clear it, in TheySpy&apos;s settings (BoxPilot: the app&apos;s Settings → NVD API key). TheySpy tries it again a day after it was refused.</span></div>
+      )}
+      {Object.entries(stats.errors ?? {}).map(([feed, problem]) => (
+        <div key={feed} className="banner bad" role="alert"><span className="small">The {feedNames[feed] ?? feed} feed failed {ago(problem.at)}: {problem.error}. TheySpy tries again on its schedule; Update now tries at once.</span></div>
+      ))}
 
       <div className="grid g4">
         <section className="card"><h3>Known exploited</h3><div className="kpi crit">{n(stats.kev)}</div><p className="small muted">CISA KEV · {stats.kevThisWeek} added this week</p></section>
         <section className="card"><h3>CISA KEV</h3><div className="kpi">{feeds.kev?.version ?? "—"}</div><p className="small muted">checked {ago(feeds.kev?.at)}</p></section>
         <section className="card"><h3>NVD 2.0</h3><div className="kpi">{feeds.nvd?.through ? n(feeds.nvd.fetched ?? 0) : feeds.nvd?.progress ? `${Math.round((feeds.nvd.progress.done / Math.max(1, feeds.nvd.progress.total)) * 100)}%` : "—"}</div>
-          <p className="small muted">{feeds.nvd?.through ? `last run fetched these · ${ago(feeds.nvd.at)}` : feeds.nvd?.progress ? "first load in progress" : "not loaded yet"}{stats.apiKey ? " · API key" : ""}</p></section>
+          <p className="small muted">{feeds.nvd?.through ? `last run fetched these · ${ago(feeds.nvd.at)}` : feeds.nvd?.progress ? "first load in progress" : "not loaded yet"}{stats.apiKey ? (stats.nvdKey?.rejected ? " · API key refused" : " · API key") : ""}</p></section>
         <section className="card"><h3>EPSS</h3><div className="kpi">{feeds.epss?.scoreDate ?? "—"}</div><p className="small muted">{feeds.epss ? `${n(feeds.epss.scores ?? 0)} scores · ${stats.epssHigh} here ≥ 0.5` : "not loaded yet"}</p></section>
       </div>
 
