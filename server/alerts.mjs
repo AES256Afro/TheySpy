@@ -60,12 +60,14 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
           title: d.allowed ? "A device reached a spyware/ADINT address" : "A device asked for a spyware/ADINT address (blocked)",
           message: `${clients.map(who).join(", ")} looked up ${indicators.join(", ").replaceAll(".", "[.]")}: ${d.lookups} lookup${d.lookups === 1 ? "" : "s"}, ${d.allowed ? `${d.allowed} not blocked` : "all blocked"}. A DNS lookup does not prove infection; see Pi-hole Sentinel for what to do next.`, link: link("/pihole") };
       }
+      case "cves.zero_day_reported":
       case "cves.kev_added": {
         const matches = kevMatches(d.cves ?? []);
         if (!matches.length) return null; // only exploited bugs in software you run
-        return { key: `kev:${matches.map((m) => m.cveId).sort().join(",")}`, kind: "kev_match", priority: "high",
+        const who = action === "cves.kev_added" ? "CISA lists it" : `${(d.sources ?? []).join(", ") || "The vendor"} reports it`;
+        return { key: `exploited:${matches.map((m) => m.cveId).sort().join(",")}`, kind: "kev_match", priority: "high",
           title: "Exploited vulnerability in software you run",
-          message: matches.map((m) => `${m.cveId} (on ${m.devices.join(", ")})`).join("; ") + ". CISA lists it as exploited in the wild; update those devices.", link: link("/intel") };
+          message: matches.map((m) => `${m.cveId} (on ${m.devices.join(", ")})`).join("; ") + `. ${who} as exploited in the wild; update those devices.`, link: link("/intel") };
       }
       case "pihole.unreachable":
         return { key: `pihole-down:${date}:${at.slice(11, 13)}`, kind: "pihole_down", priority: "high", title: "TheySpy cannot reach Pi-hole",

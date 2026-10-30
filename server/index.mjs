@@ -14,6 +14,7 @@ import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
+import { createAdvisories } from "./cves/advisories.mjs";
 import { createWebScanner } from "./web/scan.mjs";
 import { createSoftwareLookup } from "./cves/lookup.mjs";
 import { createDeviceCves } from "./cves/devices.mjs";
@@ -38,6 +39,7 @@ const firstStart = library.seed();
 const baselines = createBaselines({ db, library, sentinel, settings, audit });
 const oui = createOui({ db, settings });
 const cves = createCveStore({ db, settings, audit, nvdApiKey: config.nvdApiKey });
+const advisories = createAdvisories({ cves, settings });
 const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
 const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey });
@@ -50,14 +52,14 @@ const alerts = createAlerts({ db, settings, audit, secretBox: createSecretBox(au
 const digest = createDigest({ fleet, sentinel, cves, library, alerts });
 read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest });
 const tokens = createApiTokens({ db, audit });
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -119,8 +121,9 @@ if (config.cvesAuto) {
   const kev = quietly("kev", () => cves.syncKev());
   const nvd = quietly("nvd", () => cves.syncNvd());
   const epss = quietly("epss", () => cves.syncEpss());
-  const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); });
-  const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day)];
+  const vendors = quietly("advisories", () => advisories.sync());
+  const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); await advisories.sync(); });
+  const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day), setInterval(vendors, 6 * 60 * 60 * 1000)];
   for (const t of timers) t.unref();
 }
 

@@ -46,11 +46,12 @@ function readCookie(header, name) {
  *   digest: ReturnType<typeof import("./digest.mjs").createDigest>,
  *   read: import("./integrations.mjs").ReadModel,
  *   tokens: ReturnType<typeof import("./integrations.mjs").createApiTokens>,
+ *   advisories: ReturnType<typeof import("./cves/advisories.mjs").createAdvisories>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -148,7 +149,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
   app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
-  app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs }));
+  app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
 
   // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
