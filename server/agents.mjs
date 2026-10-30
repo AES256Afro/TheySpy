@@ -34,6 +34,10 @@ export const knownSoftware = Object.freeze({
   chrome: ["google", "chrome", "Google Chrome"], edge: ["microsoft", "edge_chromium", "Microsoft Edge"], firefox: ["mozilla", "firefox", "Firefox"],
   brave: ["brave", "brave", "Brave"], safari: ["apple", "safari", "Safari"], macos: ["apple", "macos", "macOS"], ios: ["apple", "iphone_os", "iOS"],
   ipados: ["apple", "ipados", "iPadOS"], android: ["google", "android", "Android"], windows: ["microsoft", "windows", "Windows"], openssh: ["openbsd", "openssh", "OpenSSH"],
+  // From Protec's package inventory (protec.mjs).
+  openssl: ["openssl", "openssl", "OpenSSL"], curl: ["haxx", "curl", "curl"], sudo: ["sudo_project", "sudo", "sudo"], bash: ["gnu", "bash", "Bash"], glibc: ["gnu", "glibc", "glibc"],
+  xz: ["tukaani", "xz", "XZ Utils"], git: ["git-scm", "git", "Git"], python: ["python", "python", "Python"], nodejs: ["nodejs", "node.js", "Node.js"], samba: ["samba", "samba", "Samba"],
+  exim: ["exim", "exim", "Exim"], postgresql: ["postgresql", "postgresql", "PostgreSQL"],
 });
 
 /**
@@ -103,6 +107,8 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
   }
 
   const agents = {
+    /** What another inventory (Protec) says a device runs; replaces that source's last report. @param {number} deviceId @param {string} source @param {{ software: string, version: string }[]} items */
+    reportInventory(deviceId, source, items) { setInventory(deviceId, source, items); },
     scanner() {
       scanner ??= verifiedScanner();
       return scanner;

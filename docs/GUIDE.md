@@ -53,6 +53,14 @@ You then get a message for:
 
 The briefing arrives every Monday morning. On BoxPilot, the **Spyware watch** agent (Agents → **New agent** → **Spyware watch**, BoxPilot 1.230.0 or newer) reads the same findings every day and tells you when something needs you. It reads TheySpy's database read-only on the same machine, so it needs no token. API tokens for other tools (read-only `/api/v1` and MCP) are created on the same screen.
 
+## 3a. Protec
+
+If you run **Protec**, connect it at the bottom of **Fleet**:
+1. In Protec, open **Access** and issue a credential with the **viewer** role (it lasts at most 720 hours).
+2. Paste Protec's address and that credential into TheySpy.
+
+Every hour TheySpy reads each machine's installed packages and matches its CVEs on that device. Machines are matched by hostname; link any it cannot match. On Debian and Ubuntu a package keeps its version number when it is patched, so a CVE matched there may already be fixed: keep the machine updated.
+
 ## 3b. More than one place
 
 If you run TheySpy in more than one place (a cabin, a parents' house), add the others under **Sites**:

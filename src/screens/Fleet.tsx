@@ -193,6 +193,7 @@ export function FleetScreen() {
             </div>
           </section>
           <NetAlertXCard onChanged={() => void load()} />
+          <ProtecCard devices={overview.devices} onChanged={() => void load()} />
         </div>
       </div>
     </div>
@@ -240,6 +241,49 @@ function NetAlertXCard({ onChanged }: { onChanged: () => void }) {
         </>
       )}
       {config.write && <div><button className="btn small" type="button" onClick={() => step(async () => { await api("PUT", "/api/fleet/netalertx", { write: false }); setFills(null); return "TheySpy will not change NetAlertX."; })}>Stop TheySpy changing NetAlertX</button></div>}
+      {note && <div className={`banner ${note.tone}`} role="status"><span className="small">{note.text}</span></div>}
+    </section>
+  );
+}
+
+type ProtecState = { configured: boolean; url: string | null; hasToken: boolean; lastError: { at: string; error: string } | null; lastSync: { at: string; machines: number; matched: number; packages: number; unmatched: { id: string; hostname: string; os: string; packages: number }[] } | null };
+
+/** Protec's package inventory, read with a viewer credential, for CVE matching on each machine. */
+function ProtecCard({ devices, onChanged }: { devices: Device[]; onChanged: () => void }) {
+  const [state, setState] = useState<ProtecState | null>(null);
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const load = useCallback(async () => { const s = await api<ProtecState>("GET", "/api/protec"); setState(s); setUrl((u) => u || s.url || ""); }, []);
+  useEffect(() => { void load().catch(() => {}); }, [load]);
+  const step = async (fn: () => Promise<string>) => {
+    setNote(null);
+    try { setNote({ tone: "good", text: await fn() }); await load(); onChanged(); } catch (e) { setNote({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
+  };
+  const sync = async () => { const r = await api<{ machines: number; matched: number; packages: number; unmatched: unknown[] }>("POST", "/api/protec/sync"); return `Read ${r.machines} machine(s): ${r.matched} matched to Fleet devices, ${r.packages} package(s) to check for CVEs${r.unmatched.length ? `, ${r.unmatched.length} to link below` : ""}.`; };
+  if (!state) return null;
+  return (
+    <section className="card stack">
+      <h3>Protec</h3>
+      <p className="small muted">Each enrolled machine&apos;s installed packages (dpkg, Homebrew) are checked for CVEs on its Fleet device. Debian and Ubuntu fix bugs without changing the version, so a CVE matched from a Linux package may already be patched; your updates are what fix it.</p>
+      <div className="compact-fields">
+        <div className="field"><label htmlFor="protec-url">Address</label><input id="protec-url" className="input" placeholder="https://protec.example.ts.net:8765" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+        <div className="field"><label htmlFor="protec-token">Viewer credential</label><input id="protec-token" className="input" type="password" autoComplete="off" placeholder={state.hasToken ? "Saved (leave empty to keep)" : "Protec → Access → viewer"} value={token} onChange={(e) => setToken(e.target.value)} /><span className="hint">A viewer credential reads only. Protec&apos;s last at most 720 hours: issue a new one when it runs out.</span></div>
+      </div>
+      <div className="row">
+        <button className="btn" type="button" onClick={() => step(async () => { await api("PUT", "/api/protec", { url, ...(token ? { token } : {}) }); setToken(""); return sync(); })}>Save and read</button>
+        {state.configured && <button className="btn" type="button" onClick={() => step(sync)}>Read now</button>}
+      </div>
+      {state.lastError && <div className="banner bad"><span className="small">The last hourly read failed {ago(state.lastError.at)}: {state.lastError.error}</span></div>}
+      {state.lastSync && <span className="small muted">Read {ago(state.lastSync.at)}: {state.lastSync.matched} of {state.lastSync.machines} machines matched · every hour</span>}
+      {(state.lastSync?.unmatched ?? []).length > 0 && (
+        <div className="list small">{state.lastSync!.unmatched.map((m) => (
+          <div key={m.id}><span className="grow"><b>{m.hostname || m.id}</b> <span className="muted">{m.os} · {m.packages} package(s)</span></span>
+            <select className="input" aria-label={`Fleet device for ${m.hostname}`} defaultValue="" onChange={(e) => e.target.value && step(async () => { await api("POST", "/api/protec/link", { machineId: m.id, deviceId: Number(e.target.value) }); return `Linked; ${await sync()}`; })}>
+              <option value="">Link to…</option>{devices.filter((d) => d.network?.kind !== "docker").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select></div>
+        ))}</div>
+      )}
       {note && <div className={`banner ${note.tone}`} role="status"><span className="small">{note.text}</span></div>}
     </section>
   );
