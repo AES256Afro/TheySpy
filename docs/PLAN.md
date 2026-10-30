@@ -344,6 +344,7 @@ A website address in Targeted check runs a read-only check: PHP and CMS (WordPre
 - **Exit:** each trigger fires once (no duplicates on restart); an MCP client can list devices, findings and matching KEV items.
 
 ### M10 — BoxPilot packaging and management (S)
+**Status (30 Oct 2026): done** (1.0.0), except the "Spyware watch" agent template. Every release is a signed multi-arch image pinned by digest in the catalog, and BoxPilot can update every app on a schedule, backing each up first and rolling back a failed health check (BoxPilot's `app.update.available`). Backups: BoxPilot stops TheySpy and archives `/data`; a clean stop now closes the database even with a browser connected, so no write-ahead log is left behind. Standalone owners get Activity → Download a backup, a `VACUUM INTO` copy checked with SQLite's integrity check. The exit criterion runs in CI against the real image (`scripts/e2e-restore.sh`): write through the API, stop, archive, wipe, unpack into a fresh folder and start; the branding, an API token (still accepted), a device and a finding all come back. Pi-hole pushes are approved in TheySpy itself, as owner-only jobs. A broken-image rollback is BoxPilot's tested `app.update` path. Still to do: the "Spyware watch" agent needs a TheySpy read tool in BoxPilot's agent tool catalog (beside `pihole.stats`), reading `/api/v1/status` with a TheySpy token kept in BoxPilot's credential store.
 **Brought forward (29 Oct 2026):** tagged versions publish a signed image to `ghcr.io/aes256afro/theyspy`; 0.2.0 is pinned by digest in `boxpilot/theyspy.yaml` and proposed to BoxPilot in AES256Afro/BoxPilot#603. Still to do here: the backup hook and restore test, the "Spyware watch" agent template and approval cards, and the medium-risk manifest when M4 needs host networking.
 - Final catalog manifest + compose template, health check, backup hook (SQLite online backup), restore test.
 - BoxPilot agent template "Spyware watch" reading `/api/v1/summary`; approval cards for Pi-hole pushes.
@@ -351,6 +352,15 @@ A website address in Targeted check runs a read-only check: PHP and CMS (WordPre
 - **Exit:** install from the BoxPilot catalog on a fresh Ubuntu Server, back up, wipe, restore → same devices and findings; an update with a broken image rolls back by itself.
 
 ### M11 — Hardening and 1.0 (M)
+**Status (30 Oct 2026): done** (1.0.0). [SECURITY.md](../SECURITY.md) holds the threat model, the outbound destinations and the review record. An independent review of the scanning, Pi-hole write, agent and token paths found six medium and low issues, all fixed with tests:
+- the list token is now checked before compiling;
+- a failed baseline undoes its own Pi-hole changes;
+- the website check refuses non-public addresses outside the scan ranges, pins the checked addresses against DNS rebinding, and follows only same-origin redirects;
+- the 8 MB parser runs after sign-in;
+- STIX literals are escaped;
+- domains are validated, and each token is rate-limited.
+
+Rate limits now cover agent enrollment and reports and wrong API tokens. Credentials were already sealed at rest (AES-256-GCM), and the CSP and SBOM, cosign and provenance were already in place. `scripts/release-check.mjs` (part of `npm run check`) checks that the version agrees everywhere, that the scanner verifies, that the docs exist and that no secret is tracked. [docs/GUIDE.md](GUIDE.md) covers install, Pi-hole, alerts, agent rollout, phones, what each finding means, when to call Access Now, and backups. Not enforced in-process: an outbound allowlist (documented in SECURITY.md; enforce it at the firewall).
 - Threat model of TheySpy, outbound allowlist enforcement, secrets at rest, rate limits, CSP.
 - Reproducible build, SBOM, cosign, release checklist (modelled on zero-breach's `release_check.py`).
 - Docs: install, Pi-hole setup, agent rollout, "what a finding means", when to call Access Now.

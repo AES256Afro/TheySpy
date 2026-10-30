@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+import net from "node:net";
 import express from "express";
 import { scopeKey } from "./baselines.mjs";
 import { compiledLists } from "./library.mjs";
@@ -24,6 +26,10 @@ const listDefinition = (name) => compiledLists[name] ?? (categoryIds.includes(na
 export function publicListRoutes({ library, baselines, now = () => new Date() }) {
   const router = express.Router();
   router.get("/:token/:file", (req, res) => {
+    // The token first, so a stranger cannot make TheySpy compile lists (it is slow on purpose-built sets).
+    const token = Buffer.from(String(req.params.token));
+    const expected = Buffer.from(library.listToken());
+    if (token.length !== expected.length || !timingSafeEqual(token, expected)) return res.status(404).type("text/plain").send("Not found\n");
     const m = /^([a-z]+|baseline-([a-z]+)--(network|device-[0-9a-f-]+))\.(txt|hosts|adblock|dnsmasq|rpz)$/.exec(req.params.file);
     let definition = null;
     let compiled = null;
@@ -34,7 +40,7 @@ export function publicListRoutes({ library, baselines, now = () => new Date() })
       definition = listDefinition(m[1]);
       compiled = definition && library.compile(definition.categories);
     }
-    if (req.params.token !== library.listToken() || !definition || !compiled) return res.status(404).type("text/plain").send("Not found\n");
+    if (!definition || !compiled) return res.status(404).type("text/plain").send("Not found\n");
     const format = listFormats[m[4]];
     const etag = `"${compiled.etag}-${m[4]}"`;
     res.set({ "Content-Type": `${format.type}; charset=utf-8`, ETag: etag, "Cache-Control": "no-cache" });
@@ -160,7 +166,7 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   });
   router.get("/baselines/preview", async (req, res) => {
     const client = req.query.client ? String(req.query.client) : undefined;
-    if (client && !/^[0-9a-f.:]{2,45}$/i.test(client)) return res.status(400).json({ error: "client must be an IP address" });
+    if (client && !net.isIP(String(client))) return res.status(400).json({ error: "client must be an IP address" });
     const windowDays = Number(req.query.days ?? 7);
     if (![1, 7, 14, 30].includes(windowDays)) return res.status(400).json({ error: "days must be 1, 7, 14 or 30" });
     const preview = await baselines.preview({ client, windowDays });
@@ -177,14 +183,14 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   router.post("/baselines/apply", (req, res) => {
     const { baselineId, client } = req.body ?? {};
     if (!baselines.find(baselineId)) return res.status(400).json({ error: "No such baseline" });
-    if (client && !/^[0-9a-f.:]{2,45}$/i.test(String(client))) return res.status(400).json({ error: "client must be an IP address" });
+    if (client && !net.isIP(String(client))) return res.status(400).json({ error: "client must be an IP address" });
     res.status(202).json({ job: jobs.enqueue("baselines.apply", { actor: "owner", params: { baselineId, client: client || undefined, listsOrigin: origin(req) } }) });
   });
   router.put("/baselines/custom", (req, res) => res.json({ custom: baselines.setCustom(req.body ?? {}, "owner") }));
   router.delete("/baselines/custom", (_req, res) => { baselines.deleteCustom("owner"); res.json({ deleted: true }); });
   router.post("/baselines/shadow", (req, res) => {
     const { baselineId, client } = req.body ?? {};
-    if (client && !/^[0-9a-f.:]{2,45}$/i.test(String(client))) return res.status(400).json({ error: "client must be an IP address" });
+    if (client && !net.isIP(String(client))) return res.status(400).json({ error: "client must be an IP address" });
     res.json({ shadow: baselines.startShadow({ baselineId, client: client || undefined }, "owner") });
   });
   router.delete("/baselines/shadow", (req, res) => {

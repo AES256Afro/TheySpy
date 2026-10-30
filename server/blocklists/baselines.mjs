@@ -307,25 +307,47 @@ export function createBaselines({ db, library, sentinel, settings, audit, now = 
       const record = await /** @type {any} */ (source).client().session(async (c) => {
         let group = null;
         let clientBefore = null;
-        if (client) {
-          const groupName = `TheySpy ${client}`;
-          group = (await c.listGroups()).find((g) => g.name === groupName) ?? (await c.addGroup(groupName, `TheySpy: ${b.name} baseline`));
-          if (!group) throw new PiholeError("Pi-hole did not create the group");
-          const existing = (await c.listClients()).find((x) => x.client === client);
-          clientBefore = existing ? { groups: existing.groups, comment: existing.comment ?? "" } : null;
-          const groups = [...new Set([...(existing?.groups ?? [0]), group.id])];
-          if (existing) await c.updateClient(client, groups, existing.comment ?? ""); else await c.addClient(client, groups, `TheySpy: ${b.name} baseline`);
+        // What this attempt changed, so a failure part-way leaves Pi-hole as it found it.
+        const undo = [];
+        try {
+          if (client) {
+            const groupName = `TheySpy ${client}`;
+            group = (await c.listGroups()).find((g) => g.name === groupName) ?? null;
+            if (!group) {
+              group = await c.addGroup(groupName, `TheySpy: ${b.name} baseline`);
+              if (!group) throw new PiholeError("Pi-hole did not create the group");
+              undo.push(() => c.deleteGroup(groupName));
+            }
+            const existing = (await c.listClients()).find((x) => x.client === client);
+            const groupId = group.id;
+            clientBefore = existing ? { groups: existing.groups.filter((g) => g !== groupId), comment: existing.comment ?? "" } : null;
+            const groups = [...new Set([...(clientBefore?.groups ?? [0]), groupId])];
+            if (existing) {
+              await c.updateClient(client, groups, existing.comment ?? "");
+              undo.push(() => c.updateClient(client, existing.groups, existing.comment ?? ""));
+            } else {
+              await c.addClient(client, groups, `TheySpy: ${b.name} baseline`);
+              undo.push(() => c.deleteClient(client));
+            }
+          }
+          if (!(await c.listAdlists("block")).some((l) => l.address === address)) {
+            await c.addAdlist(address, `TheySpy: baseline ${label}`, group ? [group.id] : [0]);
+            undo.push(() => c.deleteAdlist(address));
+          }
+          log(`Pi-hole subscribed to the ${label} list; rebuilding gravity.`);
+          await c.updateGravity();
+          let loaded = null;
+          for (let i = 0; i < 15 && !loaded?.number; i += 1) {
+            loaded = (await c.listAdlists("block")).find((l) => l.address === address);
+            if (!loaded?.number) await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          if (!loaded?.number) throw new PiholeError(`Pi-hole added the ${label} list but loaded no entries; check it can reach ${listsOrigin}.`);
+          return { address, groupId: group?.id ?? null, groupName: group?.name ?? null, clientBefore, entries: Number(loaded.number) };
+        } catch (error) {
+          for (const step of undo.reverse()) await step().catch(() => {});
+          if (undo.length) log("Undid this attempt's changes in Pi-hole.");
+          throw error;
         }
-        await c.addAdlist(address, `TheySpy: baseline ${label}`, group ? [group.id] : [0]);
-        log(`Pi-hole subscribed to the ${label} list; rebuilding gravity.`);
-        await c.updateGravity();
-        let loaded = null;
-        for (let i = 0; i < 15 && !loaded?.number; i += 1) {
-          loaded = (await c.listAdlists("block")).find((l) => l.address === address);
-          if (!loaded?.number) await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-        if (!loaded?.number) throw new PiholeError(`Pi-hole added the ${label} list but loaded no entries; check it can reach ${listsOrigin}.`);
-        return { address, groupId: group?.id ?? null, groupName: group?.name ?? null, clientBefore, entries: Number(loaded.number) };
       });
       const assignments = assignmentsAll();
       assignments[scope] = { baseline: b.id, client: client ?? null, appliedAt: now().toISOString(), by: actor, ...record };

@@ -226,7 +226,8 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(f.indicator);
       const uuid = (seed) => { const h = sha256(seed); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`; };
       const indicator = { type: "indicator", spec_version: "2.1", id: `indicator--${uuid(`indicator:${f.indicator}`)}`, created: stamp, modified: stamp, name: f.indicator,
-        pattern: isIp ? `[ipv4-addr:value = '${f.indicator}']` : `[domain-name:value = '${f.indicator}']`, pattern_type: "stix", valid_from: stamp, labels: ["malicious-activity"] };
+        // STIX string literals escape \ and ' (a crafted MVT file must not widen the pattern).
+        pattern: `[${isIp ? "ipv4-addr" : "domain-name"}:value = '${String(f.indicator).replace(/[\\']/g, "\\$&")}']`, pattern_type: "stix", valid_from: stamp, labels: ["malicious-activity"] };
       const sighting = { type: "sighting", spec_version: "2.1", id: `sighting--${uuid(`sighting:${f.id}`)}`, created: stamp, modified: stamp, first_seen: stamp, last_seen: stamp, count: 1,
         sighting_of_ref: indicator.id, description: `${f.source === "mvt" ? "MVT" : "TheySpy agent"}: ${f.location ?? ""} ${f.detail ?? ""}`.trim() };
       return { type: "bundle", id: `bundle--${uuid(`bundle:${f.id}`)}`, objects: [indicator, sighting] };
@@ -248,7 +249,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
         const module = String(file.name).replace(/\.json$/i, "").replace(/_detected$/i, "");
         for (const item of Array.isArray(items) ? items : []) {
           const matched = item?.matched_indicator;
-          const value = String(matched?.value ?? matched ?? "").toLowerCase().replace(/\[\.\]/g, ".");
+          const value = String(matched?.value ?? matched ?? "").toLowerCase().replace(/\[\.\]/g, ".").slice(0, 253);
           if (!value) continue;
           if (q.contactExists.get(deviceId, "mvt", value, module)) continue;
           const detail = String(item.url ?? item.domain ?? item.name ?? item.path ?? "").slice(0, 300);
