@@ -13,6 +13,7 @@ import { adProbeUrl, dnsCheckZone, thisDeviceRoutes } from "./thisdevice.mjs";
 import { integrationRoutes } from "./integrations.mjs";
 import { agentPublicRoutes, evidenceRoutes } from "./agent-routes.mjs";
 import { kits } from "./exposure.mjs";
+import { rmSync } from "node:fs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -52,10 +53,11 @@ function readCookie(header, name) {
  *   agents: ReturnType<typeof import("./agents.mjs").createAgents>,
  *   exposure: ReturnType<typeof import("./exposure.mjs").createExposure>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
+ *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -74,9 +76,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   });
   // The agent's routes take larger, signed bodies and parse them themselves (agent-routes.mjs).
   app.use(agentPublicRoutes({ agents }));
-  // MVT results can be a few megabytes of JSON.
-  app.use("/api/evidence/devices", express.json({ limit: "8mb" }));
-  app.use(express.json({ limit: "64kb" }));
+  // MVT results can be a few megabytes of JSON; that route parses them itself, after sign-in.
+  const json = express.json({ limit: "64kb" });
+  app.use((req, res, next) => (req.method === "POST" && /^\/api\/evidence\/devices\/\d+\/mvt$/.test(req.path) ? next() : json(req, res, next)));
 
   const health = (_req, res) => res.json({ ok: true, version: productVersion });
   app.get("/healthz", health);
@@ -183,6 +185,11 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.post("/api/briefing/tokens", requireOwner, (req, res) => res.status(201).json(tokens.create(req.body?.name, "owner")));
   app.delete("/api/briefing/tokens/:id", requireOwner, (req, res) => { tokens.revoke(Number(req.params.id), "owner"); res.json({ revoked: true }); });
 
+  // A copy of the database taken while running, checked before it is sent (backup.mjs).
+  app.get("/api/backup", requireOwner, (_req, res) => {
+    const { dir, file } = backup.snapshot();
+    res.download(file, path.basename(file), () => rmSync(dir, { recursive: true, force: true }));
+  });
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));

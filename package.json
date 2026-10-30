@@ -1,6 +1,6 @@
 {
   "name": "theyspy",
-  "version": "0.16.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Self-hosted defender against ad-delivered spyware: Pi-hole hunting, network fleet, CVE and zero-day matching.",
   "license": "Apache-2.0",
@@ -18,10 +18,12 @@
     "check:types": "tsc -p tsconfig.server.json",
     "check:looks": "node scripts/check-looks.mjs",
     "check:boxpilot": "node scripts/check-boxpilot-manifest.mjs",
-    "check": "npm run build && npm run check:types && npm run test && npm run lint && npm run check:looks && npm run check:boxpilot"
+    "check:release": "node scripts/release-check.mjs",
+    "check": "npm run build && npm run check:types && npm run test && npm run lint && npm run check:looks && npm run check:boxpilot && npm run check:release"
   },
   "dependencies": {
-    "express": "5.2.1"
+    "express": "5.2.1",
+    "undici": "8.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

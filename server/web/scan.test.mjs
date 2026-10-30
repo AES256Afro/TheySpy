@@ -74,4 +74,24 @@ describe("website check", () => {
     expect(await checker.run({ query: "https://example.org" }, "owner")).toMatchObject({ access: "verification file" });
     expect(scanner.tokenFor("example.org")).not.toBe(scanner.tokenFor("example.com"));
   });
+  it("never checks a name that points at an internal address outside the scan ranges, proof or not", async () => {
+    const asked = [];
+    const fetchImpl = async (url) => { asked.push(String(url)); return new Response(""); };
+    for (const address of ["127.0.0.1", "169.254.169.254", "::ffff:127.0.0.1", "fd00::1"]) {
+      const { checker } = testServices({ webFetch: fetchImpl, network: { lookup: async () => address } });
+      const refused = await checker.run({ query: "https://mine.example" }, "owner").catch((e) => e);
+      expect(refused).toMatchObject({ status: 403 });
+      expect(refused.message).toContain("not a public address");
+    }
+    expect(asked).toEqual([]);
+  });
+
+  it("does not follow a redirect to another port or scheme", async () => {
+    const requests = [];
+    const sites = { "http://nas.lan": { "/": { status: 302, headers: { location: "http://nas.lan:6379/" } } }, "http://nas.lan:6379": { "*": { body: "+OK" } } };
+    const { checker } = testServices({ webFetch: web(sites, requests), network: { lookup: async () => "192.168.1.10" } });
+    await checker.run({ query: "http://nas.lan" }, "owner").catch(() => null);
+    expect(requests).toContain("GET http://nas.lan/");
+    expect(requests.some((r) => r.includes(":6379"))).toBe(false);
+  });
 });

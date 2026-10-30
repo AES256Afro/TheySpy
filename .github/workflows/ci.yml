@@ -48,6 +48,12 @@ jobs:
           docker run -d --name theyspy -p 8797:8797 -e TS_IOC_AUTOCHECK=false theyspy:ci
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8797/healthz && exit 0; sleep 1; done
           docker logs theyspy; exit 1
+      # M10: stop, archive /data the way BoxPilot does, wipe, unpack, start: everything comes back.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Back up, wipe and restore
+        run: sh scripts/e2e-restore.sh theyspy:ci
 
   # M2's exit criterion against a real Pi-hole 6 (the image BoxPilot pins), offline: lookups from
   # fixed client addresses are all found, and a push plus rollback leaves Pi-hole's lists unchanged.

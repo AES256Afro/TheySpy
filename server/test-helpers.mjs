@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createAuditLog } from "./audit.mjs";
 import { createAuth } from "./auth.mjs";
 import { createSettingsStore, openDatabase } from "./db.mjs";
+import { createBackup } from "./backup.mjs";
 import { createIocStore } from "./iocs/store.mjs";
 import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
@@ -210,5 +211,5 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const tokens = createApiTokens({ db, audit, now });
   const exposure = createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit, fetchImpl: webFetch, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit, now }), now };
 }
