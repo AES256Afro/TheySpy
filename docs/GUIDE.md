@@ -17,9 +17,14 @@ docker compose up -d
 
 Open `http://<that machine>:8797` and sign in. Without `TS_ADMIN_PASSWORD`, the first start prints a password once (`docker compose logs theyspy`). Put `TS_SESSION_SECRET` in `.env` too. Stored passwords are sealed with it, so keep it with your backups.
 
-## 2. Connect Pi-hole
+## 2. Connect your DNS server
 
-TheySpy needs Pi-hole 6.
+TheySpy reads lookups from **Pi-hole 6**, and also from **AdGuard Home**, **Technitium DNS** and **OPNsense's Unbound**. With the last three it hunts and watches read-only; adding blocks, subscribing to TheySpy's lists and baselines need Pi-hole. Set any of them up on the same screen as Pi-hole:
+- **AdGuard Home:** its address, user and password.
+- **Technitium:** its address and an API token (Administration → Sessions). It needs the *Query Logs (Sqlite)* app from its App Store.
+- **OPNsense:** its address and an API key and secret (System → Access → Users), with Unbound's Statistics turned on. Its API gives the latest 1,000 lookups, so a hunt covers only those; the 30-second watch catches every new one.
+
+For Pi-hole:
 
 1. In Pi-hole: Settings → Web interface / API → **App password** → create one.
 2. In TheySpy: **Pi-hole Sentinel** → enter Pi-hole's address, for example `http://192.168.1.2`. Leave off `/admin`; TheySpy strips it if you paste it.

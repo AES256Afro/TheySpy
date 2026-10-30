@@ -12,7 +12,7 @@ export const statusNames = Object.freeze([
 
 // The statuses that mean the client did not get a real answer (the same set BoxPilot's Pi-hole
 // adapter counts as blocked). Pi-hole 5 called DENYLIST "BLACKLIST".
-const blockedNames = new Set(["GRAVITY", "REGEX", "DENYLIST", "BLACKLIST", "EXTERNAL_BLOCKED_IP", "EXTERNAL_BLOCKED_NULL", "EXTERNAL_BLOCKED_NXRA", "GRAVITY_CNAME", "REGEX_CNAME", "DENYLIST_CNAME", "BLACKLIST_CNAME", "DBBUSY", "SPECIAL_DOMAIN", "EXTERNAL_BLOCKED_EDE15"]);
+const blockedNames = new Set(["BLOCKED", "GRAVITY", "REGEX", "DENYLIST", "BLACKLIST", "EXTERNAL_BLOCKED_IP", "EXTERNAL_BLOCKED_NULL", "EXTERNAL_BLOCKED_NXRA", "GRAVITY_CNAME", "REGEX_CNAME", "DENYLIST_CNAME", "BLACKLIST_CNAME", "DBBUSY", "SPECIAL_DOMAIN", "EXTERNAL_BLOCKED_EDE15"]);
 const cnameStatuses = new Set(["GRAVITY_CNAME", "REGEX_CNAME", "DENYLIST_CNAME", "BLACKLIST_CNAME"]);
 
 export const isBlocked = (status) => blockedNames.has(String(status ?? "").toUpperCase());
