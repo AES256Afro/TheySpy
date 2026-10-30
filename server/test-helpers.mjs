@@ -21,6 +21,7 @@ import { createAlerts } from "./alerts.mjs";
 import { createDigest } from "./digest.mjs";
 import { createApiTokens } from "./integrations.mjs";
 import { createReadModel } from "./readmodel.mjs";
+import { createAgents } from "./agents.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 
 /** A clock tests can move. */
@@ -199,12 +200,13 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges, fetchImpl: webFetch, now,
     resolve: async (host) => { const ip = await lookup(host); return ip ? [ip] : []; }, resolveTxt: async () => [] });
   const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now, checkPortsImpl, lookup, web });
-  const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, now });
+  const agents = createAgents({ db, fleet, iocStore, audit, secretBox: createSecretBox(auth.deriveKey("agents")), now });
+  const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, now, reported: agents.inventory });
   /** @type {any} */ let read;
   const alerts = createAlerts({ db, settings, audit, secretBox: createSecretBox(auth.deriveKey("alerts")), env: ntfyEnv, names: () => fleet.namesByIp(), kevMatches: (ids) => read.kevMatches(ids), fetchImpl: ntfyFetch, now });
   const digest = createDigest({ fleet, sentinel, cves, library, alerts, now });
   read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest, now });
   const tokens = createApiTokens({ db, audit, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, now };
 }
