@@ -55,10 +55,11 @@ function readCookie(header, name) {
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
  *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
+ *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, sites, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -191,6 +192,11 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     const { dir, file } = backup.snapshot();
     res.download(file, path.basename(file), () => rmSync(dir, { recursive: true, force: true }));
   });
+  // Other sites, read through their read-only API (sites.mjs).
+  app.get("/api/sites", requireOwner, (_req, res) => res.json({ sites: sites.overview() }));
+  app.post("/api/sites", requireOwner, (req, res) => res.status(201).json(sites.add(req.body ?? {}, "owner")));
+  app.delete("/api/sites/:id", requireOwner, (req, res) => { sites.remove(String(req.params.id), "owner"); res.json({ removed: true }); });
+  app.post("/api/sites/refresh", requireOwner, async (_req, res) => res.json({ sites: await sites.refresh() }));
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));

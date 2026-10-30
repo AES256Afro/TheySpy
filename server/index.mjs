@@ -13,6 +13,7 @@ import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createNetAlertX } from "./fleet/netalertx.mjs";
+import { createSites } from "./sites.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createNvdKey } from "./cves/feeds.mjs";
@@ -49,7 +50,7 @@ const blocklistHosts = () => {
 };
 createEgress({
   mode: config.egress, audit,
-  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...blocklistHosts()],
+  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), ...blocklistHosts()],
 }).install();
 // Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
 // hold when one says to slow down. Installed before any service is made, as they take `fetch` then.
@@ -64,6 +65,7 @@ const nvdKey = createNvdKey({ apiKey: config.nvdApiKey, settings, audit });
 const cves = createCveStore({ db, settings, audit, nvdKey });
 const advisories = createAdvisories({ cves, settings });
 const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
+const sites = createSites({ settings, secretBox: createSecretBox(auth.deriveKey("sites")), audit });
 const netalertx = createNetAlertX({ settings, secretBox: createSecretBox(auth.deriveKey("netalertx")), fleet, audit });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
 const software = createSoftwareLookup({ db, cves, nvdKey });
@@ -85,7 +87,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netalertx }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netalertx, sites }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -154,6 +156,12 @@ if (config.cvesAuto) {
   const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); await advisories.sync(); });
   const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day), setInterval(vendors, 6 * 60 * 60 * 1000)];
   for (const t of timers) t.unref();
+}
+
+// Other sites (sites.mjs): every 15 minutes, read each one's status through its read-only API.
+{
+  const read = () => { if ((settings.get("sites") ?? []).length) void sites.refresh().catch(() => {}); };
+  for (const t of [setInterval(read, 15 * 60 * 1000), setTimeout(read, 50 * 1000)]) t.unref();
 }
 
 // Alerts: retry undelivered ones every 10 minutes; the weekly briefing goes out on Monday from

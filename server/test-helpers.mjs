@@ -4,6 +4,7 @@ import { createAuth } from "./auth.mjs";
 import { createSettingsStore, openDatabase } from "./db.mjs";
 import { createBackup } from "./backup.mjs";
 import { createNetAlertX } from "./fleet/netalertx.mjs";
+import { createSites } from "./sites.mjs";
 import { createIocStore } from "./iocs/store.mjs";
 import { createIocUpdater, iocJobKinds } from "./iocs/updater.mjs";
 import { createJobRunner, jobKinds } from "./jobs.mjs";
@@ -178,9 +179,9 @@ export function fakeWeb(files = {}) {
 
 /**
  * Everything the app needs, in memory, with the bundled indicator set seeded.
- * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, reverseVia: (server: string, ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[], ntfyFetch?: typeof fetch, ntfyEnv?: { url?: string, topic?: string, token?: string }, netalertxFetch?: typeof fetch }} [options]
+ * @param {{ adminPassword?: string | null, sessionSecret?: string | null, now?: () => Date, db?: import("node:sqlite").DatabaseSync, fetchImpl?: typeof fetch, piholeFetch?: typeof fetch, piholeEnv?: object, webFetch?: typeof fetch, popular?: () => Promise<string[]>, network?: Partial<{ neighbours: () => Promise<{ ip: string, mac: string }[]>, probeHost: (ip: string) => Promise<{ port: number, answer: string } | null>, reverse: (ip: string) => Promise<string | null>, reverseVia: (server: string, ip: string) => Promise<string | null>, checkPortsImpl: any, lookup: (name: string) => Promise<string | null> }>, scanRanges?: string[], ntfyFetch?: typeof fetch, ntfyEnv?: { url?: string, topic?: string, token?: string }, netalertxFetch?: typeof fetch, sitesFetch?: typeof fetch }} [options]
  */
-export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], ntfyFetch = async () => new Response("", { status: 200 }), ntfyEnv = {}, netalertxFetch = async () => Response.json({ success: true, devices: [] }) } = {}) {
+export function testServices({ adminPassword = "correct horse", sessionSecret = "test-secret", now = testClock(), db = openDatabase(":memory:"), fetchImpl = fakeGitHub(), piholeFetch = fakePihole().fetchImpl, piholeEnv = {}, webFetch = fakeWeb().fetchImpl, popular, network = {}, scanRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], ntfyFetch = async () => new Response("", { status: 200 }), ntfyEnv = {}, netalertxFetch = async () => Response.json({ success: true, devices: [] }), sitesFetch = fetch } = {}) {
   const settings = createSettingsStore(db, { now });
   const audit = createAuditLog(db, { now });
   const auth = createAuth({ db, settings, audit, adminPassword, sessionSecret, now });
@@ -212,5 +213,5 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const tokens = createApiTokens({ db, audit, now });
   const exposure = createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit, fetchImpl: webFetch, now });
   const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit, now }), netalertx: createNetAlertX({ settings, secretBox: createSecretBox(auth.deriveKey("netalertx")), fleet, audit, fetchImpl: netalertxFetch, now }), now };
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit, now }), netalertx: createNetAlertX({ settings, secretBox: createSecretBox(auth.deriveKey("netalertx")), fleet, audit, fetchImpl: netalertxFetch, now }), sites: createSites({ settings, secretBox: createSecretBox(auth.deriveKey("sites")), audit, fetchImpl: sitesFetch, now }), now };
 }

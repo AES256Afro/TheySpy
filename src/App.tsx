@@ -18,6 +18,7 @@ import { ThisDeviceScreen } from "./screens/ThisDevice.tsx";
 import { BriefingScreen } from "./screens/Briefing.tsx";
 import { EvidenceScreen } from "./screens/Evidence.tsx";
 import { ExposureScreen } from "./screens/Exposure.tsx";
+import { SitesScreen } from "./screens/Sites.tsx";
 import { PlaceholderScreen } from "./screens/Placeholder.tsx";
 
 type AppearanceResponse = { appearance: Appearance };
@@ -60,7 +61,7 @@ export function App() {
     <div className="app">
       <Sidebar appearance={appearance} current={screen} onSignedOut={() => setSignedIn(false)} />
       <main id="main">
-        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
+        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
       </main>
     </div>
   );

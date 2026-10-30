@@ -52,7 +52,7 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
     switch (action) {
       case "fleet.new_device":
         return { key: `new-device:${subject}`, kind: "new_device", priority: "default", title: "New device on your network",
-          message: `${d.hostname ?? d.vendor ?? "A device"} at ${d.ip}${d.mac ? ` (MAC ${d.mac})` : ""}, found by ${d.source === "sweep" ? "a network sweep" : "Pi-hole"}. If you do not know it, look at it in Fleet.`, link: link("/fleet") };
+          message: `${d.hostname ?? d.vendor ?? "A device"} at ${d.ip}${d.mac ? ` (MAC ${d.mac})` : ""}, found by ${d.source === "sweep" ? "a network sweep" : d.source === "netalertx" ? "NetAlertX" : "Pi-hole"}. If you do not know it, look at it in Fleet.`, link: link("/fleet") };
       case "pihole.indicator_lookups": {
         const clients = [...(d.clients ?? [])].sort();
         const indicators = [...(d.indicators ?? [])].sort();
@@ -73,6 +73,12 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
         return { key: `agent-hit:${subject}:${[...(d.indicators ?? [])].sort().join(",")}`, kind: "indicator_lookup", priority: "urgent",
           title: d.source === "mvt" ? "MVT found spyware indicators on a phone" : "The agent found a spyware/ADINT indicator on a device",
           message: `${d.device ?? "A device"}: ${(d.indicators ?? []).map((i) => String(i).replaceAll(".", "[.]")).join(", ")}. This is evidence on the device itself; see the Evidence locker for where it was found and what to do.`, link: link("/evidence") };
+      case "sites.indicator_lookups": {
+        const lookups = (d.lookups ?? []).slice(0, 5);
+        return { key: `site-indicator:${subject}:${lookups.map((l) => `${l.device}|${l.indicator}`).sort().join(",")}`, kind: "indicator_lookup", priority: "urgent",
+          title: `At ${d.site}: a device reached a spyware/ADINT address`,
+          message: `${lookups.map((l) => `${l.device} looked up ${l.indicator} (${l.lookups - l.blocked} of ${l.lookups} not blocked)`).join("; ")}. Open that site's TheySpy for what to do next.`, link: link("/sites") };
+      }
       case "pihole.unreachable":
         return { key: `pihole-down:${date}:${at.slice(11, 13)}`, kind: "pihole_down", priority: "high", title: "TheySpy cannot reach Pi-hole",
           message: `The live watch failed: ${d.error}. Until it is back, new indicator lookups are not seen.`, link: link("/pihole") };
