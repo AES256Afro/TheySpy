@@ -24,6 +24,8 @@ COPY server ./server
 COPY shared ./shared
 # The bundled zero-breach indicator set, its signed manifest and the key the updater pins.
 COPY third_party ./third_party
+# The endpoint agent, served to computers that enroll (/agent/theyspy-agent.py).
+COPY agent ./agent
 COPY --from=build /app/dist ./dist
 
 # /data holds the database; BoxPilot mounts its volume here and backs it up.

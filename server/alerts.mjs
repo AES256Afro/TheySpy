@@ -69,6 +69,10 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
           title: "Exploited vulnerability in software you run",
           message: matches.map((m) => `${m.cveId} (on ${m.devices.join(", ")})`).join("; ") + `. ${who} as exploited in the wild; update those devices.`, link: link("/intel") };
       }
+      case "agent.indicator_found":
+        return { key: `agent-hit:${subject}:${[...(d.indicators ?? [])].sort().join(",")}`, kind: "indicator_lookup", priority: "urgent",
+          title: d.source === "mvt" ? "MVT found spyware indicators on a phone" : "The agent found a spyware/ADINT indicator on a device",
+          message: `${d.device ?? "A device"}: ${(d.indicators ?? []).map((i) => String(i).replaceAll(".", "[.]")).join(", ")}. This is evidence on the device itself; see the Evidence locker for where it was found and what to do.`, link: link("/evidence") };
       case "pihole.unreachable":
         return { key: `pihole-down:${date}:${at.slice(11, 13)}`, kind: "pihole_down", priority: "high", title: "TheySpy cannot reach Pi-hole",
           message: `The live watch failed: ${d.error}. Until it is back, new indicator lookups are not seen.`, link: link("/pihole") };

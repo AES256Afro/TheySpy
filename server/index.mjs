@@ -22,6 +22,7 @@ import { createAlerts } from "./alerts.mjs";
 import { createDigest } from "./digest.mjs";
 import { createApiTokens } from "./integrations.mjs";
 import { createReadModel } from "./readmodel.mjs";
+import { createAgents } from "./agents.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
@@ -45,7 +46,8 @@ const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges
 const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey });
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
-const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit });
+const agents = createAgents({ db, fleet, iocStore, audit, secretBox: createSecretBox(auth.deriveKey("agents")) });
+const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, reported: agents.inventory });
 // Alerts, the digest and the read model refer to each other only when they run, never at start.
 /** @type {ReturnType<typeof createReadModel>} */ let read;
 const alerts = createAlerts({ db, settings, audit, secretBox: createSecretBox(auth.deriveKey("alerts")), env: config.ntfy, names: () => fleet.namesByIp(), kevMatches: (ids) => read.kevMatches(ids) });
@@ -59,7 +61,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });

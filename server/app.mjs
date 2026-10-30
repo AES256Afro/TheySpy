@@ -11,6 +11,7 @@ import { fleetRoutes } from "./fleet/routes.mjs";
 import { cveRoutes } from "./cves/routes.mjs";
 import { adProbeUrl, dnsCheckZone, thisDeviceRoutes } from "./thisdevice.mjs";
 import { integrationRoutes } from "./integrations.mjs";
+import { agentPublicRoutes, evidenceRoutes } from "./agent-routes.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -47,11 +48,12 @@ function readCookie(header, name) {
  *   read: import("./integrations.mjs").ReadModel,
  *   tokens: ReturnType<typeof import("./integrations.mjs").createApiTokens>,
  *   advisories: ReturnType<typeof import("./cves/advisories.mjs").createAdvisories>,
+ *   agents: ReturnType<typeof import("./agents.mjs").createAgents>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -68,6 +70,10 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     });
     next();
   });
+  // The agent's routes take larger, signed bodies and parse them themselves (agent-routes.mjs).
+  app.use(agentPublicRoutes({ agents }));
+  // MVT results can be a few megabytes of JSON.
+  app.use("/api/evidence/devices", express.json({ limit: "8mb" }));
   app.use(express.json({ limit: "64kb" }));
 
   const health = (_req, res) => res.json({ ok: true, version: productVersion });
@@ -151,6 +157,8 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
+
+  app.use("/api/evidence", requireOwner, evidenceRoutes({ agents }));
 
   // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
   app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(Number(req.query.days ?? 7) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
