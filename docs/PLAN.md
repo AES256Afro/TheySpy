@@ -360,7 +360,9 @@ A website address in Targeted check runs a read-only check: PHP and CMS (WordPre
 - STIX literals are escaped;
 - domains are validated, and each token is rate-limited.
 
-Rate limits now cover agent enrollment and reports and wrong API tokens. Credentials were already sealed at rest (AES-256-GCM), and the CSP and SBOM, cosign and provenance were already in place. `scripts/release-check.mjs` (part of `npm run check`) checks that the version agrees everywhere, that the scanner verifies, that the docs exist and that no secret is tracked. [docs/GUIDE.md](GUIDE.md) covers install, Pi-hole, alerts, agent rollout, phones, what each finding means, when to call Access Now, and backups. Not enforced in-process: an outbound allowlist (documented in SECURITY.md; enforce it at the firewall).
+Rate limits now cover agent enrollment and reports and wrong API tokens. Credentials were already sealed at rest (AES-256-GCM), and the CSP and SBOM, cosign and provenance were already in place. `scripts/release-check.mjs` (part of `npm run check`) checks that the version agrees everywhere, that the scanner verifies, that the docs exist and that no secret is tracked. [docs/GUIDE.md](GUIDE.md) covers install, Pi-hole, alerts, agent rollout, phones, what each finding means, when to call Access Now, and backups.
+
+**1.1.0:** the outbound allowlist is enforced in-process (`server/egress.mjs`, `TS_EGRESS`). It was checked against every live feed with enforcement on: indicators, KEV, EPSS, NVD, the vendor and research advisories, OUI, the three blocklist directories, the seven default lists, Cloudflare's trace and SpaceX's geofeed. One redirect host, `feeds.feedburner.com`, was found that way and added.
 - Threat model of TheySpy, outbound allowlist enforcement, secrets at rest, rate limits, CSP.
 - Reproducible build, SBOM, cosign, release checklist (modelled on zero-breach's `release_check.py`).
 - Docs: install, Pi-hole setup, agent rollout, "what a finding means", when to call Access Now.

@@ -27,6 +27,7 @@ import { createExposure } from "./exposure.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
+import { createEgress, hostOf } from "./egress.mjs";
 import { productVersion } from "./shared.mjs";
 
 const config = readConfig();
@@ -36,6 +37,17 @@ const audit = createAuditLog(db);
 const auth = createAuth({ db, settings, audit, adminPassword: config.adminPassword, sessionSecret: config.sessionSecret });
 const iocStore = createIocStore({ db, audit });
 iocStore.seedBundled();
+// The outbound allowlist goes in before anything fetches. Besides the feeds it allows the owner's
+// Pi-hole and ntfy and the blocklists in the library (their hosts re-read once a minute).
+let listHosts = { at: 0, hosts: new Set() };
+const blocklistHosts = () => {
+  if (Date.now() - listHosts.at > 60_000) listHosts = { at: Date.now(), hosts: new Set(db.prepare("SELECT url FROM blocklist_sources WHERE url IS NOT NULL").all().map((r) => hostOf(String(r.url)))) };
+  return listHosts.hosts;
+};
+createEgress({
+  mode: config.egress, audit,
+  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), ...blocklistHosts()],
+}).install();
 const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
