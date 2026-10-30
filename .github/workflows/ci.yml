@@ -36,6 +36,8 @@ jobs:
       - name: The tag names this tree's version
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e 'const v = require("./package.json").version; if (process.env.GITHUB_REF_NAME !== `v${v}`) { console.error(`tag ${process.env.GITHUB_REF_NAME} but package.json says ${v}`); process.exit(1); }'
+      # Production dependencies only; a known advisory in what the image ships fails the build.
+      - run: npm audit --omit=dev --audit-level=low
 
   container:
     needs: check
