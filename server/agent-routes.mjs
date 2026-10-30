@@ -35,10 +35,10 @@ export function agentPublicRoutes({ agents }) {
 }
 
 /**
- * /api/evidence, behind sign-in: findings, agents, MVT imports and device profiles.
- * @param {{ agents: ReturnType<typeof import("./agents.mjs").createAgents> }} deps
+ * /api/evidence, behind sign-in: findings, agents, MVT and network-log imports, device profiles.
+ * @param {{ agents: ReturnType<typeof import("./agents.mjs").createAgents>, netlogs: ReturnType<typeof import("./netlogs.mjs").createNetworkLogs> }} deps
  */
-export function evidenceRoutes({ agents }) {
+export function evidenceRoutes({ agents, netlogs }) {
   const router = express.Router();
   router.get("/", (_req, res) => {
     let scanner;
@@ -49,6 +49,14 @@ export function evidenceRoutes({ agents }) {
   router.delete("/agents/:id", (req, res) => { agents.revoke(Number(req.params.id), "owner"); res.json({ revoked: true }); });
   router.put("/findings/:id", (req, res) => { agents.setFindingStatus(Number(req.params.id), String(req.body?.status ?? ""), req.body?.note ?? null, "owner"); res.json({ ok: true }); });
   router.get("/findings/:id/stix", (req, res) => res.set("Content-Disposition", `attachment; filename="theyspy-finding-${Number(req.params.id)}.stix.json"`).json(agents.stix(Number(req.params.id))));
+  // Zeek and Suricata logs: a day of a home network's DNS, TLS and HTTP is tens of megabytes.
+  router.post("/network-logs", express.json({ limit: "64mb" }), (req, res) => {
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+    if (!files.length) return res.status(400).json({ error: "Choose one or more Zeek or Suricata log files" });
+    res.json(netlogs.importLogs(files, "owner"));
+  });
+  router.get("/fingerprints", (_req, res) => res.json({ fingerprints: netlogs.fingerprints() }));
+  router.post("/fingerprints/acknowledge", (req, res) => { netlogs.acknowledge(req.body?.client, req.body?.ja4, "owner"); res.json({ ok: true }); });
   router.post("/devices/:id/mvt", express.json({ limit: "8mb" }), (req, res) => {
     const files = Array.isArray(req.body?.files) ? req.body.files.filter((f) => f && typeof f.name === "string" && typeof f.content === "string") : [];
     if (!files.length) return res.status(400).json({ error: "Choose MVT's *_detected.json files" });

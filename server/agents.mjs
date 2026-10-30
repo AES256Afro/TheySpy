@@ -235,7 +235,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
         // STIX string literals escape \ and ' (a crafted MVT file must not widen the pattern).
         pattern: `[${isIp ? "ipv4-addr" : "domain-name"}:value = '${String(f.indicator).replace(/[\\']/g, "\\$&")}']`, pattern_type: "stix", valid_from: stamp, labels: ["malicious-activity"] };
       const sighting = { type: "sighting", spec_version: "2.1", id: `sighting--${uuid(`sighting:${f.id}`)}`, created: stamp, modified: stamp, first_seen: stamp, last_seen: stamp, count: 1,
-        sighting_of_ref: indicator.id, description: `${f.source === "mvt" ? "MVT" : "TheySpy agent"}: ${f.location ?? ""} ${f.detail ?? ""}`.trim() };
+        sighting_of_ref: indicator.id, description: `${{ mvt: "MVT", zeek: "Zeek", suricata: "Suricata" }[f.source] ?? "TheySpy agent"}: ${f.location ?? ""} ${f.detail ?? ""}`.trim() };
       return { type: "bundle", id: `bundle--${uuid(`bundle:${f.id}`)}`, objects: [indicator, sighting] };
     },
 

@@ -57,10 +57,11 @@ function readCookie(header, name) {
  *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
  *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
  *   protec: ReturnType<typeof import("./protec.mjs").createProtec>,
+ *   netlogs: ReturnType<typeof import("./netlogs.mjs").createNetworkLogs>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, sites, protec, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -79,9 +80,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   });
   // The agent's routes take larger, signed bodies and parse them themselves (agent-routes.mjs).
   app.use(agentPublicRoutes({ agents }));
-  // MVT results can be a few megabytes of JSON; that route parses them itself, after sign-in.
+  // MVT results and network logs can be megabytes of JSON; those routes parse them themselves, after sign-in.
   const json = express.json({ limit: "64kb" });
-  app.use((req, res, next) => (req.method === "POST" && /^\/api\/evidence\/devices\/\d+\/mvt$/.test(req.path) ? next() : json(req, res, next)));
+  app.use((req, res, next) => (req.method === "POST" && /^\/api\/evidence\/(devices\/\d+\/mvt|network-logs)$/.test(req.path) ? next() : json(req, res, next)));
 
   const health = (_req, res) => res.json({ ok: true, version: productVersion });
   app.get("/healthz", health);
@@ -165,7 +166,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
 
-  app.use("/api/evidence", requireOwner, evidenceRoutes({ agents }));
+  app.use("/api/evidence", requireOwner, evidenceRoutes({ agents, netlogs }));
 
   // Ad exposure: the checklist per device and for the network, the egress check, the kits.
   app.get("/api/exposure", requireOwner, (_req, res) => res.json(exposure.overview()));
