@@ -6,12 +6,14 @@ type Device = {
   tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; sources: Record<string, string>; addresses?: number; randomisedMac: boolean; online: boolean; isNew: boolean; name: string;
   nameFrom: string; names: { pihole?: string; piholeClient?: string; netalertx?: string; router?: string; tailscale?: string; checkedAt?: string };
   network: { kind: string; label: string; detail: string } | null; guess: { kind: string | null; label: string; from: string } | null; inPihole: boolean;
+  homeIp: string | null; tailscaleIp: string | null;
 };
+type MergeSuggestion = { into: { id: number; name: string; ip: string | null }; from: { id: number; name: string; ip: string | null }; why: string };
 type DeviceDetail = Device & { addressHistory: { ip: string; firstSeen: string; lastSeen: string }[]; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
 type FleetEvent = { id: number; deviceId: number; at: string; kind: string; detail: Record<string, unknown>; device: string };
 type Overview = {
   devices: Device[]; counts: { total: number; online: number; isNew: number; untrusted: number; randomised: number; piholeUntrusted: number };
-  targets: string[]; suggestions: { cidr: string; devices: number }[]; scanRanges: string[];
+  targets: string[]; suggestions: { cidr: string; devices: number }[]; mergeSuggestions: MergeSuggestion[]; scanRanges: string[];
   lastSync: { at: string; pihole: number; arp: number; devices: number } | null;
   lastSweep: { at: string; networks: string[]; alive: number; withMac: number; newDevices: number } | null;
   events: FleetEvent[];
@@ -27,6 +29,13 @@ const eventText: Record<string, (d: Record<string, unknown>) => string> = {
   name_changed: (d) => `Name ${d.from} → ${d.to}`,
   merged: (d) => `Merged with what was seen at ${d.ip}`,
 };
+// Where a device lives: on your home network (it has an address there), or reached only over Tailscale.
+const groups = [
+  { id: "home", title: "Home network", hint: "Connected to your router; its Tailscale address, if any, is shown with it" },
+  { id: "tailscale", title: "Tailscale only", hint: "In your tailnet but not seen at home: away from home, or a server elsewhere" },
+  { id: "unknown", title: "Not placed yet", hint: "No home or Tailscale address known" },
+] as const;
+const groupOf = (d: Device) => (d.homeIp && d.network?.kind !== "docker" ? "home" : d.tailscaleIp ? "tailscale" : "unknown");
 const kinds = ["phone", "tablet", "laptop", "desktop", "tv", "speaker", "camera", "iot", "storage", "router", "server", "console", "other"];
 
 function ago(iso: string) {
@@ -94,7 +103,7 @@ export function FleetScreen() {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (overview?.devices ?? []).filter((d) => (showContainers || d.network?.kind !== "docker") && (filter === "all" || (filter === "new" && d.isNew) || (filter === "online" && d.online) || (filter === "offline" && !d.online) || (filter === "untrusted" && !d.trusted) || (filter === "pihole" && d.inPihole))
-      && (!q || [d.name, d.ip, d.mac, d.hostname, d.vendor, d.owner, d.names.pihole, d.names.router, d.names.tailscale, d.network?.label, d.guess?.label, ...d.tags].some((v) => v?.toLowerCase().includes(q))));
+      && (!q || [d.name, d.ip, d.mac, d.hostname, d.vendor, d.owner, d.names.pihole, d.names.router, d.names.tailscale, d.tailscaleIp, d.network?.label, d.guess?.label, ...d.tags].some((v) => v?.toLowerCase().includes(q))));
   }, [overview, filter, query, showContainers]);
   const containers = (overview?.devices ?? []).filter((d) => d.network?.kind === "docker").length;
 
@@ -125,6 +134,19 @@ export function FleetScreen() {
           <button className="btn small primary" type="button" onClick={() => act(async () => { const r = await api<{ trusted: number }>("POST", "/api/fleet/trust-pihole-clients"); return r; }, `Trusted ${counts.piholeUntrusted} device${counts.piholeUntrusted === 1 ? "" : "s"} listed in Pi-hole.`)}>Trust all {counts.piholeUntrusted}</button>
         </div>
       )}
+      {overview.mergeSuggestions.length > 0 && (
+        <section className="card stack">
+          <h3>Same device?</h3>
+          <p className="small muted">These look like one device seen twice, for example at home and over Tailscale. Merging keeps one record with both addresses; TheySpy merges by itself only when the names prove it.</p>
+          <div className="list small">{overview.mergeSuggestions.map((m) => (
+            <div key={`${m.from.id}-${m.into.id}`}>
+              <span className="grow"><b>{m.from.name}</b> <span className="mono muted">{m.from.ip}</span> and <b>{m.into.name}</b> <span className="mono muted">{m.into.ip}</span></span>
+              <button className="btn small primary" type="button" onClick={() => act(() => api("POST", `/api/fleet/devices/${m.from.id}/merge`, { into: m.into.id }), `Merged ${m.from.name} into ${m.into.name}.`)}>Merge</button>
+              <button className="btn small" type="button" onClick={() => act(() => api("POST", "/api/fleet/not-same", { a: m.from.id, b: m.into.id }), "Kept apart; not suggested again.")}>Not the same</button>
+            </div>
+          ))}</div>
+        </section>
+      )}
       {counts.total === 0 && (
         <div className="banner warn"><span className="small">No devices yet. Connect Pi-hole on the <a href="/pihole">Pi-hole Sentinel</a> screen and press “Read Pi-hole now”, or choose a network to sweep below.</span></div>
       )}
@@ -142,7 +164,9 @@ export function FleetScreen() {
           </header>
           <div className="table-wrap"><table>
             <thead><tr><th>Device</th><th>Address</th><th>Sources</th><th>First seen</th><th>Last seen</th></tr></thead>
-            <tbody>{rows.map((d) => (
+            <tbody>{groups.map((g) => ({ g, items: rows.filter((d) => groupOf(d) === g.id) })).filter(({ items }) => items.length).map(({ g, items }) => [
+              <tr key={`g-${g.id}`} className="group"><th colSpan={5} title={g.hint}>{g.title} <span className="muted small">· {items.length}</span></th></tr>,
+              ...items.map((d) => (
               <tr key={d.id} className={selected?.id === d.id ? "sel" : undefined}>
                 <td style={{ whiteSpace: "nowrap" }}>
                   <span className={`dot ${d.online ? "on" : ""}`} aria-label={d.online ? "online" : "offline"} />{" "}
@@ -153,18 +177,19 @@ export function FleetScreen() {
                   <div className="muted small" title={`Name from ${d.nameFrom}`}>{[d.kind ?? d.guess?.label, d.vendor, d.owner].filter(Boolean).join(" · ") || "not identified yet"}{d.tags.length ? ` · ${d.tags.join(", ")}` : ""}</div>
                   {d.network && <div className="small" title={d.network.detail}><span className={`badge ${networkBadge[d.network.kind] ?? "b-info"}`}>{d.network.label}</span></div>}
                 </td>
-                <td className="mono small">{d.ip ?? "—"}<div className="muted">{d.mac ? (d.randomisedMac ? "private MAC" : shortMac(d.mac)) : "no MAC yet"}</div></td>
+                <td className="mono small">{d.homeIp ?? d.tailscaleIp ?? d.ip ?? "—"}{d.homeIp && d.tailscaleIp && <div title="Its Tailscale address">{d.tailscaleIp} <span className="muted">tailscale</span></div>}<div className="muted">{d.mac ? (d.randomisedMac ? "private MAC" : shortMac(d.mac)) : "no MAC yet"}</div></td>
                 <td><span className="src">{Object.keys(d.sources).map((s) => <i key={s} title={`${sourceTitle[s] ?? s}: ${new Date(d.sources[s]).toLocaleString()}`}>{sourceLabel[s] ?? s}</i>)}</span></td>
                 <td className="small">{new Date(d.firstSeen).toLocaleDateString()}</td>
                 <td className="small">{ago(d.lastSeen)}</td>
               </tr>
-            ))}</tbody>
+            ))])}</tbody>
           </table></div>
           {rows.length === 0 && counts.total > 0 && <p className="small muted">No device matches.</p>}
         </section>
 
         <div className="stack sticky">
-          {selected ? <DeviceCard key={selected.id} device={selected} onSave={(f) => save(selected.id, f)} onClose={() => setSelected(null)}
+          {selected ? <DeviceCard key={selected.id} device={selected} others={(overview.devices).filter((d) => d.id !== selected.id && d.network?.kind !== "docker")}
+            onMerge={(into) => act(async () => { setSelected((await api<{ device: DeviceDetail }>("POST", `/api/fleet/devices/${selected.id}/merge`, { into })).device); }, "Merged; one device with both addresses.")} onSave={(f) => save(selected.id, f)} onClose={() => setSelected(null)}
             onForget={() => act(async () => { await api("DELETE", `/api/fleet/devices/${selected.id}`); setSelected(null); }, `Forgot ${selected.name}; it reappears as new if seen again.`)} /> : (
             <section className="card stack">
               <h3>Recent changes</h3>
@@ -289,7 +314,7 @@ function ProtecCard({ devices, onChanged }: { devices: Device[]; onChanged: () =
   );
 }
 
-function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetail; onSave: (fields: Partial<Device>) => void; onClose: () => void; onForget: () => void }) {
+function DeviceCard({ device, others, onMerge, onSave, onClose, onForget }: { device: DeviceDetail; others: Device[]; onMerge: (into: number) => void; onSave: (fields: Partial<Device>) => void; onClose: () => void; onForget: () => void }) {
   const [form, setForm] = useState({ label: device.label ?? "", owner: device.owner ?? "", kind: device.kind ?? "", tags: device.tags.join(", "), notes: device.notes ?? "" });
   return (
     <section className="card stack">
@@ -300,7 +325,8 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
         {device.inPihole && <div><span className="grow muted">In your Pi-hole</span><span>listed as a client{device.names.pihole ? ` named “${device.names.pihole}”` : ""}</span>{!device.trusted && <button className="btn small primary" type="button" onClick={() => onSave({ trusted: true })}>Trust</button>}</div>}
         {device.names.router && <div><span className="grow muted">Name on your router</span><span className="mono">{device.names.router}</span></div>}
         {device.names.tailscale && <div><span className="grow muted">Tailscale name</span><span className="mono">{device.names.tailscale}</span></div>}
-        <div><span className="grow muted">Address</span><span className="mono">{device.ip ?? "—"}</span></div>
+        <div><span className="grow muted">Home address</span><span className="mono">{device.homeIp ?? "not seen at home"}</span></div>
+        {device.tailscaleIp && <div><span className="grow muted">Tailscale address</span><span className="mono">{device.tailscaleIp}</span></div>}
         <div><span className="grow muted">MAC</span><span className="mono">{device.mac ?? "not known yet"}{device.randomisedMac ? " (private)" : ""}</span></div>
         {device.hostname && <div><span className="grow muted">Name on the network</span><span className="mono">{device.hostname}</span></div>}
         <div><span className="grow muted">Vendor</span><span>{device.vendor ?? (device.randomisedMac ? "hidden by a private MAC" : "unknown")}</span></div>
@@ -321,6 +347,12 @@ function DeviceCard({ device, onSave, onClose, onForget }: { device: DeviceDetai
         <button className="btn" type="button" onClick={() => onSave({ trusted: !device.trusted })}>{device.trusted ? "Stop trusting" : "Trust this device"}</button>
         {device.ip && <a className="btn" href={`/check?q=${encodeURIComponent(device.ip)}`}>Check it</a>}
         <button className="btn danger" type="button" onClick={onForget}>Forget</button>
+      </div>
+      <div className="row small">
+        <label htmlFor="d-merge" className="muted">Same device as</label>
+        <select id="d-merge" className="input" style={{ maxWidth: 260 }} value="" onChange={(e) => { if (e.target.value) onMerge(Number(e.target.value)); }}>
+          <option value="">Merge into…</option>{others.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.homeIp ?? d.tailscaleIp ?? d.ip ?? "no address"}</option>)}
+        </select>
       </div>
       {device.addressHistory.length > 1 && (
         <div><h3>Addresses</h3><div className="list small">{device.addressHistory.map((a) => <div key={a.ip}><span className="grow mono">{a.ip}</span><span className="muted">{ago(a.lastSeen)}</span></div>)}</div></div>
