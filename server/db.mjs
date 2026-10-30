@@ -368,6 +368,19 @@ export const migrations = [
      PRIMARY KEY (device_id, vendor, product, source)
    );
    ALTER TABLE devices ADD COLUMN profile TEXT NOT NULL DEFAULT '{}';`,
+  // Network logs (Zeek, Suricata): TLS client fingerprints (JA4) each address used, and whether one
+  // appeared after that address's first import.
+  `CREATE TABLE ja4_fingerprints (
+     client_ip TEXT NOT NULL,
+     ja4 TEXT NOT NULL,
+     first_seen TEXT NOT NULL,
+     last_seen TEXT NOT NULL,
+     count INTEGER NOT NULL,
+     sni TEXT,
+     source TEXT NOT NULL,
+     is_new INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (client_ip, ja4)
+   );`,
 ];
 
 /**

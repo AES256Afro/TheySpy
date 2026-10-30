@@ -1,0 +1,15 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	dns
+#open	2026-10-30-16-34-28
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	trans_id	rtt	query	qclass	qclass_name	qtype	qtype_name	rcode	rcode_name	AA	TC	RD	RA	Z	answers	TTLs	rejected	opcode	opcode_name
+#types	time	string	addr	port	addr	port	enum	count	interval	string	count	string	count	string	count	string	bool	bool	bool	bool	count	vector[string]	vector[interval]	bool	count	string
+1793377883.075605	C5O3VzMs8FBHazZx7	172.17.0.2	55047	1.1.1.1	53	udp	7984	-	ads-sync.theyspy.example	1	C_INTERNET	1	A	3	NXDOMAIN	F	F	T	F	0	-	-	F	0	query
+1793377883.233371	CgpwQC1T0mdX9oW3e3	172.17.0.2	45863	1.1.1.1	53	udp	20617	-	deep.ads-sync.theyspy.example	1	C_INTERNET	1	A	3	NXDOMAIN	F	F	T	F	0	-	-	F	0	query
+1793377883.306680	C4iA5F1I8wcl65hXc6	172.17.0.2	59231	192.168.65.7	53	udp	35125	0.015883	example.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	T	0	2606:4700:10::ac42:93f3,2606:4700:10::6814:179a	50.000000,50.000000	F	0	query
+1793377883.306625	C4iA5F1I8wcl65hXc6	172.17.0.2	59231	192.168.65.7	53	udp	13304	0.018106	example.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	104.20.23.154,172.66.147.243	40.000000,40.000000	F	0	query
+1793377883.416837	Cn3nQz4EFFWuJoi5X4	172.17.0.2	49002	192.168.65.7	53	udp	43683	0.001675	example.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	T	0	2606:4700:10::ac42:93f3,2606:4700:10::6814:179a	50.000000,50.000000	F	0	query
+1793377883.416796	Cn3nQz4EFFWuJoi5X4	172.17.0.2	49002	192.168.65.7	53	udp	58459	0.001796	example.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	104.20.23.154,172.66.147.243	40.000000,40.000000	F	0	query
+#close	2026-10-30-16-34-28
