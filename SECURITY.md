@@ -84,7 +84,12 @@ Since 1.1.0, TheySpy enforces this list itself (`server/egress.mjs`). Every requ
 - the owner's Pi-hole and ntfy;
 - the hosts of the blocklists in the library.
 
-A refused host is written to the Activity log (`egress.blocked`), at most once an hour. `TS_EGRESS=log` only records unlisted hosts; `TS_EGRESS=off` turns the list off. The website check is not on this list: it has its own pool, pinned to addresses that are on your network or that their owner proved are theirs.
+A refused host is written to the Activity log (`egress.blocked`), at most once an hour.
+
+Since 1.3.0 every allowed service is also paced (`server/pacing.mjs`):
+- a minimum gap between requests to the same host, and an hourly budget (for example 50 an hour to GitHub's API, which allows 60 without a token);
+- when a service says to slow down (429, a 503 with `Retry-After`, or NVD's 403), TheySpy holds back from it until the time it names, at most an hour, and records `egress.rate_limited` in the Activity log;
+- a short wait is waited out; a longer one fails at once and says when TheySpy will try again. `TS_EGRESS=log` only records unlisted hosts; `TS_EGRESS=off` turns the list off. The website check is not on this list: it has its own pool, pinned to addresses that are on your network or that their owner proved are theirs.
 
 | Destination | Why |
 | --- | --- |

@@ -1,5 +1,5 @@
 import { productVersion } from "../shared.mjs";
-import { feedUrls, nvdDate, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
+import { createNvdKey, feedUrls, nvdDate, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
 
 // The CVE aggregator (docs/PLAN.md M5): NVD for descriptions, scores and CPE criteria; CISA KEV for
 // what is known to be exploited (which flags a zero-day); FIRST EPSS for how likely exploitation is.
@@ -16,10 +16,11 @@ const nvdWindowDays = 120; // NVD's largest lastMod window
  *   fetchImpl?: typeof fetch,
  *   now?: () => Date,
  *   nvdApiKey?: string | null,
+ *   nvdKey?: ReturnType<typeof import("./feeds.mjs").createNvdKey>,
  *   sleep?: (ms: number) => Promise<void>,
  * }} deps
  */
-export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = () => new Date(), nvdApiKey = null, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = () => new Date(), nvdApiKey = null, nvdKey = createNvdKey({ apiKey: nvdApiKey, settings, audit, now }), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const q = {
     get: db.prepare("SELECT * FROM cves WHERE cve_id = ?"),
     exists: db.prepare("SELECT kev, epss FROM cves WHERE cve_id = ?"),
@@ -188,7 +189,6 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       const previous = status("nvd");
       const end = now();
       let start = previous?.through ? new Date(Date.parse(previous.through) - 5 * 60_000) : new Date(end.getTime() - days * day);
-      const pause = nvdApiKey ? 700 : 6500;
       const announce = Boolean(previous?.through);
       let fetched = 0;
       let added = 0;
@@ -196,9 +196,15 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       while (start < end) {
         const windowEnd = new Date(Math.min(end.getTime(), start.getTime() + nvdWindowDays * day));
         for (let index = 0, total = 1; index < total; index += 2000) {
-          if (requests++) await sleep(pause);
+          if (requests++) await sleep(nvdKey.pause());
           const url = `${feedUrls.nvd}?lastModStartDate=${encodeURIComponent(nvdDate(start))}&lastModEndDate=${encodeURIComponent(nvdDate(windowEnd))}&startIndex=${index}&resultsPerPage=2000`;
-          const response = await get(url, { headers: headers(nvdApiKey ? { apiKey: nvdApiKey } : {}) });
+          const withKey = nvdKey.current();
+          let response = await get(url, { headers: headers(withKey ? { apiKey: withKey } : {}) });
+          if (withKey && nvdKey.refused(response)) {
+            log("NVD refused the API key; carrying on without it (slower). Check the key in TheySpy's settings.");
+            await sleep(nvdKey.pause());
+            response = await get(url, { headers: headers() });
+          }
           if (!response.ok) throw new Error(`NVD answered ${response.status}${response.status === 403 ? " (rate limited; an API key raises the limit)" : ""}`);
           const page = await response.json();
           total = Number(page.totalResults ?? 0);
@@ -249,7 +255,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
     }),
     stats() {
       const c = /** @type {any} */ (q.counts.get(new Date(now().getTime() - 7 * day).toISOString().slice(0, 10)));
-      return { total: Number(c.total ?? 0), kev: Number(c.kev ?? 0), zeroDays: Number(c.zero_day ?? 0), epssHigh: Number(c.epss_high ?? 0), kevThisWeek: Number(c.kev_recent ?? 0), feeds: { kev: status("kev"), nvd: status("nvd"), epss: status("epss") }, apiKey: Boolean(nvdApiKey) };
+      return { total: Number(c.total ?? 0), kev: Number(c.kev ?? 0), zeroDays: Number(c.zero_day ?? 0), epssHigh: Number(c.epss_high ?? 0), kevThisWeek: Number(c.kev_recent ?? 0), feeds: { kev: status("kev"), nvd: status("nvd"), epss: status("epss") }, errors: Object.fromEntries(["kev", "nvd", "epss", "advisories", "first"].map((feed) => [feed, settings.get(`cve_feed_${feed}_error`) ?? null]).filter(([, value]) => value)), apiKey: nvdKey.configured, nvdKey: nvdKey.status() };
     },
   };
 

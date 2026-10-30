@@ -1,7 +1,9 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { testClock, testServices } from "../test-helpers.mjs";
-import { feedUrls, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
+import { createNvdKey, feedUrls, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
+import { createCveStore } from "./store.mjs";
+import { createSoftwareLookup } from "./lookup.mjs";
 
 const kevEntry = (id, extra = {}) => ({ cveID: id, vendorProject: "Google", product: "Chromium V8", vulnerabilityName: `Google Chromium V8 issue ${id}`, dateAdded: "2026-10-27", shortDescription: "Type confusion in V8.", requiredAction: "Apply updates.", dueDate: "2026-11-17", knownRansomwareCampaignUse: "Unknown", cwes: ["CWE-843"], ...extra });
 const kev = (entries, version = "2026.10.29") => JSON.stringify({ title: "KEV", catalogVersion: version, dateReleased: "2026-10-29T19:09:34Z", count: entries.length, vulnerabilities: entries });
@@ -95,5 +97,38 @@ describe("CVE feeds", () => {
     const web = feeds({ kevBody: () => kev([]), nvdPages: () => [], epssBody: () => gzipSync(epssCsv([["CVE-2026-4127", 0.71, 0.99]])) });
     const { cves } = testServices({ webFetch: web.fetchImpl });
     await expect(cves.syncEpss()).rejects.toThrow(/looked wrong/);
+  });
+
+  it("keeps going without the NVD key when NVD refuses it, says so, and tries the key again a day later", async () => {
+    // BigBox, 30 Oct 2026: NVD answered 404 "Invalid apiKey." to every request, and the first load
+    // never finished. Now the feed carries on without the key and the screen says why.
+    const pages = [nvdCve("CVE-2026-7001")];
+    const sent = [];
+    const fetchImpl = async (input, init = {}) => {
+      const url = String(input);
+      const key = /** @type {any} */ (init.headers ?? {}).apiKey ?? null;
+      sent.push(key);
+      if (key === "not-a-real-key") return new Response("", { status: 404, headers: { message: "Invalid apiKey." } });
+      if (url.includes("virtualMatchString")) return Response.json({ totalResults: 1, vulnerabilities: pages.map((cve) => ({ cve })) });
+      return Response.json({ totalResults: pages.length, startIndex: 0, resultsPerPage: 2000, vulnerabilities: pages.map((cve) => ({ cve })) });
+    };
+    const now = testClock("2026-10-30T12:00:00.000Z");
+    const { db, settings, audit } = testServices({ now });
+    const nvdKey = createNvdKey({ apiKey: "not-a-real-key", settings, audit, now });
+    const cves = createCveStore({ db, settings, audit, fetchImpl, now, nvdKey, sleep: async () => {} });
+
+    expect(await cves.syncNvd({ days: 7 })).toEqual({ fetched: 1, added: 1 });
+    expect(sent).toEqual(["not-a-real-key", null]);
+    expect(cves.stats().nvdKey).toMatchObject({ configured: true, rejected: true, message: "Invalid apiKey." });
+    expect(audit.list(10).filter((e) => e.action === "cves.nvd_key_rejected")).toHaveLength(1);
+
+    // The per-version lookups share the key and its state: no second refusal.
+    const lookup = createSoftwareLookup({ db, cves, fetchImpl, now, nvdKey, sleep: async () => {} });
+    await lookup.lookup({ vendor: "google", product: "chrome", version: "140.0.1" });
+    expect(sent.at(-1)).toBeNull();
+
+    // A day later the key is tried again (it may have been activated since).
+    now.advance(25 * 60 * 60_000);
+    expect(nvdKey.current()).toBe("not-a-real-key");
   });
 });

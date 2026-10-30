@@ -92,3 +92,48 @@ export function parseNvdCve(cve) {
 
 /** NVD's timestamps want "2026-10-29T12:00:00.000Z" style, at most 120 days apart. */
 export const nvdDate = (d) => new Date(d).toISOString().replace("Z", "+00:00").replace(/\.\d{3}/, ".000");
+
+/**
+ * The NVD API key, shared by the feed and the per-version lookups. NVD answers 404 "Invalid apiKey"
+ * to a key it does not accept (mistyped, or not yet activated from NVD's e-mail), and every request
+ * then fails. Instead TheySpy carries on without the key - slower, never stopped - says why, and
+ * tries the key again a day later in case it was activated since.
+ * @param {{ apiKey?: string | null, settings?: { get: (key: string) => any, set: (key: string, value: any) => void }, audit?: { record: (...args: any[]) => void }, now?: () => Date }} options
+ */
+export function createNvdKey({ apiKey = null, settings, audit, now = () => new Date() }) {
+  const retryAfterMs = 24 * 60 * 60 * 1000;
+  const state = () => settings?.get("cve_nvd_key") ?? null;
+  const key = {
+    configured: Boolean(apiKey),
+    /** The key to send now, or null when there is none or NVD refused it less than a day ago. */
+    current() {
+      const s = state();
+      if (!apiKey) return null;
+      if (s?.rejectedAt && now().getTime() - Date.parse(s.rejectedAt) < retryAfterMs) return null;
+      return apiKey;
+    },
+    /** Spacing between NVD requests: 50 per 30 s with a working key, 5 without. */
+    pause: () => (key.current() ? 700 : 6500),
+    /**
+     * Looks at NVD's answer to a request that carried the key. True when NVD refused the key, which
+     * is then set aside (the caller retries without it).
+     * @param {Response} response
+     */
+    refused(response) {
+      if (response.status !== 404 || !key.current()) return false;
+      const message = response.headers.get("message") ?? "";
+      if (!/api ?key/i.test(message)) return false;
+      const first = !state()?.rejectedAt;
+      settings?.set("cve_nvd_key", { rejectedAt: now().toISOString(), message: message.slice(0, 120) });
+      if (first) audit?.record("system", "cves.nvd_key_rejected", null, { message: message.slice(0, 120) });
+      return true;
+    },
+    /** For the CVEs screen: whether a key is set, and whether NVD refused it. */
+    status() {
+      const s = state();
+      const rejected = Boolean(apiKey && s?.rejectedAt && now().getTime() - Date.parse(s.rejectedAt) < retryAfterMs);
+      return { configured: Boolean(apiKey), rejected, rejectedAt: rejected ? s.rejectedAt : null, message: rejected ? s.message : null };
+    },
+  };
+  return key;
+}
