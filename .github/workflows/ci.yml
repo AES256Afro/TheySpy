@@ -85,6 +85,24 @@ jobs:
           cache: npm
       - run: npm ci --omit=dev
       - run: sh scripts/e2e-agent.sh
+      # Two TheySpy sites: the hub reads the other through a read-only token.
+      - run: sh scripts/e2e-sites.sh
+
+  # NetAlertX both ways and Protec's inventory, for real. NetAlertX: its devices and names come in, and TheySpy fills only empty fields
+  # there, one at a time, leaving everything the owner typed in NetAlertX as it was.
+  connectors-e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: sh scripts/e2e-netalertx.sh
+      # Protec's published image: an enrolled machine's packages become its CVE inventory.
+      - run: sh scripts/e2e-protec.sh
 
   # AdGuard Home and Technitium DNS, for real: TheySpy hunts, watches and looks up through each, and a
   # blocked indicator lookup must show as blocked.
@@ -105,7 +123,7 @@ jobs:
   # and build provenance attached.
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [check, container, pihole-e2e, agent-e2e, dns-sources-e2e]
+    needs: [check, container, pihole-e2e, agent-e2e, dns-sources-e2e, connectors-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read

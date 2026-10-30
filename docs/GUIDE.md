@@ -36,6 +36,10 @@ For Pi-hole:
    - **Subscribe** adds TheySpy's compiled lists (Blocklist library).
    - **Baselines** apply a blocking level per device.
 
+If you run **NetAlertX**, connect it at the bottom of **Fleet** with its API address (port 20212) and API token:
+- **From NetAlertX:** its devices join the Fleet, with the names, owners and types you gave them there.
+- **To NetAlertX:** TheySpy can fill the same fields where they are empty. It never touches ones you filled, and only after you allow it and look at the preview.
+
 On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. **Trust all** next to that count marks them known in one step, so only new devices raise alerts.
 
 ## 3. Alerts and the weekly briefing
@@ -53,6 +57,22 @@ You then get a message for:
 - a held blocklist update.
 
 The briefing arrives every Monday morning. On BoxPilot, the **Spyware watch** agent (Agents → **New agent** → **Spyware watch**, BoxPilot 1.230.0 or newer) reads the same findings every day and tells you when something needs you. It reads TheySpy's database read-only on the same machine, so it needs no token. API tokens for other tools (read-only `/api/v1` and MCP) are created on the same screen.
+
+## 3a. Protec
+
+If you run **Protec**, connect it at the bottom of **Fleet**:
+1. In Protec, open **Access** and issue a credential with the **viewer** role (it lasts at most 720 hours).
+2. Paste Protec's address and that credential into TheySpy.
+
+Every hour TheySpy reads each machine's installed packages and matches its CVEs on that device. Machines are matched by hostname; link any it cannot match. On Debian and Ubuntu a package keeps its version number when it is patched, so a CVE matched there may already be fixed: keep the machine updated.
+
+## 3b. More than one place
+
+If you run TheySpy in more than one place (a cabin, a parents' house), add the others under **Sites**:
+1. In the other TheySpy, open **Briefing → API and MCP** and create a token.
+2. Paste its address and the token under Sites.
+
+This TheySpy then reads that site every 15 minutes and alerts you when a lookup gets past its blocking. The token is read-only: nothing here can change the other site.
 
 ## 4. Computers: the agent
 

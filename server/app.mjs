@@ -54,11 +54,14 @@ function readCookie(header, name) {
  *   exposure: ReturnType<typeof import("./exposure.mjs").createExposure>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
+ *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
+ *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
+ *   protec: ReturnType<typeof import("./protec.mjs").createProtec>,
  *   netlogs: ReturnType<typeof import("./netlogs.mjs").createNetworkLogs>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netlogs, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -159,7 +162,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
+  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
 
@@ -191,6 +194,16 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     const { dir, file } = backup.snapshot();
     res.download(file, path.basename(file), () => rmSync(dir, { recursive: true, force: true }));
   });
+  // Other sites, read through their read-only API (sites.mjs).
+  app.get("/api/sites", requireOwner, (_req, res) => res.json({ sites: sites.overview() }));
+  app.post("/api/sites", requireOwner, (req, res) => res.status(201).json(sites.add(req.body ?? {}, "owner")));
+  app.delete("/api/sites/:id", requireOwner, (req, res) => { sites.remove(String(req.params.id), "owner"); res.json({ removed: true }); });
+  app.post("/api/sites/refresh", requireOwner, async (_req, res) => res.json({ sites: await sites.refresh() }));
+  // Protec's package inventory, read with a viewer credential (protec.mjs).
+  app.get("/api/protec", requireOwner, (_req, res) => res.json({ ...protec.config(), lastError: settings.get("protec_last_error") ?? null }));
+  app.put("/api/protec", requireOwner, (req, res) => res.json(protec.configure(req.body ?? {}, "owner")));
+  app.post("/api/protec/sync", requireOwner, async (_req, res) => { const r = await protec.sync("owner"); settings.delete("protec_last_error"); res.json(r); });
+  app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), Number(req.body?.deviceId), "owner"); res.json({ linked: true }); });
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));

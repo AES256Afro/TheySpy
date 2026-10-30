@@ -13,10 +13,19 @@ import { classify } from "./targeted.mjs";
  *   sentinel: ReturnType<typeof import("../pihole/sentinel.mjs").createSentinel>,
  *   library: ReturnType<typeof import("../blocklists/library.mjs").createBlocklistLibrary>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
+ *   netalertx: ReturnType<typeof import("./netalertx.mjs").createNetAlertX>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx }) {
   const router = express.Router();
+
+  // NetAlertX, both ways (netalertx.mjs): connect, sync now, preview and fill empty fields there.
+  router.get("/netalertx", (_req, res) => res.json(netalertx.config()));
+  router.put("/netalertx", (req, res) => res.json(netalertx.configure(req.body ?? {}, "owner")));
+  router.post("/netalertx/test", async (_req, res) => res.json(await netalertx.test()));
+  router.post("/netalertx/sync", async (_req, res) => res.json(await netalertx.pull("owner")));
+  router.get("/netalertx/preview", async (_req, res) => res.json(await netalertx.preview()));
+  router.post("/netalertx/push", async (_req, res) => res.json(await netalertx.push("owner")));
   const id = (req) => Number(req.params.id);
 
   router.get("/", (_req, res) => {
