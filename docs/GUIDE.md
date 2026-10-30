@@ -53,6 +53,14 @@ You then get a message for:
 
 The briefing arrives every Monday morning. On BoxPilot, the **Spyware watch** agent (Agents → **New agent** → **Spyware watch**, BoxPilot 1.230.0 or newer) reads the same findings every day and tells you when something needs you. It reads TheySpy's database read-only on the same machine, so it needs no token. API tokens for other tools (read-only `/api/v1` and MCP) are created on the same screen.
 
+## 3b. More than one place
+
+If you run TheySpy in more than one place (a cabin, a parents' house), add the others under **Sites**:
+1. In the other TheySpy, open **Briefing → API and MCP** and create a token.
+2. Paste its address and the token under Sites.
+
+This TheySpy then reads that site every 15 minutes and alerts you when a lookup gets past its blocking. The token is read-only: nothing here can change the other site.
+
 ## 4. Computers: the agent
 
 **Evidence locker** → **Add a computer** gives you three commands for that machine (Python 3.9+ on Windows, macOS or Linux):

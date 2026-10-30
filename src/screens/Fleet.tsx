@@ -221,8 +221,10 @@ function NetAlertXCard({ onChanged }: { onChanged: () => void }) {
     <section className="card stack">
       <h3>NetAlertX</h3>
       <p className="small muted">Its devices join the Fleet, with the names, owners and types you gave them there. TheySpy can fill the same fields in NetAlertX where they are empty, never ones you filled, and only after you allow it.</p>
+      <div className="compact-fields">
       <div className="field"><label htmlFor="nax-url">API address</label><input id="nax-url" className="input" placeholder="http://192.168.1.5:20212" value={url} onChange={(e) => setUrl(e.target.value)} /><span className="hint">NetAlertX&apos;s API port (GRAPHQL_PORT), 20212 by default.</span></div>
       <div className="field"><label htmlFor="nax-token">API token</label><input id="nax-token" className="input" type="password" autoComplete="off" placeholder={config.hasToken ? "Saved (leave empty to keep)" : "Settings → API → API_TOKEN"} value={token} onChange={(e) => setToken(e.target.value)} /></div>
+      </div>
       <div className="row">
         <button className="btn" type="button" onClick={() => step(async () => { await api("PUT", "/api/fleet/netalertx", { url, ...(token ? { token } : {}) }); setToken(""); const t = await api<{ devices: number }>("POST", "/api/fleet/netalertx/test"); return `Connected: NetAlertX lists ${t.devices} devices.`; })}>Save and test</button>
         {config.configured && <button className="btn" type="button" onClick={() => step(async () => { const r = await api<{ devices: number; added: number; named: number; filled: number }>("POST", "/api/fleet/netalertx/sync"); return `Synced ${r.devices} devices: ${r.added} new here, ${r.named} named by NetAlertX, ${r.filled} with owner or type filled.`; })}>Sync now</button>}
