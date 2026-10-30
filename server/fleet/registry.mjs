@@ -195,6 +195,23 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     },
 
     /**
+     * Fills a device's owner and kind from another tool (NetAlertX) where TheySpy has none. Unlike
+     * an edit it neither overwrites nor acknowledges: a new device stays new until the owner looks.
+     * @param {number} id @param {{ owner?: string | null, kind?: string | null }} values @param {string} source
+     */
+    fillEmpty(id, values, source) {
+      const row = /** @type {any} */ (q.byId.get(id));
+      if (!row) return false;
+      const clean = (v) => (v ? String(v).trim().slice(0, 80) || null : null);
+      const owner = row.owner ?? clean(values.owner);
+      const kind = row.kind ?? clean(values.kind);
+      if (owner === row.owner && kind === row.kind) return false;
+      q.edit.run(row.label, owner, kind, row.notes, row.tags, row.trusted, row.acknowledged, id);
+      audit.record(source, "fleet.device_filled", row.mac ?? row.ip, { id, owner: owner !== row.owner ? owner : undefined, kind: kind !== row.kind ? kind : undefined });
+      return true;
+    },
+
+    /**
      * Trusts every device you already listed as a client in Pi-hole that is not trusted yet.
      * @param {string} actor
      */

@@ -12,6 +12,9 @@ import { blocklistJobKinds, createBlocklistLibrary } from "./blocklists/library.
 import { baselineJobKinds, createBaselines } from "./blocklists/baselines.mjs";
 import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
+import { createNetAlertX } from "./fleet/netalertx.mjs";
+import { createSites } from "./sites.mjs";
+import { createProtec } from "./protec.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createNvdKey } from "./cves/feeds.mjs";
@@ -49,7 +52,7 @@ const blocklistHosts = () => {
 };
 createEgress({
   mode: config.egress, audit,
-  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), ...blocklistHosts()],
+  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), hostOf(settings.get("protec")?.url ?? ""), ...blocklistHosts()],
 }).install();
 // Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
 // hold when one says to slow down. Installed before any service is made, as they take `fetch` then.
@@ -64,11 +67,14 @@ const nvdKey = createNvdKey({ apiKey: config.nvdApiKey, settings, audit });
 const cves = createCveStore({ db, settings, audit, nvdKey });
 const advisories = createAdvisories({ cves, settings });
 const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
+const sites = createSites({ settings, secretBox: createSecretBox(auth.deriveKey("sites")), audit });
+const netalertx = createNetAlertX({ settings, secretBox: createSecretBox(auth.deriveKey("netalertx")), fleet, audit });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
 const software = createSoftwareLookup({ db, cves, nvdKey });
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
 const agents = createAgents({ db, fleet, iocStore, audit, secretBox: createSecretBox(auth.deriveKey("agents")) });
+const protec = createProtec({ settings, secretBox: createSecretBox(auth.deriveKey("protec")), fleet, agents, audit });
 const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, reported: agents.inventory });
 // Alerts, the digest and the read model refer to each other only when they run, never at start.
 /** @type {ReturnType<typeof createReadModel>} */ let read;
@@ -84,7 +90,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netalertx, sites, protec, netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -130,7 +136,9 @@ if (config.fleetAuto) {
   // daily rather than with a 30-day timer: Node's timers stop at 2^31 - 1 ms (about 24.8 days) and
   // treat anything longer as 1 ms.
   const vendors = quietly("vendors", async () => { if (oui.isDue()) await oui.update(); });
-  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000), setInterval(vendors, day), setTimeout(vendors, 60 * 1000)];
+  // NetAlertX's devices, names, owners and types, every 30 minutes once it is connected (reads only).
+  const netalertxSync = quietly("netalertx", async () => { if (netalertx.config().configured) await netalertx.pull("system"); });
+  const timers = [setInterval(sync, 5 * 60 * 1000), setInterval(sweep, 30 * 60 * 1000), setTimeout(sync, 20 * 1000), setInterval(vendors, day), setTimeout(vendors, 60 * 1000), setInterval(netalertxSync, 30 * 60 * 1000), setTimeout(netalertxSync, 40 * 1000)];
   for (const t of timers) t.unref();
 }
 
@@ -151,6 +159,18 @@ if (config.cvesAuto) {
   const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); await advisories.sync(); });
   const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day), setInterval(vendors, 6 * 60 * 60 * 1000)];
   for (const t of timers) t.unref();
+}
+
+// Protec's package inventory (protec.mjs): every hour once it is connected.
+{
+  const read = () => { if (protec.config().configured) void protec.sync("system").catch((error) => settings.set("protec_last_error", { at: new Date().toISOString(), error: error.message })); };
+  for (const t of [setInterval(read, 60 * 60 * 1000), setTimeout(read, 70 * 1000)]) t.unref();
+}
+
+// Other sites (sites.mjs): every 15 minutes, read each one's status through its read-only API.
+{
+  const read = () => { if ((settings.get("sites") ?? []).length) void sites.refresh().catch(() => {}); };
+  for (const t of [setInterval(read, 15 * 60 * 1000), setTimeout(read, 50 * 1000)]) t.unref();
 }
 
 // Alerts: retry undelivered ones every 10 minutes; the weekly briefing goes out on Monday from
