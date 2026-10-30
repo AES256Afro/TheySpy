@@ -335,6 +335,7 @@ A website address in Targeted check runs a read-only check: PHP and CMS (WordPre
 - **Exit:** applying the kit on a test device moves its score from red to green and each factor flips with evidence.
 
 ### M9 — Alerts, digest, API, MCP (S)
+**Status (30 Oct 2026): done** (0.13.0). Alerts come from audit entries: a new device, indicator lookups (once per device and indicator a day; urgent when not blocked), a CISA KEV addition that names software on a device, Pi-hole unreachable, and a held blocklist update. Each alert has a key, so it is sent once, even across restarts. Delivery is to ntfy (`TS_NTFY_*` or the Briefing screen), retried for a day, and kept in TheySpy. The weekly briefing goes out on Monday mornings (keyed by ISO week). `/api/v1` and `/mcp` (tools: list_devices, list_indicator_lookups, list_exploited_cves_on_devices, check_domain, get_status) take bearer tokens that are stored as hashes, shown once and can be revoked.
 - Notifier (ntfy, Gotify, webhook, email), quiet hours, per-trigger toggles.
 - Daily/weekly digest (also the printable briefing view).
 - `/api/v1` + `/mcp` read-only.

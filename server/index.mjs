@@ -17,6 +17,10 @@ import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createWebScanner } from "./web/scan.mjs";
 import { createSoftwareLookup } from "./cves/lookup.mjs";
 import { createDeviceCves } from "./cves/devices.mjs";
+import { createAlerts } from "./alerts.mjs";
+import { createDigest } from "./digest.mjs";
+import { createApiTokens } from "./integrations.mjs";
+import { createReadModel } from "./readmodel.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { productVersion } from "./shared.mjs";
@@ -40,6 +44,12 @@ const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey })
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
 const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit });
+// Alerts, the digest and the read model refer to each other only when they run, never at start.
+/** @type {ReturnType<typeof createReadModel>} */ let read;
+const alerts = createAlerts({ db, settings, audit, secretBox: createSecretBox(auth.deriveKey("alerts")), env: config.ntfy, names: () => fleet.namesByIp(), kevMatches: (ids) => read.kevMatches(ids) });
+const digest = createDigest({ fleet, sentinel, cves, library, alerts });
+read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest });
+const tokens = createApiTokens({ db, audit });
 const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
 
 if (auth.generatedPassword) {
@@ -47,7 +57,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -112,6 +122,14 @@ if (config.cvesAuto) {
   const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); });
   const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day)];
   for (const t of timers) t.unref();
+}
+
+// Alerts: retry undelivered ones every 10 minutes; the weekly briefing goes out on Monday from
+// 8 am (TZ), once (its key is the ISO week).
+{
+  const retry = setInterval(() => { void alerts.retry().catch(() => {}); }, 10 * 60 * 1000);
+  const weekly = setInterval(() => { const n = new Date(); if (n.getDay() === 1 && n.getHours() >= 8) void digest.sendWeekly().catch(() => {}); }, 60 * 60 * 1000);
+  for (const t of [retry, weekly]) t.unref();
 }
 
 // Watch Pi-hole's new queries every 30 seconds once it is connected (the loop idles until then).
