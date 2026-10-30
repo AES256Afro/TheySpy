@@ -4,6 +4,10 @@ import { serviceProducts } from "./match.mjs";
 // (product and version from banners), looked up at its exact version. The owner can accept a CVE as
 // a known risk or mark it fixed; a later check that still finds the same version reopens a "fixed".
 
+// Where a version came from, as each CVE line says it. A Debian or Ubuntu package keeps its upstream
+// version when it is patched, so a CVE matched from one may already be fixed there.
+const sourceWords = { agent: "agent", protec: "Protec", "protec-dpkg": "Protec, Debian package: may already be patched; your updates are what fix it" };
+
 /**
  * @param {{
  *   db: import("node:sqlite").DatabaseSync,
@@ -50,7 +54,7 @@ export function createDeviceCves({ db, fleet, services, software, audit, now = (
         for (const [vendor, product] of item.cpes) {
           for (const c of await software.lookup({ vendor, product, version: item.version })) {
             const e = byCve.get(c.cveId) ?? { ...c, software: [], seen: "" };
-            e.software.push(`${item.product} ${item.version}${item.port ? ` (port ${item.port})` : ` (${item.source === "agent" ? "agent" : "profile"})`}`);
+            e.software.push(`${item.product} ${item.version}${item.port ? ` (port ${item.port})` : ` (${sourceWords[item.source] ?? "profile"})`}`);
             if (item.seen > e.seen) e.seen = item.seen;
             byCve.set(c.cveId, e);
           }

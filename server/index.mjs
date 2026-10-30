@@ -14,6 +14,7 @@ import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createNetAlertX } from "./fleet/netalertx.mjs";
 import { createSites } from "./sites.mjs";
+import { createProtec } from "./protec.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
 import { createNvdKey } from "./cves/feeds.mjs";
@@ -50,7 +51,7 @@ const blocklistHosts = () => {
 };
 createEgress({
   mode: config.egress, audit,
-  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), ...blocklistHosts()],
+  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), hostOf(settings.get("protec")?.url ?? ""), ...blocklistHosts()],
 }).install();
 // Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
 // hold when one says to slow down. Installed before any service is made, as they take `fetch` then.
@@ -72,6 +73,7 @@ const software = createSoftwareLookup({ db, cves, nvdKey });
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
 const agents = createAgents({ db, fleet, iocStore, audit, secretBox: createSecretBox(auth.deriveKey("agents")) });
+const protec = createProtec({ settings, secretBox: createSecretBox(auth.deriveKey("protec")), fleet, agents, audit });
 const deviceCves = createDeviceCves({ db, fleet, services: checker.servicesOf, software, audit, reported: agents.inventory });
 // Alerts, the digest and the read model refer to each other only when they run, never at start.
 /** @type {ReturnType<typeof createReadModel>} */ let read;
@@ -87,7 +89,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netalertx, sites }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netalertx, sites, protec }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -156,6 +158,12 @@ if (config.cvesAuto) {
   const first = quietly("first", async () => { await cves.syncKev(); await cves.syncNvd(); await cves.syncEpss(); await advisories.sync(); });
   const timers = [setTimeout(first, 90 * 1000), setInterval(kev, 60 * 60 * 1000), setInterval(nvd, 2 * 60 * 60 * 1000), setInterval(epss, day), setInterval(vendors, 6 * 60 * 60 * 1000)];
   for (const t of timers) t.unref();
+}
+
+// Protec's package inventory (protec.mjs): every hour once it is connected.
+{
+  const read = () => { if (protec.config().configured) void protec.sync("system").catch((error) => settings.set("protec_last_error", { at: new Date().toISOString(), error: error.message })); };
+  for (const t of [setInterval(read, 60 * 60 * 1000), setTimeout(read, 70 * 1000)]) t.unref();
 }
 
 // Other sites (sites.mjs): every 15 minutes, read each one's status through its read-only API.
