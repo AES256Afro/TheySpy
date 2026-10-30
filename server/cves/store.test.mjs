@@ -28,8 +28,9 @@ function feeds({ kevBody, nvdPages, epssBody }) {
     if (url === feedUrls.epss) return new Response(epssBody(), { status: 200 });
     if (url.startsWith(feedUrls.nvd)) {
       const start = Number(new URL(url).searchParams.get("startIndex"));
+      const size = Number(new URL(url).searchParams.get("resultsPerPage"));
       const all = nvdPages();
-      return Response.json({ totalResults: all.length, startIndex: start, resultsPerPage: 2000, vulnerabilities: all.slice(start, start + 2000).map((cve) => ({ cve })) });
+      return Response.json({ totalResults: all.length, startIndex: start, resultsPerPage: size, vulnerabilities: all.slice(start, start + size).map((cve) => ({ cve })) });
     }
     return new Response("not found", { status: 404 });
   };
@@ -88,7 +89,7 @@ describe("CVE feeds", () => {
     const { cves } = testServices({ webFetch: web.fetchImpl, now: testClock("2026-10-29T20:00:00.000Z") });
     expect(await cves.syncNvd({ days: 200 })).toEqual({ fetched: 9000, added: 4500 });
     const nvdRequests = web.requests.filter((u) => u.startsWith(feedUrls.nvd));
-    expect(nvdRequests).toHaveLength(6); // two windows (120 + 80 days) × three pages
+    expect(nvdRequests).toHaveLength(10); // two windows (120 + 80 days) × five pages of 1,000
     expect(new Set(nvdRequests.map((u) => new URL(u).searchParams.get("lastModStartDate"))).size).toBe(2);
     expect(cves.stats().feeds.nvd).toMatchObject({ through: "2026-10-29T20:00:00.000Z", fetched: 9000 });
   });
@@ -130,5 +131,44 @@ describe("CVE feeds", () => {
     // A day later the key is tried again (it may have been activated since).
     now.advance(25 * 60 * 60_000);
     expect(nvdKey.current()).toBe("not-a-real-key");
+  });
+
+  it("fetches a slow or cut-off NVD page again, and resumes a stopped first load where it was", async () => {
+    // BigBox, 30 Oct 2026: with a working key the first load reached 10,000 of 100,181, one page
+    // timed out, and every later run started again from nothing.
+    const many = Array.from({ length: 3500 }, (_, i) => nvdCve(`CVE-2026-${20000 + i}`));
+    let failures = { 2000: 1 }; // the page at 2,000 is cut off once
+    let stopAt = null;
+    const requests = [];
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      const start = Number(url.searchParams.get("startIndex"));
+      const size = Number(url.searchParams.get("resultsPerPage"));
+      requests.push(start);
+      if (stopAt !== null && start >= stopAt) throw new TypeError("fetch failed"); // NVD unreachable
+      const body = JSON.stringify({ totalResults: many.length, vulnerabilities: many.slice(start, start + size).map((cve) => ({ cve })) });
+      if (failures[start]) { failures[start] -= 1; return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(body.slice(0, 50))); c.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")); } })); }
+      return new Response(body);
+    };
+    const { cves } = testServices({ webFetch: fetchImpl, now: testClock("2026-10-30T13:00:00.000Z") });
+    const lines = [];
+    expect(await cves.syncNvd({ days: 30, log: (l) => lines.push(l) })).toEqual({ fetched: 3500, added: 3500 });
+    expect(requests).toEqual([0, 1000, 2000, 2000, 3000]);
+    expect(lines.some((l) => /slow or cut off/.test(l))).toBe(true);
+
+    // A later first load that dies part-way picks up from the page it reached, not from zero.
+    requests.length = 0;
+    const fresh = testServices({ webFetch: fetchImpl, now: testClock("2026-10-30T13:00:00.000Z") });
+    failures = {};
+    stopAt = 2000;
+    await expect(fresh.cves.syncNvd({ days: 30 })).rejects.toThrow(/Could not reach/);
+    expect(fresh.cves.stats().feeds.nvd.progress).toMatchObject({ done: 2000, total: 3500 });
+    requests.length = 0;
+    stopAt = null;
+    const resumed = [];
+    expect(await fresh.cves.syncNvd({ days: 30, log: (l) => resumed.push(l) })).toEqual({ fetched: 1500, added: 1500 });
+    expect(requests).toEqual([2000, 3000]);
+    expect(resumed[0]).toMatch(/^Resuming NVD at 2,000 of 3,500/);
+    expect(fresh.cves.stats().feeds.nvd).toMatchObject({ through: expect.any(String), progress: null });
   });
 });
