@@ -1,6 +1,6 @@
 import { productVersion } from "../shared.mjs";
 import { matchSoftware } from "./match.mjs";
-import { parseNvdCve } from "./feeds.mjs";
+import { createNvdKey, parseNvdCve } from "./feeds.mjs";
 
 // CVEs for one exact version of one product, asked of NVD (its virtualMatchString finds every CVE
 // whose CPE criteria cover that version) and kept for a week. Used by the website check, device
@@ -13,12 +13,13 @@ const week = 7 * 86_400_000;
  *   db: import("node:sqlite").DatabaseSync,
  *   cves: ReturnType<typeof import("./store.mjs").createCveStore>,
  *   nvdApiKey?: string | null,
+ *   nvdKey?: ReturnType<typeof import("./feeds.mjs").createNvdKey>,
  *   fetchImpl?: typeof fetch,
  *   now?: () => Date,
  *   sleep?: (ms: number) => Promise<void>,
  * }} deps
  */
-export function createSoftwareLookup({ db, cves, nvdApiKey = null, fetchImpl = fetch, now = () => new Date(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createSoftwareLookup({ db, cves, nvdApiKey = null, nvdKey = createNvdKey({ apiKey: nvdApiKey }), fetchImpl = fetch, now = () => new Date(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const q = {
     get: db.prepare("SELECT fetched_at, cves FROM software_cves WHERE key = ?"),
     put: db.prepare("INSERT INTO software_cves (key, fetched_at, cves) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET fetched_at = excluded.fetched_at, cves = excluded.cves"),
@@ -26,16 +27,21 @@ export function createSoftwareLookup({ db, cves, nvdApiKey = null, fetchImpl = f
   // One NVD request at a time, spaced as NVD asks (6.5 s without a key).
   let queue = Promise.resolve();
   let lastRequest = 0;
-  const pause = nvdApiKey ? 700 : 6500;
 
   async function fetchNvd(software) {
     const match = `cpe:2.3:a:${software.vendor}:${software.product}:${software.version}`;
-    const wait = lastRequest + pause - Date.now();
-    if (lastRequest && wait > 0) await sleep(wait);
-    lastRequest = Date.now();
-    const response = await fetchImpl(`https://services.nvd.nist.gov/rest/json/cves/2.0?virtualMatchString=${encodeURIComponent(match)}&resultsPerPage=2000`, {
-      headers: { "user-agent": `TheySpy/${productVersion}`, ...(nvdApiKey ? { apiKey: nvdApiKey } : {}) }, signal: AbortSignal.timeout(60_000),
-    });
+    const request = async () => {
+      const wait = lastRequest + nvdKey.pause() - Date.now();
+      if (lastRequest && wait > 0) await sleep(wait);
+      lastRequest = Date.now();
+      const withKey = nvdKey.current();
+      const answer = await fetchImpl(`https://services.nvd.nist.gov/rest/json/cves/2.0?virtualMatchString=${encodeURIComponent(match)}&resultsPerPage=2000`, {
+        headers: { "user-agent": `TheySpy/${productVersion}`, ...(withKey ? { apiKey: withKey } : {}) }, signal: AbortSignal.timeout(60_000),
+      });
+      return withKey && nvdKey.refused(answer) ? null : answer;
+    };
+    // A refused key is set aside by nvdKey, so the second try goes without it.
+    const response = (await request()) ?? (await request());
     if (!response.ok) throw new Error(`NVD answered ${response.status}`);
     const data = /** @type {any} */ (await response.json());
     // NVD's virtualMatchString also returns CVEs that only name the product as the platform another

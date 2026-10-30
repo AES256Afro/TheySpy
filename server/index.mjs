@@ -14,6 +14,7 @@ import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
+import { createNvdKey } from "./cves/feeds.mjs";
 import { createAdvisories } from "./cves/advisories.mjs";
 import { createWebScanner } from "./web/scan.mjs";
 import { createSoftwareLookup } from "./cves/lookup.mjs";
@@ -28,6 +29,7 @@ import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
 import { createEgress, hostOf } from "./egress.mjs";
+import { createPacedFetch } from "./pacing.mjs";
 import { productVersion } from "./shared.mjs";
 
 const config = readConfig();
@@ -48,16 +50,21 @@ createEgress({
   mode: config.egress, audit,
   extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), ...blocklistHosts()],
 }).install();
+// Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
+// hold when one says to slow down. Installed before any service is made, as they take `fetch` then.
+globalThis.fetch = createPacedFetch(globalThis.fetch, { audit }).fetch;
 const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();
 const baselines = createBaselines({ db, library, sentinel, settings, audit });
 const oui = createOui({ db, settings });
-const cves = createCveStore({ db, settings, audit, nvdApiKey: config.nvdApiKey });
+// One NVD key for the feed and the per-version lookups: if NVD refuses it, both carry on without.
+const nvdKey = createNvdKey({ apiKey: config.nvdApiKey, settings, audit });
+const cves = createCveStore({ db, settings, audit, nvdKey });
 const advisories = createAdvisories({ cves, settings });
 const fleet = createFleet({ db, audit, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
 const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges: config.scanRanges });
-const software = createSoftwareLookup({ db, cves, nvdApiKey: config.nvdApiKey });
+const software = createSoftwareLookup({ db, cves, nvdKey });
 const web = createWebScanner({ db, software, audit, verificationKey: auth.deriveKey("web-verification"), scanRanges: config.scanRanges });
 const checker = createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges: config.scanRanges, web });
 const agents = createAgents({ db, fleet, iocStore, audit, secretBox: createSecretBox(auth.deriveKey("agents")) });
@@ -133,7 +140,8 @@ if (config.cvesAuto) {
   const quietly = (name, work) => () => {
     if (running.has(name)) return;
     running.add(name);
-    work().catch((error) => settings.set(`cve_feed_${name}_error`, { at: new Date().toISOString(), error: error.message })).finally(() => running.delete(name));
+    // A feed that works again is not shown as failing: the error goes with the next success.
+    work().then(() => settings.delete(`cve_feed_${name}_error`), (error) => settings.set(`cve_feed_${name}_error`, { at: new Date().toISOString(), error: error.message })).finally(() => running.delete(name));
   };
   const kev = quietly("kev", () => cves.syncKev());
   const nvd = quietly("nvd", () => cves.syncNvd());

@@ -285,4 +285,26 @@ describe("HTTP API", () => {
     expect(codes.slice(0, 31).every((c) => c === 401)).toBe(true);
     expect(codes[31]).toBe(429);
   });
+
+  it("keeps every other setting when one is saved: Pi-hole, alerts and appearance", async () => {
+    // The owner's rule (30 Oct 2026): change the address or one switch, and everything else stays.
+    const { request, sentinel, alerts } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+
+    await request("PUT", "/api/pihole/settings", { mode: "api", url: "http://192.168.8.2", password: "app-password-1", write: true });
+    await request("PUT", "/api/pihole/settings", { windowDays: 30 });
+    await request("PUT", "/api/pihole/settings", { url: "http://100.67.166.48" });
+    await request("PUT", "/api/pihole/settings", { watch: false });
+    expect(sentinel.effective()).toMatchObject({ mode: "api", url: "http://100.67.166.48", password: "app-password-1", write: true, watch: false, windowDays: 30 });
+
+    await request("PUT", "/api/briefing/ntfy", { url: "https://ntfy.example", topic: "theyspy", token: "tk_secret" });
+    await request("PUT", "/api/briefing/ntfy", { url: "https://ntfy.example:8443", topic: "theyspy" }); // the form leaves an empty token out
+    const ntfy = (await request("GET", "/api/briefing")).body.ntfy;
+    expect(ntfy).toMatchObject({ url: "https://ntfy.example:8443", topic: "theyspy", hasToken: true });
+    expect(alerts.config()).toMatchObject({ url: "https://ntfy.example:8443", topic: "theyspy", hasToken: true });
+
+    await request("PUT", "/api/appearance", { name: "Home watch", accent: "#39c6ff" });
+    await request("PUT", "/api/appearance", { look: "light" });
+    expect((await request("GET", "/api/appearance")).body.appearance).toMatchObject({ name: "Home watch", accent: "#39c6ff", look: "light" });
+  });
 });
