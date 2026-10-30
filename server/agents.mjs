@@ -274,12 +274,25 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
         adId: ["off", "on", "unknown"].includes(String(input.adId)) ? String(input.adId) : "unknown",
         at: now().toISOString(),
       };
-      q.profile.run(JSON.stringify(profile), deviceId);
+      q.profile.run(JSON.stringify({ ...profile, observed: agents.profile(deviceId).observed }), deviceId);
       setInventory(deviceId, "manual", [profile.os && { software: profile.os, version: profile.osVersion }, profile.browser && { software: profile.browser, version: profile.browserVersion }].filter(Boolean));
       audit.record(actor, "evidence.profile_set", String(deviceId), profile);
       return profile;
     },
     profile: (deviceId) => JSON.parse(/** @type {any} */ (q.deviceProfile.get(deviceId))?.profile ?? "{}"),
+    /** What This device last saw on a device (GPC, ad blocking, DNS through Pi-hole), kept beside its profile. */
+    observe(deviceId, observed) {
+      const profile = agents.profile(deviceId);
+      q.profile.run(JSON.stringify({ ...profile, observed }), deviceId);
+    },
+    /** The agent's last report time and verdict for a device, if it has one. */
+    agentFor(deviceId) {
+      return agents.list().filter((a) => a.deviceId === deviceId && !a.revoked).sort((a, b) => String(b.lastReportAt).localeCompare(String(a.lastReportAt)))[0] ?? null;
+    },
+    /** Open contacted findings per device. */
+    contactsFor(deviceId) {
+      return agents.findings().filter((f) => f.deviceId === deviceId && f.kind === "contacted" && f.status === "open");
+    },
     inventory: (deviceId) => q.inventory.all(deviceId).map((r) => ({ .../** @type {any} */ (r) })),
   };
   return agents;
