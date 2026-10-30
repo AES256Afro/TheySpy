@@ -185,6 +185,8 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
       fleet.observe(arp.map((e) => ({ ...e, seenAt })), "arp", { inventory });
       if (arp.length) log(`Neighbour table: ${arp.length} addresses with MACs.`);
       await learnNames(labels, gateway ?? settings.get("fleet_gateway"), log);
+      const { merged } = fleet.consolidate("system");
+      if (merged.length) log(`Merged ${merged.length} Tailscale address${merged.length === 1 ? "" : "es"} into the devices they belong to.`);
       const result = { pihole: fromPihole, arp: arp.length, devices: fleet.list().length };
       settings.set("fleet_last_sync", { at: seenAt, ...result });
       return result;
