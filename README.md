@@ -11,7 +11,7 @@ What it will do (see [docs/PLAN.md](docs/PLAN.md)):
 - Gather CVEs and zero-days from 11 feeds and show which apply to your devices, including the one you are reading on.
 
 **Status: 1.0.** All milestones in [docs/PLAN.md](docs/PLAN.md) are done:
-- Pi-hole hunting and blocking;
+- Pi-hole hunting and blocking (and hunting with AdGuard Home, Technitium or OPNsense);
 - the blocklist library and baselines;
 - the device fleet and targeted checks;
 - CVE and zero-day matching (including the device you read on);
