@@ -9,12 +9,13 @@ import { serviceProducts } from "./match.mjs";
  *   db: import("node:sqlite").DatabaseSync,
  *   fleet: ReturnType<typeof import("../fleet/registry.mjs").createFleet>,
  *   services: (deviceId: number) => { port: number, product: string | null, version: string | null, lastSeen: string }[],
+ *   reported?: (deviceId: number) => { vendor: string, product: string, version: string | null, label: string | null, source: string, seen_at: string }[],
  *   software: ReturnType<typeof import("./lookup.mjs").createSoftwareLookup>,
  *   audit: ReturnType<typeof import("../audit.mjs").createAuditLog>,
  *   now?: () => Date,
  * }} deps
  */
-export function createDeviceCves({ db, fleet, services, software, audit, now = () => new Date() }) {
+export function createDeviceCves({ db, fleet, services, software, audit, now = () => new Date(), reported = () => [] }) {
   const q = {
     decisions: db.prepare("SELECT cve_id, status, note, at, actor FROM cve_decisions WHERE device_id = ?"),
     decide: db.prepare(`INSERT INTO cve_decisions (device_id, cve_id, status, note, at, actor) VALUES (?, ?, ?, ?, ?, ?)
@@ -31,6 +32,10 @@ export function createDeviceCves({ db, fleet, services, software, audit, now = (
         const cpes = serviceProducts[s.product] ?? [];
         items.push({ product: s.product, version: s.version, port: s.port, seen: s.lastSeen, cpes, matchable: Boolean(s.version && cpes.length) });
       }
+      // What the device's agent or its manual profile says it runs (OS, browsers).
+      for (const r of reported(deviceId)) {
+        items.push({ product: r.label ?? r.product, version: r.version, port: null, source: r.source, seen: r.seen_at, cpes: [[r.vendor, r.product]], matchable: Boolean(r.version) });
+      }
       return items;
     },
 
@@ -45,7 +50,7 @@ export function createDeviceCves({ db, fleet, services, software, audit, now = (
         for (const [vendor, product] of item.cpes) {
           for (const c of await software.lookup({ vendor, product, version: item.version })) {
             const e = byCve.get(c.cveId) ?? { ...c, software: [], seen: "" };
-            e.software.push(`${item.product} ${item.version} (port ${item.port})`);
+            e.software.push(`${item.product} ${item.version}${item.port ? ` (port ${item.port})` : ` (${item.source === "agent" ? "agent" : "profile"})`}`);
             if (item.seen > e.seen) e.seen = item.seen;
             byCve.set(c.cveId, e);
           }
