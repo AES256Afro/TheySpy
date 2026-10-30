@@ -13,6 +13,7 @@ import { createDiscovery, fleetJobKinds } from "./fleet/discovery.mjs";
 import { createFleet } from "./fleet/registry.mjs";
 import { createOui, ouiJobKinds } from "./fleet/oui.mjs";
 import { createCveStore, cveJobKinds } from "./cves/store.mjs";
+import { createAdvisories } from "./cves/advisories.mjs";
 import { createWebScanner } from "./web/scan.mjs";
 import { createSoftwareLookup } from "./cves/lookup.mjs";
 import { createDeviceCves } from "./cves/devices.mjs";
@@ -189,6 +190,7 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const oui = createOui({ db, settings, fetchImpl: webFetch, now });
   const fleet = createFleet({ db, audit, now, vendorOf: oui.vendorOf, gateway: () => settings.get("fleet_gateway") ?? null });
   const cves = createCveStore({ db, settings, audit, fetchImpl: webFetch, now, sleep: async () => {} });
+  const advisories = createAdvisories({ cves, settings, fetchImpl: webFetch, now });
   // No real network in tests: no neighbours, nothing answers, no names, unless a test says so.
   const { checkPortsImpl = async () => [], lookup = async () => null, ...probes } = network;
   const discovery = createDiscovery({ fleet, sentinel, settings, audit, scanRanges, now, neighbours: async () => [], probeHost: async () => null, reverse: async () => null, reverseVia: async () => null, ...probes });
@@ -203,6 +205,6 @@ export function testServices({ adminPassword = "correct horse", sessionSecret = 
   const digest = createDigest({ fleet, sentinel, cves, library, alerts, now });
   read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest, now });
   const tokens = createApiTokens({ db, audit, now });
-  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves) } });
-  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, now };
+  const jobs = createJobRunner({ db, audit, now, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater, settings, now }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
+  return { db, settings, audit, auth, jobs, iocStore, updater, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, now };
 }

@@ -33,6 +33,9 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       description = COALESCE(description, ?), products = CASE WHEN products = '[]' AND ? IS NOT NULL THEN json_array(?) ELSE products END,
       sources = json_set(sources, '$.kev', ?), updated_at = ? WHERE cve_id = ?`),
     epss: db.prepare("UPDATE cves SET epss = ?, epss_percentile = ? WHERE cve_id = ? AND (epss IS NULL OR abs(epss - ?) >= 0.0005)"),
+    zeroDayOf: db.prepare("SELECT zero_day, zero_day_sources FROM cves WHERE cve_id = ?"),
+    markZeroDay: db.prepare("UPDATE cves SET zero_day = 1, zero_day_sources = ?, updated_at = ? WHERE cve_id = ?"),
+    insertReported: db.prepare(`INSERT INTO cves (cve_id, description, zero_day, zero_day_sources, sources, first_seen, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?)`),
     ids: db.prepare("SELECT cve_id FROM cves"),
     event: db.prepare("INSERT INTO cve_events (cve_id, at, kind, detail) VALUES (?, ?, ?, ?)"),
     events: db.prepare("SELECT at, kind, detail FROM cve_events WHERE cve_id = ? ORDER BY at DESC LIMIT 50"),
@@ -118,6 +121,35 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
         }
       });
       return updated;
+    },
+
+    /**
+     * Records vendor and research reports that a CVE was exploited: a zero-day source beside KEV.
+     * Returns the CVEs newly flagged (announced unless this is the first time the reports are read).
+     * @param {{ cveId: string, source: string, at: string | null, url: string | null, note: string }[]} reports
+     */
+    markExploited(reports) {
+      const at = now().toISOString();
+      const firstLoad = !settings.get("advisories_last");
+      const added = [];
+      transaction(() => {
+        for (const r of reports) {
+          const existing = /** @type {any} */ (q.zeroDayOf.get(r.cveId));
+          const entry = { source: r.source, at: r.at, note: r.note, url: r.url };
+          if (!existing) {
+            q.insertReported.run(r.cveId, r.note, JSON.stringify([entry]), JSON.stringify({ [r.source]: r.at ?? at }), at, at);
+          } else {
+            const list = JSON.parse(existing.zero_day_sources);
+            if (list.some((s) => s.source === r.source)) continue;
+            q.markZeroDay.run(JSON.stringify([...list, entry]), at, r.cveId);
+            if (existing.zero_day) continue; // already flagged (KEV or another vendor): no news
+          }
+          added.push(r.cveId);
+          if (!firstLoad) q.event.run(r.cveId, at, "exploited_reported", JSON.stringify({ source: r.source, note: r.note }));
+        }
+      });
+      if (added.length && !firstLoad) audit.record("system", "cves.zero_day_reported", null, { cves: added.slice(0, 50), count: added.length, sources: [...new Set(reports.filter((r) => added.includes(r.cveId)).map((r) => r.source))] });
+      return added;
     },
 
     /**
@@ -233,8 +265,11 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
   return store;
 }
 
-/** @param {ReturnType<typeof createCveStore>} store */
-export function cveJobKinds(store) {
+/**
+ * @param {ReturnType<typeof createCveStore>} store
+ * @param {ReturnType<typeof import("./advisories.mjs").createAdvisories>} [advisories]
+ */
+export function cveJobKinds(store, advisories) {
   return {
     "cves.update": {
       title: "Update CVEs (CISA KEV, NVD, EPSS)",
@@ -243,7 +278,8 @@ export function cveJobKinds(store) {
         const kev = await store.syncKev({ log });
         const nvd = await store.syncNvd({ log });
         const epss = await store.syncEpss({ log });
-        return { kevAdded: kev.added.length, nvdFetched: nvd.fetched, epssUpdated: epss.updated };
+        const reported = advisories ? await advisories.sync({ log }) : null;
+        return { kevAdded: kev.added.length, nvdFetched: nvd.fetched, epssUpdated: epss.updated, vendorReported: reported?.added.length ?? 0 };
       },
     },
   };
