@@ -2,6 +2,10 @@ import { blocklistDomains } from "../iocs/exports.mjs";
 import { PiholeError, wildcardRegex } from "./client.mjs";
 import { createMatcher } from "./match.mjs";
 import { apiSource, databaseSource } from "./sources.mjs";
+import { adguardSource, opnsenseSource, technitiumSource } from "./connectors.mjs";
+
+/** DNS servers TheySpy can read lookups from: Pi-hole (API or database file) and three others, read-only. */
+export const sourceModes = ["api", "database", "adguard", "technitium", "opnsense"];
 
 const tag = "TheySpy:";
 const day = 24 * 60 * 60;
@@ -49,6 +53,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     return {
       mode,
       url: env.url ?? s.url ?? null,
+      username: s.username ?? null,
       dbPath: env.dbPath ?? s.dbPath ?? null,
       password,
       passwordUnreadable: !env.password && Boolean(s.passwordSealed) && password === null,
@@ -61,6 +66,9 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     const c = effective();
     if (c.mode === "api" && c.url) return apiSource({ url: c.url, password: c.password, fetchImpl });
     if (c.mode === "database" && c.dbPath) return databaseSource({ path: c.dbPath });
+    if (c.mode === "adguard" && c.url) return adguardSource({ url: c.url, username: c.username, password: c.password, fetchImpl });
+    if (c.mode === "technitium" && c.url) return technitiumSource({ url: c.url, password: c.password, fetchImpl });
+    if (c.mode === "opnsense" && c.url) return opnsenseSource({ url: c.url, username: c.username, password: c.password, fetchImpl });
     throw new PiholeError("Pi-hole is not connected yet. Add its address on the Pi-hole Sentinel screen.");
   }
   const matcher = () => {
@@ -134,17 +142,20 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       const c = effective();
       return {
         configured: Boolean(c.mode && (c.url || c.dbPath)),
-        mode: c.mode, url: c.url, dbPath: c.dbPath, write: c.write, watch: c.watch, windowDays: c.windowDays,
+        mode: c.mode, url: c.url, username: c.username, dbPath: c.dbPath, write: c.write, watch: c.watch, windowDays: c.windowDays,
+        // Only Pi-hole's API can change lists and read the network table; the others are read-only.
+        canWrite: c.mode === "api", limits: c.mode === "opnsense" ? "OPNsense's API returns the latest 1,000 lookups, so a hunt covers only those; the 30-second watch sees every new one." : null,
         hasPassword: Boolean(c.password), passwordUnreadable: c.passwordUnreadable,
         fromEnv: { url: Boolean(env.url), password: Boolean(env.password), dbPath: Boolean(env.dbPath), write: env.write !== undefined },
       };
     },
 
-    /** @param {{ mode?: string, url?: string, password?: string, dbPath?: string, write?: boolean, watch?: boolean, windowDays?: number }} input */
+    /** @param {{ mode?: string, url?: string, username?: string, password?: string, dbPath?: string, write?: boolean, watch?: boolean, windowDays?: number }} input */
     configure(input, actor) {
       const next = { ...stored() };
       const errors = [];
-      if (input.mode !== undefined) { if (["api", "database"].includes(input.mode)) next.mode = input.mode; else errors.push("mode must be api or database"); }
+      if (input.mode !== undefined) { if (sourceModes.includes(input.mode)) next.mode = input.mode; else errors.push(`mode must be one of ${sourceModes.join(", ")}`); }
+      if (input.username !== undefined) { if (typeof input.username === "string" && /^[^\0\r\n:]{0,200}$/.test(input.username)) next.username = input.username || undefined; else errors.push("user or API key is not valid"); }
       if (input.url !== undefined) {
         try {
           const u = new URL(String(input.url));
@@ -159,7 +170,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400 });
       settings.set("pihole", next);
       // A test of the old address or password says nothing about the new one.
-      if (["mode", "url", "password", "dbPath"].some((k) => input[k] !== undefined)) settings.delete("pihole_last_test");
+      if (["mode", "url", "username", "password", "dbPath"].some((k) => input[k] !== undefined)) settings.delete("pihole_last_test");
       audit.record(actor, "pihole.settings_changed", null, { ...input, password: input.password === undefined ? undefined : "(changed)" });
       lastPoll = null;
       return sentinel.publicConfig();

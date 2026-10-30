@@ -3,7 +3,7 @@ import { useNames } from "../names.ts";
 import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
 
 type Config = {
-  configured: boolean; mode: "api" | "database" | null; url: string | null; dbPath: string | null; write: boolean; watch: boolean; windowDays: number;
+  configured: boolean; mode: Mode | null; url: string | null; username: string | null; dbPath: string | null; write: boolean; watch: boolean; windowDays: number; canWrite: boolean; limits: string | null;
   hasPassword: boolean; passwordUnreadable: boolean; fromEnv: { url: boolean; password: boolean; dbPath: boolean; write: boolean };
 };
 type Overview = {
@@ -20,20 +20,39 @@ type Hit = { indicator: string; domain: string; via: "query" | "cname"; clientIp
 const tierBadge: Record<string, string> = { cc: "b-crit", validator: "b-crit", candiru: "b-high", delivery: "b-med", historical: "b-low" };
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
 
+type Mode = "api" | "database" | "adguard" | "technitium" | "opnsense";
+
+// The DNS servers TheySpy reads lookups from. Pi-hole's API can also change lists; the others are read-only.
+const sources: Record<Mode, { label: string; address?: string; addressHint?: string; user?: string; userHint?: string; secret?: string; secretHint?: string }> = {
+  api: { label: "Pi-hole 6", address: "http://192.168.1.5:8084", addressHint: "Where Pi-hole’s web interface answers. On BoxPilot that is this server on port 8084 (bridge mode) or 80 (host mode).", secret: "Password", secretHint: "An app password (Pi-hole → Settings → Web interface / API) is best: it can be revoked on its own." },
+  database: { label: "Pi-hole database file" },
+  adguard: { label: "AdGuard Home", address: "http://192.168.1.5:3000", addressHint: "Where AdGuard Home’s web interface answers.", user: "User", userHint: "AdGuard Home’s own sign-in.", secret: "Password", secretHint: "TheySpy only reads the query log, statistics and client names." },
+  technitium: { label: "Technitium", address: "http://192.168.1.5:5380", addressHint: "Where Technitium’s web console answers. It needs a query-log app: Apps → App Store → Query Logs (Sqlite).", secret: "API token", secretHint: "Administration → Sessions → Create Token; a user that can view logs and the dashboard is enough." },
+  opnsense: { label: "OPNsense (Unbound)", address: "https://192.168.1.1", addressHint: "OPNsense’s address. Turn on Services → Unbound DNS → General → Statistics so it keeps a query log.", user: "API key", userHint: "System → Access → Users → API keys.", secret: "API secret", secretHint: "The secret that came with the key." },
+};
+
 function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: string) => void }) {
-  const [mode, setMode] = useState<"api" | "database">(config.mode ?? "api");
+  const [mode, setMode] = useState<Mode>(config.mode ?? "api");
   const [url, setUrl] = useState(config.url ?? "");
+  const [username, setUsername] = useState(config.username ?? "");
   const [password, setPassword] = useState("");
   const [dbPath, setDbPath] = useState(config.dbPath ?? "/pihole/pihole-FTL.db");
   const [error, setError] = useState("");
+  const kind = sources[mode];
+  // The Pi-hole variables in the environment fix Pi-hole's own settings only.
+  const envUrl = mode === "api" && config.fromEnv.url;
+  const envPassword = mode === "api" && config.fromEnv.password;
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     try {
       const body: Record<string, unknown> = { mode };
-      if (mode === "api" && !config.fromEnv.url) body.url = url;
-      if (mode === "api" && password && !config.fromEnv.password) body.password = password;
-      if (mode === "database" && !config.fromEnv.dbPath) body.dbPath = dbPath;
+      if (mode === "database") { if (!config.fromEnv.dbPath) body.dbPath = dbPath; }
+      else {
+        if (!envUrl) body.url = url;
+        if (kind.user) body.username = username;
+        if (password && !envPassword) body.password = password;
+      }
       await api("PUT", "/api/pihole/settings", body);
       setPassword("");
       const job = await waitForJob((await api<{ job: Job }>("POST", "/api/pihole/test")).job.id);
@@ -44,20 +63,22 @@ function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: stri
   };
   return (
     <form className="stack" onSubmit={save}>
-      <div className="seg" role="group" aria-label="How to reach Pi-hole">
-        <button type="button" aria-pressed={mode === "api"} onClick={() => setMode("api")}>Pi-hole 6 API</button>
-        <button type="button" aria-pressed={mode === "database"} onClick={() => setMode("database")}>Database file</button>
+      <div className="seg" role="group" aria-label="Which DNS server to read">
+        {(Object.keys(sources) as Mode[]).map((m) => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>{sources[m].label}</button>)}
       </div>
-      {mode === "api" ? (
-        <>
-          <div className="field"><label htmlFor="ph-url">Address</label><input id="ph-url" className="input" placeholder="http://192.168.1.5:8084" value={url} disabled={config.fromEnv.url} onChange={(e) => setUrl(e.target.value)} required />
-            <span className="hint">{config.fromEnv.url ? "Set by TS_PIHOLE_URL." : "Where Pi-hole’s web interface answers. On BoxPilot that is this server on port 8084 (bridge mode) or 80 (host mode)."}</span></div>
-          <div className="field"><label htmlFor="ph-pass">Password</label><input id="ph-pass" className="input" type="password" autoComplete="off" placeholder={config.hasPassword ? "Saved (leave empty to keep)" : "Pi-hole web or app password"} value={password} disabled={config.fromEnv.password} onChange={(e) => setPassword(e.target.value)} />
-            <span className="hint">{config.fromEnv.password ? "Set by TS_PIHOLE_PASSWORD." : "An app password (Pi-hole → Settings → Web interface / API) is best: it can be revoked on its own. Stored encrypted; never shown again."}</span></div>
-        </>
-      ) : (
+      {mode === "database" ? (
         <div className="field"><label htmlFor="ph-db">Database path</label><input id="ph-db" className="input" value={dbPath} disabled={config.fromEnv.dbPath} onChange={(e) => setDbPath(e.target.value)} required />
           <span className="hint">pihole-FTL.db mounted read-only into TheySpy (Pi-hole 5 or 6). Hunts and the live watch work; the coverage check and pushes need the API.</span></div>
+      ) : (
+        <>
+          <div className="field"><label htmlFor="ph-url">Address</label><input id="ph-url" className="input" placeholder={kind.address} value={url} disabled={envUrl} onChange={(e) => setUrl(e.target.value)} required />
+            <span className="hint">{envUrl ? "Set by TS_PIHOLE_URL." : kind.addressHint}</span></div>
+          {kind.user && <div className="field"><label htmlFor="ph-user">{kind.user}</label><input id="ph-user" className="input" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <span className="hint">{kind.userHint}</span></div>}
+          <div className="field"><label htmlFor="ph-pass">{kind.secret}</label><input id="ph-pass" className="input" type="password" autoComplete="off" placeholder={config.hasPassword && config.mode === mode ? "Saved (leave empty to keep)" : kind.secret} value={password} disabled={envPassword} onChange={(e) => setPassword(e.target.value)} />
+            <span className="hint">{envPassword ? "Set by TS_PIHOLE_PASSWORD." : `${kind.secretHint} Stored encrypted; never shown again.`}</span></div>
+          {mode !== "api" && <span className="small muted">Read-only: TheySpy hunts and watches {kind.label}’s lookups. Adding blocks, subscribing to lists and baselines need Pi-hole.</span>}
+        </>
       )}
       {config.passwordUnreadable && <div className="banner warn"><span className="small">The saved password can no longer be read (the session secret changed). Enter it again.</span></div>}
       {error && <div className="banner bad" role="alert"><span className="small">{error}</span></div>}
@@ -114,7 +135,7 @@ export function PiholeScreen() {
           <p className="muted small">
             {config.configured
               ? <>{lastTest?.ok ? <>Connected to {lastTest.where}{lastTest.ftl ? ` · FTL ${lastTest.ftl}` : ""}</> : lastTest ? <>Last test failed: {lastTest.message}</> : "Not tested yet"} · <button className="btn small" type="button" onClick={() => setEditing(!editing)}>{editing ? "Close settings" : "Settings"}</button></>
-              : "Connect Pi-hole to hunt its DNS history for spyware and ad-intelligence lookups."}
+              : "Connect Pi-hole, AdGuard Home, Technitium or OPNsense to hunt its DNS history for spyware and ad-intelligence lookups."}
           </p>
         </div>
         <div className="grow" />
@@ -127,7 +148,8 @@ export function PiholeScreen() {
 
       {(!config.configured || editing) && (
         <section className="card">
-          <header><h2>{config.configured ? "Connection" : "Connect Pi-hole"}</h2></header>
+          <header><h2>{config.configured ? "Connection" : "Connect your DNS server"}</h2></header>
+          {config.limits && <p className="small muted">{config.limits}</p>}
           <ConnectForm config={config} onSaved={(text) => { setEditing(false); setMessage({ tone: "good", text }); void load(); }} />
           {config.configured && (
             <div className="field">
