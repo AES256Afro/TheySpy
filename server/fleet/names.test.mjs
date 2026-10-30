@@ -38,6 +38,14 @@ describe("Fleet names and breadcrumbs", () => {
     expect(by["172.18.0.1"].network.kind).toBe("docker");
     expect(asked.some((a) => a.endsWith("172.18.0.1"))).toBe(false); // a Docker gateway is not a device to name
     expect(fleet.namesByIp()["192.168.8.140"]).toMatchObject({ name: "BlackBox", network: "Your router's network" });
+    // Clients listed in Pi-hole are flagged, and can be trusted in one step.
+    pihole.state.clients.push({ client: "192.168.8.138", comment: "", groups: [0] });
+    pihole.state.network.push(net("92:04:c8:0e:66:c6", "192.168.8.138"));
+    await discovery.sync();
+    expect(fleet.list().filter((d) => d.inPihole).map((d) => d.ip).sort()).toEqual(["192.168.8.134", "192.168.8.138", "192.168.8.140"]);
+    expect(fleet.trustPiholeClients("owner")).toBe(3);
+    expect(fleet.list().filter((d) => d.trusted).map((d) => d.ip).sort()).toEqual(["192.168.8.134", "192.168.8.138", "192.168.8.140"]);
+    expect(fleet.trustPiholeClients("owner")).toBe(0);
     // Names are not asked for again within six hours.
     asked.length = 0;
     await discovery.sync();

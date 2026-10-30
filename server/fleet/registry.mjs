@@ -54,7 +54,7 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     const names = JSON.parse(r.names ?? "{}");
     const best = bestName({ label: r.label, names, hostname: r.hostname, vendor: r.vendor, mac: r.mac, ip: r.ip });
     const guess = guessKind({ names: [r.label, names.pihole, names.router, names.tailscale, r.hostname], vendor: r.vendor, mac: r.mac });
-    return { name: best.name, nameFrom: best.from, names, network: networkOf(r.ip, gateway(), r.mac), guess };
+    return { name: best.name, nameFrom: best.from, names, network: networkOf(r.ip, gateway(), r.mac), guess, inPihole: names.piholeClient === "listed" };
   }
 
   function present(row) {
@@ -192,6 +192,20 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       q.edit.run(next.label, next.owner, next.kind, next.notes, JSON.stringify(tags), trusted, 1, id);
       audit.record(actor, "fleet.device_edited", row.mac ?? row.ip, { id, ...input });
       return fleet.get(id);
+    },
+
+    /**
+     * Trusts every device you already listed as a client in Pi-hole that is not trusted yet.
+     * @param {string} actor
+     */
+    trustPiholeClients(actor) {
+      const ids = fleet.list().filter((d) => d.inPihole && !d.trusted).map((d) => d.id);
+      for (const id of ids) {
+        const row = /** @type {any} */ (q.byId.get(id));
+        q.edit.run(row.label, row.owner, row.kind, row.notes, row.tags, 1, 1, id);
+      }
+      if (ids.length) audit.record(actor, "fleet.trusted_pihole_clients", null, { count: ids.length, ids });
+      return ids.length;
     },
 
     /** Forgets a device and its history (it reappears as new if it is seen again). */
