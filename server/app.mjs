@@ -10,6 +10,7 @@ import { blocklistRoutes, publicListRoutes } from "./blocklists/routes.mjs";
 import { fleetRoutes } from "./fleet/routes.mjs";
 import { cveRoutes } from "./cves/routes.mjs";
 import { adProbeUrl, dnsCheckZone, thisDeviceRoutes } from "./thisdevice.mjs";
+import { integrationRoutes } from "./integrations.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -41,11 +42,15 @@ function readCookie(header, name) {
  *   web: ReturnType<typeof import("./web/scan.mjs").createWebScanner>,
  *   software: ReturnType<typeof import("./cves/lookup.mjs").createSoftwareLookup>,
  *   deviceCves: ReturnType<typeof import("./cves/devices.mjs").createDeviceCves>,
+ *   alerts: ReturnType<typeof import("./alerts.mjs").createAlerts>,
+ *   digest: ReturnType<typeof import("./digest.mjs").createDigest>,
+ *   read: import("./integrations.mjs").ReadModel,
+ *   tokens: ReturnType<typeof import("./integrations.mjs").createApiTokens>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -67,6 +72,12 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   const health = (_req, res) => res.json({ ok: true, version: productVersion });
   app.get("/healthz", health);
   app.get("/api/v1/health", health);
+
+  // Other tools read TheySpy with a bearer token: /api/v1 (JSON) and /mcp (MCP). Read-only, and
+  // outside the cookie session, so the X-TheySpy CSRF rule below does not apply to them.
+  const integration = integrationRoutes({ tokens, read });
+  app.use("/api/v1", integration.api);
+  app.use("/mcp", integration.mcp);
 
   // Every state-changing API call must carry this header. A cross-site form cannot set it, and
   // TheySpy never enables CORS, so it closes CSRF together with the SameSite=Strict cookie.
@@ -139,6 +150,18 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs }));
   app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software }));
+
+  // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
+  app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(Number(req.query.days ?? 7) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
+  app.put("/api/briefing/ntfy", requireOwner, (req, res) => res.json({ ntfy: alerts.configure(req.body ?? {}, "owner") }));
+  app.post("/api/briefing/ntfy/test", requireOwner, async (_req, res) => res.json(await alerts.test()));
+  app.post("/api/briefing/send", requireOwner, async (_req, res) => {
+    const d = digest.compose(7);
+    await alerts.raise({ key: `digest-now:${new Date().toISOString()}`, kind: "digest", priority: "low", title: `TheySpy briefing ${d.week}`, message: d.sections.map((s) => `${s.title}: ${s.lines.join(" ")}`).join("\n\n") });
+    res.json({ sent: true });
+  });
+  app.post("/api/briefing/tokens", requireOwner, (req, res) => res.status(201).json(tokens.create(req.body?.name, "owner")));
+  app.delete("/api/briefing/tokens/:id", requireOwner, (req, res) => { tokens.revoke(Number(req.params.id), "owner"); res.json({ revoked: true }); });
 
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
 

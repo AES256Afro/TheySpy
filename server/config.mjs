@@ -30,6 +30,8 @@ export function readConfig(env = process.env) {
     cvesAuto: env.TS_CVES_AUTO !== "false",
     // Optional NVD API key: 50 requests per 30 seconds instead of 5.
     nvdApiKey: env.TS_NVD_API_KEY?.trim() || null,
+    // Alerts to ntfy: these override the Briefing screen.
+    ntfy: { url: env.TS_NTFY_URL?.trim() || undefined, topic: env.TS_NTFY_TOPIC?.trim() || undefined, token: env.TS_NTFY_TOKEN?.trim() || undefined },
     // Pi-hole: these override what the owner sets on the Pi-hole Sentinel screen.
     pihole: {
       url: env.TS_PIHOLE_URL?.trim() || undefined,

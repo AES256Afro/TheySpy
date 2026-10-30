@@ -6,7 +6,10 @@
 export function createAuditLog(db, { now = () => new Date() } = {}) {
   const insert = db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)");
   const recent = db.prepare("SELECT id, at, actor, action, target, detail FROM audit_log ORDER BY id DESC LIMIT ?");
+  const listeners = new Set();
   return {
+    /** Calls `listener({ at, actor, action, target, detail })` after each entry is written (alerts use it). */
+    onRecord(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     /**
      * @param {string} actor "owner", "system", or a job id such as "job:12"
      * @param {string} action dotted verb, e.g. "job.queued", "appearance.saved"
@@ -14,7 +17,11 @@ export function createAuditLog(db, { now = () => new Date() } = {}) {
      * @param {unknown} [detail] stored as JSON
      */
     record(actor, action, target = null, detail = undefined) {
-      insert.run(now().toISOString(), actor, action, target, detail === undefined ? null : JSON.stringify(detail));
+      const at = now().toISOString();
+      insert.run(at, actor, action, target, detail === undefined ? null : JSON.stringify(detail));
+      for (const listener of listeners) {
+        try { listener({ at, actor, action, target, detail: detail ?? null }); } catch { /* a listener must not break the log */ }
+      }
     },
     /** @param {number} [limit] */
     list(limit = 100) {

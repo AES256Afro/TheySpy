@@ -289,6 +289,29 @@ export const migrations = [
   // Every name a device is known by, by source (Pi-hole label, router, Tailscale), so the Fleet
   // shows something better than an address and says where each name came from.
   `ALTER TABLE devices ADD COLUMN names TEXT NOT NULL DEFAULT '{}';`,
+  // M9: alerts (one row per thing worth telling the owner, keyed so it is sent once) and the tokens
+  // that let other tools read TheySpy through /api/v1 and /mcp.
+  `CREATE TABLE alerts (
+     key TEXT PRIMARY KEY,
+     at TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     priority TEXT NOT NULL,
+     title TEXT NOT NULL,
+     message TEXT NOT NULL,
+     link TEXT,
+     delivered_at TEXT,
+     error TEXT,
+     attempts INTEGER NOT NULL DEFAULT 0
+   );
+   CREATE INDEX alerts_at ON alerts (at);
+   CREATE TABLE api_tokens (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     name TEXT NOT NULL,
+     hash TEXT NOT NULL UNIQUE,
+     created_at TEXT NOT NULL,
+     last_used_at TEXT,
+     revoked_at TEXT
+   );`,
 ];
 
 /**

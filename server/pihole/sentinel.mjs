@@ -110,10 +110,16 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       // keep showing "Not tested yet" (or an old failure) while everything works.
       const last = settings.get("pihole_last_test");
       const where = source().describe();
-      if (!last?.ok || last.where !== where) settings.set("pihole_last_test", { ok: true, mode: c.mode, where, via: "live watch", at: now().toISOString() });
+      if (!last?.ok || last.where !== where) {
+        if (last?.ok === false) audit.record("system", "pihole.reachable", where, { after: last.message });
+        settings.set("pihole_last_test", { ok: true, mode: c.mode, where, via: "live watch", at: now().toISOString() });
+      }
     } catch (error) {
       watchState.lastError = error.message;
-      if (settings.get("pihole_last_test")?.ok !== false) sentinel.recordFailedTest(error.message);
+      if (settings.get("pihole_last_test")?.ok !== false) {
+        sentinel.recordFailedTest(error.message);
+        audit.record("system", "pihole.unreachable", null, { error: error.message });
+      }
     }
     watchState.lastPollAt = now().toISOString();
   }
