@@ -380,7 +380,7 @@ Rate limits now cover agent enrollment and reports and wrong API tokens. Credent
 - **Exit:** external review of the scanning and Pi-hole write paths; 1.0 tag.
 
 ### Later
-~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · Zeek/Suricata import for ad-impression traffic inspection · JA4 fingerprints · NetAlertX two-way sync · Protec inventory import · multi-site.
+AdGuard Home / Technitium / OPNsense (Unbound) connectors · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · NetAlertX two-way sync · Protec inventory import · multi-site.
 
 ---
 
