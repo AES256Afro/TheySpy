@@ -46,6 +46,7 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_SCAN_RANGES` | private ranges | Comma-separated IPv4 ranges discovery may probe: `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10` by default. |
 | `TS_CVES_AUTO` | `true` | CISA KEV hourly, NVD every 2 hours (the last 120 days on the first run), EPSS daily. |
 | `TS_NVD_API_KEY` | empty | Optional free NVD key: 50 requests per 30 seconds instead of 5. |
+| `TS_NTFY_URL` / `TS_NTFY_TOPIC` / `TS_NTFY_TOKEN` | empty | Where alerts and the weekly briefing go (ntfy). Also settable on the Briefing screen. |
 | `TS_IOC_AUTOCHECK` | `true` | Look for a newer indicator set once a day. Updates are only offered for review, never applied by themselves. |
 
 ## Develop
