@@ -12,6 +12,8 @@ type Overview = {
   stats: { total: number; kev: number; zeroDays: number; epssHigh: number; kevThisWeek: number; feeds: { kev: Feed; nvd: Feed; epss: Feed }; apiKey: boolean };
   events: { cveId: string; at: string; kind: string; detail: Record<string, unknown>; title: string | null }[];
   attributions: string[];
+  research: { source: string; title: string; url: string; at: string | null; cves: string[] }[];
+  advisories: { at: string; exploited: number; added: number; errors: string[] } | null;
 };
 
 const severityBadge: Record<string, string> = { critical: "b-crit", high: "b-high", medium: "b-med", low: "b-low" };
@@ -64,7 +66,7 @@ export function IntelScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>CVEs &amp; zero-days</h1><p className="muted small">{n(stats.total)} CVEs · {n(stats.kev)} known exploited · exploited ones first. Which of them apply to your devices comes next (M6).</p></div>
+        <div><h1>CVEs &amp; zero-days</h1><p className="muted small">{n(stats.total)} CVEs · {n(stats.zeroDays)} exploited ({n(stats.kev)} in CISA KEV, the rest reported by vendors) · exploited ones first. The ones in software on your devices are on each device's Targeted check, and you get an alert when one appears.</p></div>
         <div className="grow" />
         <button className="btn primary" type="button" disabled={busy} onClick={update}>{busy ? "Updating…" : "Update now"}</button>
       </div>
@@ -105,6 +107,7 @@ export function IntelScreen() {
                   {c.epss !== null && <span className="badge b-info" title={`percentile ${Math.round((c.epssPercentile ?? 0) * 100)}`}>EPSS {c.epss.toFixed(2)}</span>}
                 </div>
                 {c.kev?.name && <b className="small">{c.kev.name}</b>}
+                {c.zeroDaySources.filter((z) => z.source !== "CISA KEV").length > 0 && <span className="small">{c.zeroDaySources.filter((z) => z.source !== "CISA KEV").map((z) => z.note).join(" · ")}</span>}
                 <span className="small muted">{(c.description ?? "").slice(0, 260)}{(c.description ?? "").length > 260 ? "…" : ""}</span>
                 <span className="small">{c.products.slice(0, 4).map(productLabel).join(" · ")}{c.products.length > 4 ? ` and ${c.products.length - 4} more` : ""}</span>
               </div>
@@ -126,7 +129,16 @@ export function IntelScreen() {
             )}
           </section>
           <section className="card stack">
+            <h3>Research reports</h3>
+            {data.research.length === 0 ? <p className="small muted">Citizen Lab and Amnesty Security Lab reports appear here after the next update.</p> : (
+              <div className="list small">{data.research.slice(0, 8).map((r) => (
+                <div key={r.url} style={{ alignItems: "flex-start" }}><span className="grow"><a href={r.url} target="_blank" rel="noreferrer noopener">{r.title}</a><br /><span className="muted">{r.source}{r.at ? ` · ${r.at}` : ""}{r.cves.length ? ` · ${r.cves.join(", ")}` : ""}</span></span></div>
+              ))}</div>
+            )}
+          </section>
+          <section className="card stack">
             <h3>Sources</h3>
+            <p className="small muted">Exploitation reports: CISA KEV, Chrome Releases, Apple security releases and Microsoft (MSRC){data.advisories ? `, checked ${ago(data.advisories.at)}` : ""}.{data.advisories?.errors.length ? ` Problems: ${data.advisories.errors.join("; ")}` : ""}</p>
             <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>{data.attributions.map((a) => <li key={a}>{a}</li>)}</ul>
             {!stats.apiKey && <p className="small muted">Set <code>TS_NVD_API_KEY</code> (free from NVD) for faster updates.</p>}
           </section>

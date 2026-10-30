@@ -3,9 +3,9 @@ import { attributions } from "./feeds.mjs";
 
 /**
  * /api/cves, behind sign-in: the aggregated CVE list, one CVE, and updating the feeds.
- * @param {{ cves: ReturnType<typeof import("./store.mjs").createCveStore>, jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner> }} deps
+ * @param {{ cves: ReturnType<typeof import("./store.mjs").createCveStore>, jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>, advisories?: ReturnType<typeof import("./advisories.mjs").createAdvisories> }} deps
  */
-export function cveRoutes({ cves, jobs }) {
+export function cveRoutes({ cves, jobs, advisories }) {
   const router = express.Router();
   router.get("/", (req, res) => {
     const f = req.query;
@@ -16,7 +16,7 @@ export function cveRoutes({ cves, jobs }) {
       limit: f.limit ? Number(f.limit) : 50, offset: f.offset ? Number(f.offset) : 0,
     };
     if (filters.minEpss !== undefined && !(filters.minEpss >= 0 && filters.minEpss <= 1)) return res.status(400).json({ error: "minEpss must be between 0 and 1" });
-    res.json({ ...cves.list(filters), stats: cves.stats(), events: cves.recentEvents(15), attributions });
+    res.json({ ...cves.list(filters), stats: cves.stats(), events: cves.recentEvents(15), attributions, research: advisories?.research() ?? [], advisories: advisories?.status() ?? null });
   });
   router.get("/:id", (req, res) => {
     if (!/^CVE-\d{4}-\d{4,}$/i.test(req.params.id)) return res.status(400).json({ error: "Not a CVE id" });
