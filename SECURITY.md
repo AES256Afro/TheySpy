@@ -73,11 +73,18 @@ The website check:
 
 ## What it does not do
 
-- **No network-level egress enforcement.** TheySpy itself only contacts the destinations listed below. Blocklist sources come from three public directories and from lists the owner adds. To enforce this, use a firewall rule or BoxPilot's network policy.
+- **The outbound allowlist covers HTTP only.** It does not cover DNS lookups or the port checks, which are plain sockets limited to `TS_SCAN_RANGES`. A firewall rule is still the stronger control.
 - **The scans are not stealthy, and are not meant for networks you do not run.** Sweeps and port checks stay inside `TS_SCAN_RANGES`.
 - **It is not proof that a device is clean.** A gap (a check that could not run) is always shown as a gap. Advanced spyware can leave no trace that any tool finds.
 
 ## Outbound destinations
+
+Since 1.1.0, TheySpy enforces this list itself (`server/egress.mjs`). Every request it makes goes through one connection pool, and that pool refuses any host not on the list:
+- the hosts below;
+- the owner's Pi-hole and ntfy;
+- the hosts of the blocklists in the library.
+
+A refused host is written to the Activity log (`egress.blocked`), at most once an hour. `TS_EGRESS=log` only records unlisted hosts; `TS_EGRESS=off` turns the list off. The website check is not on this list: it has its own pool, pinned to addresses that are on your network or that their owner proved are theirs.
 
 | Destination | Why |
 | --- | --- |
@@ -87,6 +94,7 @@ The website check:
 | Research blogs (Citizen Lab, Amnesty Security Lab, Google TAG, ESET, Recorded Future, Confiant, Gen) | Zero-day reports (RSS) |
 | `api.filterlists.com`, `firebog.net`, the lists' own hosts | Blocklist discovery and updates |
 | `standards-oui.ieee.org` | MAC vendor names, monthly |
+| `github.com` download hosts (`*.githubusercontent.com`, `codeload.github.com`), `*.empiricalsecurity.com`, `www.blogger.com`, `feeds.feedburner.com` | Where some of the feeds above redirect |
 | `geoip.starlinkisp.net`, `1.1.1.1/cdn-cgi/trace` | Only when the owner presses "Check my connection" |
 | Your Pi-hole, your ntfy server | As configured |
 

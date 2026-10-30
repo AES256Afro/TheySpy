@@ -57,6 +57,7 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_CVES_AUTO` | `true` | CISA KEV hourly, NVD every 2 hours (the last 120 days on the first run), EPSS daily. |
 | `TS_NVD_API_KEY` | empty | Optional free NVD key: 50 requests per 30 seconds instead of 5. |
 | `TS_NTFY_URL` / `TS_NTFY_TOPIC` / `TS_NTFY_TOKEN` | empty | Where alerts and the weekly briefing go (ntfy). Also settable on the Briefing screen. |
+| `TS_EGRESS` | `enforce` | The outbound allowlist ([SECURITY.md](SECURITY.md)): `enforce` refuses hosts TheySpy has no reason to contact, `log` only records them (Activity), `off`. |
 | `TS_IOC_AUTOCHECK` | `true` | Look for a newer indicator set once a day. Updates are only offered for review, never applied by themselves. |
 
 ## Develop
