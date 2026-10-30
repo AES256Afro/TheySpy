@@ -47,7 +47,7 @@ You then get a message for:
 - Pi-hole going unreachable;
 - a held blocklist update.
 
-The briefing arrives every Monday morning. API tokens for other tools (read-only `/api/v1` and MCP) are created on the same screen.
+The briefing arrives every Monday morning. On BoxPilot, the **Spyware watch** agent (Agents → **New agent** → **Spyware watch**, BoxPilot 1.230.0 or newer) reads the same findings every day and tells you when something needs you. It reads TheySpy's database read-only on the same machine, so it needs no token. API tokens for other tools (read-only `/api/v1` and MCP) are created on the same screen.
 
 ## 4. Computers: the agent
 

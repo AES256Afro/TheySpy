@@ -31,3 +31,5 @@ echo "- archived the data folder and wiped it"
 mkdir "$work/fresh" && tar -C "$work/fresh" -xzf "$work/backup.tgz"
 start fresh/data
 PORT=$port PASSWORD="$password" STATE="$work/state.json" node scripts/e2e-restore.mjs after
+# What BoxPilot's Spyware watch agent runs: the read-only summary, inside the running container.
+docker exec theyspy-restore node server/summary.mjs 7 | node -e 'let t = ""; process.stdin.on("data", (c) => (t += c)).on("end", () => { const s = JSON.parse(t); if (s.error || s.evidence?.contacted !== 1 || !s.sections?.length) { console.error(t); process.exit(1); } console.log(`- the summary BoxPilot reads works in the running container (${s.evidence.contacted} contact, ${s.sections.length} sections)`); });'
