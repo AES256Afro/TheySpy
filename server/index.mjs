@@ -28,6 +28,7 @@ import { createExposure } from "./exposure.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
+import { createNetworkLogs } from "./netlogs.mjs";
 import { createEgress, hostOf } from "./egress.mjs";
 import { createPacedFetch } from "./pacing.mjs";
 import { productVersion } from "./shared.mjs";
@@ -83,7 +84,7 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }) }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup: createBackup({ db, audit }), netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });

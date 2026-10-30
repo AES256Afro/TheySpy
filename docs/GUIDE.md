@@ -85,12 +85,20 @@ Phones cannot run the agent. Use Amnesty's [Mobile Verification Toolkit](https:/
 3. Import MVT's `*_detected.json` files in **Evidence locker → Phones**.
 4. Record what the phone runs (system, browser, ad ID) so its CVEs and exposure are counted.
 
+## 5b. Network logs (Zeek, Suricata)
+
+If something on your network runs Zeek or Suricata (a firewall, a mirror port, Security Onion), import its logs in **Evidence locker → Network logs**:
+- **What it reads:** Zeek's `dns.log`, `ssl.log` and `http.log`, plain or JSON, or Suricata's `eve.json`.
+- **Indicator contacts:** every looked-up name, TLS server and web host is checked against the indicators. A match becomes a finding on that device.
+- **TLS fingerprints (JA4):** each device's fingerprints are kept. A device's first import is its baseline; after that, a fingerprint it never used before is marked **new**. Most are an update or a new app, so mark them **I know this one**; one you can't explain deserves a closer look at that device.
+- **Getting JA4:** in Suricata 8, set `app-layer.protocols.tls.ja4-fingerprints: yes`. Zeek needs FoxIO's JA4 package.
+
 ## 6. What a finding means
 
 | You see | It means | Do this |
 | --- | --- | --- |
 | **Indicator lookup** (Pi-hole) | A device asked DNS for a domain used to deliver spyware or track through ads. Blocked lookups are still shown | One lookup is often an ad that tried to load. Repeated lookups, or lookups Pi-hole did not block, deserve a closer look: run the agent or MVT on that device |
-| **Contacted** (agent or MVT) | The device holds a trace of an indicator: a history entry, a cache file, a process | Strong evidence, not proof of infection. Keep the device as it is and export the STIX file. See section 7 |
+| **Contacted** (agent, MVT or network logs) | The device holds a trace of an indicator: a history entry, a cache file, a process | Strong evidence, not proof of infection. Keep the device as it is and export the STIX file. See section 7 |
 | **Gap** | A check could not run (no permission, a browser not found, `--quick`) | Never read as clean. Fix the cause and run again |
 | **Exploited CVE / zero-day** | Software on a device has a bug attackers are using now (CISA KEV, or a vendor saying so) | Update to the version shown. These come first for a reason |
 | **New device** | Something joined the network | Name it and trust it, or find out what it is |
