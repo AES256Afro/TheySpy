@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import express from "express";
+import { intParam } from "./params.mjs";
 import { createRateLimit } from "./ratelimit.mjs";
 
 // The agent's side of TheySpy (no owner session): enroll with a one-time token, fetch the verified
@@ -46,9 +47,12 @@ export function evidenceRoutes({ agents, netlogs }) {
     res.json({ findings: agents.findings(), agents: agents.list(), scanner });
   });
   router.post("/agents/enroll", (req, res) => res.status(201).json(agents.createEnrollment(req.body?.label, "owner")));
-  router.delete("/agents/:id", (req, res) => { agents.revoke(Number(req.params.id), "owner"); res.json({ revoked: true }); });
-  router.put("/findings/:id", (req, res) => { agents.setFindingStatus(Number(req.params.id), String(req.body?.status ?? ""), req.body?.note ?? null, "owner"); res.json({ ok: true }); });
-  router.get("/findings/:id/stix", (req, res) => res.set("Content-Disposition", `attachment; filename="theyspy-finding-${Number(req.params.id)}.stix.json"`).json(agents.stix(Number(req.params.id))));
+  router.delete("/agents/:id", (req, res) => { agents.revoke(intParam(req.params.id, "The agent id"), "owner"); res.json({ revoked: true }); });
+  router.put("/findings/:id", (req, res) => { agents.setFindingStatus(intParam(req.params.id, "The finding id"), String(req.body?.status ?? ""), req.body?.note ?? null, "owner"); res.json({ ok: true }); });
+  router.get("/findings/:id/stix", (req, res) => {
+    const id = intParam(req.params.id, "The finding id");
+    res.set("Content-Disposition", `attachment; filename="theyspy-finding-${id}.stix.json"`).json(agents.stix(id));
+  });
   // Zeek and Suricata logs: a day of a home network's DNS, TLS and HTTP is tens of megabytes.
   router.post("/network-logs", express.json({ limit: "64mb" }), (req, res) => {
     const files = Array.isArray(req.body?.files) ? req.body.files : [];
@@ -60,9 +64,9 @@ export function evidenceRoutes({ agents, netlogs }) {
   router.post("/devices/:id/mvt", express.json({ limit: "8mb" }), (req, res) => {
     const files = Array.isArray(req.body?.files) ? req.body.files.filter((f) => f && typeof f.name === "string" && typeof f.content === "string") : [];
     if (!files.length) return res.status(400).json({ error: "Choose MVT's *_detected.json files" });
-    res.json(agents.importMvt(Number(req.params.id), files, "owner"));
+    res.json(agents.importMvt(intParam(req.params.id, "The device id"), files, "owner"));
   });
-  router.get("/devices/:id/profile", (req, res) => res.json({ profile: agents.profile(Number(req.params.id)), inventory: agents.inventory(Number(req.params.id)) }));
-  router.put("/devices/:id/profile", (req, res) => res.json({ profile: agents.setProfile(Number(req.params.id), req.body ?? {}, "owner") }));
+  router.get("/devices/:id/profile", (req, res) => res.json({ profile: agents.profile(intParam(req.params.id, "The device id")), inventory: agents.inventory(intParam(req.params.id, "The device id")) }));
+  router.put("/devices/:id/profile", (req, res) => res.json({ profile: agents.setProfile(intParam(req.params.id, "The device id"), req.body ?? {}, "owner") }));
   return router;
 }

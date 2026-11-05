@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { blocklistDomains } from "../iocs/exports.mjs";
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped } from "../shared.mjs";
 import { listName, readAdguard, readFilterLists, readFirebog, resolveFilterListsUrl } from "./directories.mjs";
 import { neverBlock, parseBlocklist, canonical } from "./parse.mjs";
 import { categories, categoryIds, securityCategories } from "./taxonomy.mjs";
@@ -38,23 +38,6 @@ const unpack = (blob) => {
   return text ? text.split("\n") : [];
 };
 const digest = (domains) => createHash("sha256").update([...domains].sort().join("\n")).digest("hex");
-
-async function readCapped(response) {
-  const declared = Number(response.headers.get("content-length") ?? 0);
-  if (declared > maxBytes) throw new Error(`list is ${declared} bytes; the limit is ${maxBytes}`);
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const chunks = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > maxBytes) { await reader.cancel(); throw new Error(`list is larger than ${maxBytes} bytes`); }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
 
 /**
  * The blocklist library (docs/PLAN.md §6.1): discovers lists, fetches and versions the enabled ones
@@ -256,7 +239,7 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
           return { id, outcome: "unchanged" };
         }
         if (!response.ok) throw new Error(`the server answered ${response.status}`);
-        const { domains } = parseBlocklist(await readCapped(response));
+        const { domains } = parseBlocklist(await readCapped(response, { maxBytes, what: `the list at ${new URL(s.url).hostname}` }));
         if (!domains.size) throw new Error("the list has no usable domain entries");
         const sha = digest(domains);
         const previous = s.active_version_id ? /** @type {any} */ (q.version.get(s.active_version_id)) : null;

@@ -14,9 +14,13 @@ import { integrationRoutes } from "./integrations.mjs";
 import { agentPublicRoutes, evidenceRoutes } from "./agent-routes.mjs";
 import { kits } from "./exposure.mjs";
 import { rmSync } from "node:fs";
+import { intParam, intQuery } from "./params.mjs";
 import { productVersion } from "./shared.mjs";
 
 const distDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
+
+/** The browser is on the same machine, so nothing on the network sees the cookie. */
+const loopback = (ip) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(String(ip));
 
 function readCookie(header, name) {
   for (const part of String(header ?? "").split(";")) {
@@ -147,9 +151,32 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     res.json({ appearance: effectiveAppearance({ env: config.appearance, stored: undefined }) });
   });
 
+  // Two things about this install the owner cannot see any other way, shown on Activity next to
+  // the backup button, because both are about what a copy of the data or of the network is worth.
+  app.get("/api/security", requireOwner, (req, res) => {
+    const notes = [];
+    if (auth.sessionSecretStored) {
+      notes.push({
+        id: "sealed-key-in-database",
+        title: "The key to the stored passwords is inside the database",
+        detail: "TS_SESSION_SECRET is not set, so TheySpy generated the key itself and keeps it in the same file a backup copies. A backup therefore carries the Pi-hole password, the ntfy token and the agent keys in a form that can be opened.",
+        fix: "Set TS_SESSION_SECRET in the environment (BoxPilot generates one), restart, and enter the Pi-hole password again. After that a backup on its own cannot open them.",
+      });
+    }
+    if (!config.cookieSecure && req.protocol !== "https" && !loopback(req.ip)) {
+      notes.push({
+        id: "session-over-plain-http",
+        title: "Your sign-in is crossing the network unencrypted",
+        detail: `This page was opened over plain HTTP from ${req.ip}, so anything between you and TheySpy can read the session cookie and sign in as you.`,
+        fix: "Reach TheySpy over HTTPS — a reverse proxy, or Tailscale — and set TS_COOKIE_SECURE=true. Or open it only from the machine it runs on.",
+      });
+    }
+    res.json({ notes });
+  });
+
   app.get("/api/jobs", requireOwner, (_req, res) => res.json({ jobs: jobs.list(), kinds: jobs.kinds }));
   app.get("/api/jobs/:id", requireOwner, (req, res) => {
-    const job = jobs.get(Number(req.params.id));
+    const job = jobs.get(intParam(req.params.id, "The job id"));
     return job ? res.json({ job }) : res.status(404).json({ error: "No such job" });
   });
   app.post("/api/jobs", requireOwner, (req, res) => {
@@ -172,13 +199,14 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.get("/api/exposure", requireOwner, (_req, res) => res.json(exposure.overview()));
   app.post("/api/exposure/egress", requireOwner, async (_req, res) => res.json(await exposure.checkEgress("owner")));
   app.get("/api/exposure/kits/:id", requireOwner, (req, res) => {
-    const kit = kits[/** @type {keyof typeof kits} */ (req.params.id)];
-    if (!kit) return res.status(404).json({ error: "No such kit" });
+    const name = /** @type {keyof typeof kits} */ (req.params.id);
+    if (!Object.hasOwn(kits, name)) return res.status(404).json({ error: "No such kit" });
+    const kit = kits[name];
     res.type(kit.type).set("Content-Disposition", `attachment; filename="${kit.filename}"`).send(kit.body(sentinel.publicConfig().url ?? ""));
   });
 
   // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
-  app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(Number(req.query.days ?? 7) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
+  app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(intQuery(req.query.days, { name: "days", fallback: 7 }) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
   app.put("/api/briefing/ntfy", requireOwner, (req, res) => res.json({ ntfy: alerts.configure(req.body ?? {}, "owner") }));
   app.post("/api/briefing/ntfy/test", requireOwner, async (_req, res) => res.json(await alerts.test()));
   app.post("/api/briefing/send", requireOwner, async (_req, res) => {
@@ -187,7 +215,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     res.json({ sent: true });
   });
   app.post("/api/briefing/tokens", requireOwner, (req, res) => res.status(201).json(tokens.create(req.body?.name, "owner")));
-  app.delete("/api/briefing/tokens/:id", requireOwner, (req, res) => { tokens.revoke(Number(req.params.id), "owner"); res.json({ revoked: true }); });
+  app.delete("/api/briefing/tokens/:id", requireOwner, (req, res) => { tokens.revoke(intParam(req.params.id, "The token id"), "owner"); res.json({ revoked: true }); });
 
   // A copy of the database taken while running, checked before it is sent (backup.mjs).
   app.get("/api/backup", requireOwner, (_req, res) => {
@@ -203,8 +231,8 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.get("/api/protec", requireOwner, (_req, res) => res.json({ ...protec.config(), lastError: settings.get("protec_last_error") ?? null }));
   app.put("/api/protec", requireOwner, (req, res) => res.json(protec.configure(req.body ?? {}, "owner")));
   app.post("/api/protec/sync", requireOwner, async (_req, res) => { const r = await protec.sync("owner"); settings.delete("protec_last_error"); res.json(r); });
-  app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), Number(req.body?.deviceId), "owner"); res.json({ linked: true }); });
-  app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(Number(req.query.limit ?? 100)) }));
+  app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), intParam(req.body?.deviceId, "deviceId"), "owner"); res.json({ linked: true }); });
+  app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(intQuery(req.query.limit, { name: "limit", fallback: 100, min: 1, max: 500 })) }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
   // Compiled blocklists for Pi-hole and other DNS filters (token in the path; no sign-in).
@@ -217,7 +245,10 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   }
 
   app.use((error, _req, res, _next) => {
-    const status = Number(error.status ?? error.statusCode ?? 500);
+    // Only a real client- or server-error code is believed: res.status(NaN) would throw in here,
+    // where there is nothing left to catch it.
+    const given = Number(error.status ?? error.statusCode);
+    const status = Number.isInteger(given) && given >= 400 && given <= 599 ? given : 500;
     if (status >= 500) console.error(error);
     res.status(status).json({ error: status >= 500 ? "Something went wrong on the server." : error.message });
   });

@@ -10,6 +10,8 @@
 // 9.2p1 after a patched build), so a CVE matched from a dpkg version may already be fixed there; the
 // screen says so. Homebrew installs upstream versions, so those matches are exact.
 
+import { readCappedJson } from "./shared.mjs";
+
 /** Package names (dpkg and Homebrew) → TheySpy's software keys (agents.mjs knownSoftware). */
 const packageSoftware = {
   "openssh-client": "openssh", "openssh-server": "openssh", openssh: "openssh",
@@ -125,7 +127,7 @@ export function createProtec({ settings, secretBox, fleet, agents, audit, fetchI
       if (response.status === 401) throw Object.assign(new Error("Protec refused the credential; it may have expired (at most 720 hours). Issue a new viewer credential in Protec → Access."), { status: 502 });
       if (response.status === 403) throw Object.assign(new Error("That Protec credential cannot read the inventory; issue one with the viewer role."), { status: 502 });
       if (!response.ok) throw Object.assign(new Error(`Protec answered ${response.status}`), { status: 502 });
-      const body = /** @type {any} */ (await response.json());
+      const body = /** @type {any} */ (await readCappedJson(response, { what: "Protec" }));
       const machines = (Array.isArray(body.devices) ? body.devices : []).filter((m) => !m.revoked);
       const result = { at: now().toISOString(), machines: machines.length, matched: 0, packages: 0, unmatched: /** @type {any[]} */ ([]) };
       for (const m of machines) {

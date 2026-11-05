@@ -380,7 +380,13 @@ Rate limits now cover agent enrollment and reports and wrong API tokens. Credent
 - **Exit:** external review of the scanning and Pi-hole write paths; 1.0 tag.
 
 ### M12 — Audit findings (S)
-**Status (5 Nov 2026): planned.** The first sweep of the rolling review in
+**Status (5 Nov 2026): done** (1.8.0). Every item below shipped with a test that fails without its
+fix; the ledger in [docs/AUDITS.md](AUDITS.md) records what each one became. Two things changed in
+the doing: S3's description was wrong about sealed values crossing between fields (each caller
+already has its own key) and the real case was agent secrets and site tokens sealed under one key,
+which now carry the row they belong to as associated data; and the gap-row limit (B4) became "the
+last row counts the rest" rather than a smaller count, because a gap that is not shown is the one
+thing this product may not do. The first sweep of the rolling review in
 [docs/AUDITS.md](AUDITS.md) read the request, auth, token, egress and agent paths at 1.7.1 and found
 five security items, five bugs and six pieces of hygiene. None is an open hole — the scope guard,
 the website check's address pinning, the agent's signature and replay check and the CSRF rule all

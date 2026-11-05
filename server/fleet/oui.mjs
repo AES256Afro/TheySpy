@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped } from "../shared.mjs";
 import { isRandomisedMac, normaliseMac } from "./addresses.mjs";
 
 // MAC vendors from the IEEE registry (MA-L, the 24-bit prefixes), for devices Pi-hole does not name.
@@ -56,7 +56,7 @@ export function createOui({ db, settings, fetchImpl = fetch, now = () => new Dat
       let changed = false;
       if (response.status !== 304) {
         if (!response.ok) throw new Error(`The IEEE registry answered ${response.status}`);
-        const prefixes = parseOuiCsv(await response.text());
+        const prefixes = parseOuiCsv(await readCapped(response, { what: "the IEEE registry" }));
         if (prefixes.size < 10_000) throw new Error(`The IEEE registry looked wrong (${prefixes.size} prefixes); keeping the current one`);
         db.exec("BEGIN");
         try {

@@ -10,6 +10,10 @@ swept again unless something changes that area.
 | Bugs (correctness) | 1 | 0 | in the loop |
 | Security | 1 | 0 | in the loop |
 
+Sweep 1's findings are all fixed in 1.8.0 (M12). Sweep 2 reads what sweep 1 did not: the React
+screens and `src/api.ts`, the Pi-hole write and rollback paths, `blocklists/library.mjs`,
+`blocklists/baselines.mjs`, `fleet/registry.mjs`, `netlogs.mjs`, `iocs/*` and the agent script.
+
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
 
@@ -37,7 +41,7 @@ hold up to reading.
 | --- | --- | --- | --- |
 | S1 | A JSON-RPC batch bypasses the per-token budget. `perToken.hit` is charged once per HTTP request, but a POST to `/mcp` may carry an array of messages, all run through `Promise.all`. One request with 300 `check_domain` calls is 300 passes over Pi-hole's history against a 120-per-minute budget. | `server/integrations.mjs` | medium |
 | S2 | Sealed credentials are not protected in a backup unless `TS_SESSION_SECRET` is set outside the database. When it is not, the generated secret is written to `settings`, so the backup holds the ciphertext and its key together. SECURITY.md states the condition; the app never says which case this install is in. | `server/auth.mjs`, `server/backup.mjs` | medium |
-| S3 | `secretBox` seals without associated data, so a sealed value is interchangeable between fields: the Pi-hole password opens as the ntfy token. Needs write access to the database, so it only widens an existing compromise — but binding the purpose as AAD is a few lines. | `server/secrets.mjs` | low |
+| S3 | `secretBox` seals without associated data, so a sealed value is interchangeable with another sealed under the same key. **Corrected while fixing it:** the first write of this said the Pi-hole password would open as the ntfy token, which was wrong — each caller already gets its own key from `deriveKey("<purpose>")`, so values do not cross between modules. The real case is inside one key: every agent's signing secret is sealed under the same key, so moving one row's blob into another row let one agent sign as another, and the same for each site's token. Needs write access to the database, so it only widens an existing compromise. | `server/secrets.mjs` | low |
 | S4 | No response size cap on any outbound reader except the website check. `cves/store`, `cves/advisories`, `cves/lookup`, `fleet/oui`, `fleet/netalertx`, `pihole/client`, `pihole/connectors`, `blocklists/directories`, `protec` and `sites` all buffer whole bodies with `.text()` / `.json()`. `blocklists/library.mjs` already has the right helper (`readCapped`); it is not shared. | several | medium |
 | S5 | The owner's session crosses the network in the clear by default: `TS_HOST` is `0.0.0.0` and `TS_COOKIE_SECURE` defaults to false, with no warning when the request did not come from loopback. | `server/config.mjs`, `server/app.mjs` | low |
 
@@ -72,3 +76,27 @@ hold up to reading.
 - `isDomain` accepts a trailing hyphen in a label. It only ever gates a read of Pi-hole's history.
 - `extraHosts` in `index.mjs` reads `sentinel` before its `const` is evaluated. It is a closure,
   called long after start, so there is no temporal dead zone in practice.
+
+### What shipped
+
+All of sweep 1 is fixed in **1.8.0**, each with a test that fails without its fix (checked by
+stashing the fix and running the test):
+
+| # | Fix |
+| --- | --- |
+| S1 | `/mcp` caps a batch at 20 messages and charges the token's budget for every call in it (`createRateLimit.hit(key, cost)`). |
+| S2 | `GET /api/security` tells the owner when the key to the stored passwords is in the database a backup copies; Activity shows it, and SECURITY.md and the guide say how to fix it. |
+| S3 | `secretBox` seals as `v2:` with the row it belongs to as associated data (`agent:<id>`, `site:<id>`); `v1:` values still open, so nothing has to be re-entered. |
+| S4 | `readCapped` / `readCappedBytes` / `readCappedJson` in `server/shared.mjs`, used by every outbound reader. 32 MB, 50 MB for a blocklist, counted as the bytes arrive. |
+| S5 | The same `/api/security` note when the session cookie crossed a network in the clear. |
+| B1 | `Object.hasOwn` before reading `compiledLists`, `kits`, `hostBudgets`, `knownSoftware` and `jobKinds`. |
+| B2 | `server/params.mjs` (`intParam`, `intQuery`), used by every router; decimal digits only, so `0x10` is not an id either. |
+| B3 | `migrate()` refuses a `user_version` above what it knows and says to restore the backup. |
+| B4 | A report writes at most 40 gap rows and the last one counts the rest, so the verdict and the Evidence locker agree. |
+| B5 | The error handler believes a status only if it is an integer in 400–599. |
+| C1 | The stale 0.9.0 clone at `TheySpy/` is gone. |
+| C2 | The blocked-address map is swept once a minute; the rate limiter's keys are dropped a window at a time. |
+| C3 | …which is also the fix for the 10,000-key sweep on every request. |
+| C4 | The two shadowed `read`s in `index.mjs` are `syncProtec` and `readSites`. |
+| C5 | `hostsOf()` refuses a range over 1,024 addresses itself. |
+| C6 | `createRateLimit.middleware()` no longer depends on `this`. |

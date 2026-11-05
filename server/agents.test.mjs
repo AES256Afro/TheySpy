@@ -72,4 +72,25 @@ describe("agents and evidence", () => {
     expect(bundle.objects.map((o) => o.type)).toEqual(["indicator", "sighting"]);
     expect(bundle.objects[0].pattern).toBe("[domain-name:value = 'fearevolve.com']");
   });
+
+
+  it("never loses a gap quietly: the rows say how many were not listed, and the count is the truth", () => {
+    const { agents, agentId, now } = enrolled();
+    const agent = { id: agentId, device_id: null };
+    const gaps = Array.from({ length: 57 }, (_, i) => `module-${i}: could not run`);
+    const r = agents.ingest(agent, { scan: { exitCode: 0, report: { tool: { version: "0.1.8" }, modules: {}, verdict: { status: "NO_INDICATORS", hits_total: 0, gaps } } } }, now().toISOString(), "192.168.8.77");
+
+    // The verdict counts all 57, which is what "a gap is never shown as clean" requires.
+    expect(r.gaps).toBe(57);
+    const rows = agents.findings().filter((f) => f.kind === "gap");
+    // 40 rows at most, and the last one accounts for the 18 that are not listed one by one.
+    expect(rows).toHaveLength(40);
+    expect(rows.at(-1).detail).toBe("…and 18 more checks could not run on this device; they are counted, not listed.");
+    expect(rows.slice(0, 39).map((f) => f.detail)).toEqual(gaps.slice(0, 39));
+
+    // Under the limit nothing is summarised.
+    const other = agents.ingest({ id: agentId, device_id: null }, { scan: { exitCode: 0, report: { tool: { version: "0.1.8" }, modules: {}, verdict: { status: "NO_INDICATORS", hits_total: 0, gaps: ["only one"] } } } }, now().toISOString(), "192.168.8.77");
+    expect(other.gaps).toBe(1);
+    expect(agents.findings().filter((f) => f.kind === "gap").map((f) => f.detail)).toEqual(["only one"]);
+  });
 });
