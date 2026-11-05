@@ -398,6 +398,12 @@ export function openDatabase(file) {
 /** @param {DatabaseSync} db */
 export function migrate(db) {
   const current = Number(/** @type {any} */ (db.prepare("PRAGMA user_version").get()).user_version);
+  // A database a newer TheySpy has migrated. Opening it anyway is what a rollback to an older
+  // image used to do: the old code then reads and writes a schema it does not know, quietly. Stop
+  // instead, and say what to do, so the rollback is visible.
+  if (current > migrations.length) {
+    throw new Error(`This data was written by a newer TheySpy (schema ${current}; this version knows ${migrations.length}). Start the newer version again, or restore the backup taken before the update.`);
+  }
   for (let index = current; index < migrations.length; index += 1) {
     db.exec("BEGIN");
     try {

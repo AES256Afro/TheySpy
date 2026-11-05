@@ -1,3 +1,4 @@
+import { intParam } from "../params.mjs";
 import express from "express";
 import { citation, exportFormats, renderExport, sources, tierDescriptions } from "./exports.mjs";
 import { defang } from "./parse.mjs";
@@ -58,7 +59,7 @@ export function iocRoutes({ store, jobs, settings, audit }) {
 
   router.get("/versions", (_req, res) => res.json({ versions: store.history().map(summary) }));
   router.get("/versions/:id", (req, res) => {
-    const version = store.get(Number(req.params.id));
+    const version = store.get(intParam(req.params.id, "The version id"));
     if (!version) return res.status(404).json({ error: "No such version" });
     res.json({ version: { ...version, diff: defangDiff(version.diff) } });
   });
@@ -66,12 +67,12 @@ export function iocRoutes({ store, jobs, settings, audit }) {
   router.post("/check", (_req, res) => res.status(202).json({ job: jobs.enqueue("ioc.check", { actor: "owner" }) }));
 
   router.post("/versions/:id/apply", (req, res) => {
-    const version = store.get(Number(req.params.id));
+    const version = store.get(intParam(req.params.id, "The version id"));
     if (!version || version.status !== "pending") return res.status(409).json({ error: "Only a pending update can be applied" });
     res.status(202).json({ job: jobs.enqueue("ioc.apply", { actor: "owner", params: { versionId: version.id } }) });
   });
 
-  router.post("/versions/:id/reject", (req, res) => res.json({ version: summary(store.reject(Number(req.params.id), "owner")) }));
+  router.post("/versions/:id/reject", (req, res) => res.json({ version: summary(store.reject(intParam(req.params.id, "The version id"), "owner")) }));
 
   router.put("/settings", (req, res) => {
     const track = req.body?.track;

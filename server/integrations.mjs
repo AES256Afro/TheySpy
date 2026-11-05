@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import express from "express";
+import { intQuery } from "./params.mjs";
 import { createRateLimit } from "./ratelimit.mjs";
 import { productVersion } from "./shared.mjs";
 
@@ -70,6 +71,9 @@ const tools = [
     inputSchema: { type: "object", properties: {} } },
 ];
 
+/** The most calls one MCP batch may carry. A client with more to ask sends more than one POST. */
+const maxBatch = 20;
+
 /** A domain name of at least two labels; defanged dots ("[.]") are accepted. @param {unknown} value */
 const isDomain = (value) => typeof value === "string" && /^(?=.{3,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(value.replace(/\[\.\]/g, "."));
 
@@ -80,10 +84,18 @@ const isDomain = (value) => typeof value === "string" && /^(?=.{3,253}$)[a-z0-9-
 export function integrationRoutes({ tokens, read }) {
   // Wrong tokens count against the caller's address; after 30 in ten minutes it is told to wait.
   const failures = createRateLimit({ limit: 30, windowMs: 10 * 60_000 });
+  /** address → when its block runs out. */
   const blocked = new Map();
+  let sweptAt = 0;
   const perToken = createRateLimit({ limit: 120, windowMs: 60_000 });
   const requireToken = (req, res, next) => {
     const ip = req.ip ?? "unknown";
+    // Addresses whose block has run out go, so this holds no more than the addresses blocked now.
+    // Swept at most once a minute: on every request it would cost the length of the list each time.
+    if (Date.now() - sweptAt >= 60_000) {
+      sweptAt = Date.now();
+      for (const [address, done] of blocked) if (done <= Date.now()) blocked.delete(address);
+    }
     const until = blocked.get(ip) ?? 0;
     if (until && until <= Date.now()) blocked.delete(ip);
     if (until > Date.now()) return res.set("Retry-After", String(Math.ceil((until - Date.now()) / 1000))).status(429).json({ error: "Too many wrong tokens; try again shortly" });
@@ -103,7 +115,7 @@ export function integrationRoutes({ tokens, read }) {
   const api = express.Router();
   api.use(requireToken);
   api.get("/devices", (req, res) => res.json({ devices: read.devices({ onlineOnly: req.query.online === "1" }) }));
-  api.get("/indicator-lookups", (req, res) => res.json({ lookups: read.indicatorLookups(Number(req.query.days ?? 30)) }));
+  api.get("/indicator-lookups", (req, res) => res.json({ lookups: read.indicatorLookups(intQuery(req.query.days, { name: "days", fallback: 30, min: 1, max: 365 })) }));
   api.get("/exploited-on-devices", (_req, res) => res.json({ cves: read.exploitedOnDevices() }));
   api.get("/domains/:domain", async (req, res) => {
     if (!isDomain(req.params.domain)) return res.status(400).json({ error: "domain must be a domain name, e.g. example.com" });
@@ -131,6 +143,17 @@ export function integrationRoutes({ tokens, read }) {
   mcp.delete("/", (_req, res) => res.status(405).set("Allow", "POST").end());
   mcp.post("/", async (req, res) => {
     const body = req.body;
+    // A batch is one POST carrying many calls, so it must not be one slot of the token's budget:
+    // check_domain pages through Pi-hole's whole history, and a long batch would be that many
+    // passes for the price of one request. The batch is capped, and every call in it is charged.
+    if (Array.isArray(body)) {
+      if (body.length > maxBatch) {
+        return res.status(400).json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `A batch may hold at most ${maxBatch} messages; this one has ${body.length}` } });
+      }
+      // requireToken already charged one for the request itself.
+      const wait = perToken.hit(String(/** @type {any} */ (req).token.id), Math.max(body.length - 1, 0));
+      if (wait) return res.set("Retry-After", String(wait)).status(429).json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Too many requests for this token; try again shortly" } });
+    }
     const handle = async (msg) => {
       if (!msg || msg.jsonrpc !== "2.0" || typeof msg.method !== "string") return { jsonrpc: "2.0", id: msg?.id ?? null, error: { code: -32600, message: "Invalid request" } };
       if (msg.id === undefined) return null; // a notification (e.g. notifications/initialized) gets no answer

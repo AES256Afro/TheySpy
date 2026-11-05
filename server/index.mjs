@@ -163,14 +163,14 @@ if (config.cvesAuto) {
 
 // Protec's package inventory (protec.mjs): every hour once it is connected.
 {
-  const read = () => { if (protec.config().configured) void protec.sync("system").catch((error) => settings.set("protec_last_error", { at: new Date().toISOString(), error: error.message })); };
-  for (const t of [setInterval(read, 60 * 60 * 1000), setTimeout(read, 70 * 1000)]) t.unref();
+  const syncProtec = () => { if (protec.config().configured) void protec.sync("system").catch((error) => settings.set("protec_last_error", { at: new Date().toISOString(), error: error.message })); };
+  for (const t of [setInterval(syncProtec, 60 * 60 * 1000), setTimeout(syncProtec, 70 * 1000)]) t.unref();
 }
 
 // Other sites (sites.mjs): every 15 minutes, read each one's status through its read-only API.
 {
-  const read = () => { if ((settings.get("sites") ?? []).length) void sites.refresh().catch(() => {}); };
-  for (const t of [setInterval(read, 15 * 60 * 1000), setTimeout(read, 50 * 1000)]) t.unref();
+  const readSites = () => { if ((settings.get("sites") ?? []).length) void sites.refresh().catch(() => {}); };
+  for (const t of [setInterval(readSites, 15 * 60 * 1000), setTimeout(readSites, 50 * 1000)]) t.unref();
 }
 
 // Alerts: retry undelivered ones every 10 minutes; the weekly briefing goes out on Monday from

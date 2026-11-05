@@ -5,6 +5,7 @@ import { scopeKey } from "./baselines.mjs";
 import { compiledLists } from "./library.mjs";
 import { categories, categoryIds, groups, securityCategories } from "./taxonomy.mjs";
 import { defang } from "../iocs/parse.mjs";
+import { intParam, intQuery } from "../params.mjs";
 
 export const listFormats = Object.freeze({
   txt: { type: "text/plain", comment: "#", line: (d) => d, label: "Domains (Pi-hole, AdGuard Home, NextDNS)" },
@@ -14,7 +15,9 @@ export const listFormats = Object.freeze({
   rpz: { type: "text/plain", comment: ";", line: (d) => `${d} CNAME .\n*.${d} CNAME .`, label: "Response Policy Zone" },
 });
 
-const listDefinition = (name) => compiledLists[name] ?? (categoryIds.includes(name) ? { name: categories.find((c) => c.id === name).name, description: categories.find((c) => c.id === name).description, categories: [name] } : null);
+const listDefinition = (name) =>
+  (Object.hasOwn(compiledLists, name) ? compiledLists[name] : null)
+  ?? (categoryIds.includes(name) ? { name: categories.find((c) => c.id === name).name, description: categories.find((c) => c.id === name).description, categories: [name] } : null);
 
 /**
  * GET /lists/<token>/<name>.<format>: what Pi-hole subscribes to. No sign-in (Pi-hole cannot sign
@@ -110,7 +113,7 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   router.post("/update", (_req, res) => res.status(202).json({ job: jobs.enqueue("blocklists.update", { actor: "owner" }) }));
 
   router.put("/sources/:id", async (req, res) => {
-    const id = Number(req.params.id);
+    const id = intParam(req.params.id, "The list id");
     let source = library.get(id);
     if (!source) return res.status(404).json({ error: "No such list" });
     if (Array.isArray(req.body?.categories)) source = library.setCategories(id, req.body.categories, "owner");
@@ -129,8 +132,8 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
     res.status(201).json({ source });
   });
 
-  router.post("/versions/:id/accept", (req, res) => res.json({ version: library.decide(Number(req.params.id), true, "owner") }));
-  router.post("/versions/:id/reject", (req, res) => res.json({ version: library.decide(Number(req.params.id), false, "owner") }));
+  router.post("/versions/:id/accept", (req, res) => res.json({ version: library.decide(intParam(req.params.id, "The version id"), true, "owner") }));
+  router.post("/versions/:id/reject", (req, res) => res.json({ version: library.decide(intParam(req.params.id, "The version id"), false, "owner") }));
 
   router.put("/base-url", (req, res) => {
     const raw = String(req.body?.url ?? "").trim();
@@ -167,7 +170,7 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   router.get("/baselines/preview", async (req, res) => {
     const client = req.query.client ? String(req.query.client) : undefined;
     if (client && !net.isIP(String(client))) return res.status(400).json({ error: "client must be an IP address" });
-    const windowDays = Number(req.query.days ?? 7);
+    const windowDays = intQuery(req.query.days, { name: "days", fallback: 7, min: 1, max: 90 });
     if (![1, 7, 14, 30].includes(windowDays)) return res.status(400).json({ error: "days must be 1, 7, 14 or 30" });
     const preview = await baselines.preview({ client, windowDays });
     // Security sites are spyware, malware and phishing names: they leave the server defanged, like indicators.

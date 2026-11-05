@@ -65,4 +65,18 @@ describe("pacing outside services", () => {
     expect(retryAfterMs("Thu, 30 Oct 2026 12:02:00 GMT", Date.parse("2026-10-30T12:00:00Z"))).toBe(120_000);
     expect(retryAfterMs("soon", 0)).toBeNull();
   });
+
+
+  it("keeps the default budget for a host that is not an entry of the table", async () => {
+    const w = world();
+    // "constructor" and the rest of Object.prototype are not budgets. Reading one as if it were
+    // left the host's next-allowed time NaN, and nothing was paced for it again.
+    for (const host of ["constructor", "toString", "hasOwnProperty"]) {
+      const start = w.now();
+      await w.paced.fetch(`https://${host}/a`);
+      await w.paced.fetch(`https://${host}/b`);
+      // The default budget's 250 ms gap, not "no gap at all".
+      expect(w.now() - start, host).toBe(250);
+    }
+  });
 });
