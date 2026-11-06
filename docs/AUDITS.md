@@ -6,13 +6,15 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 1 | 0 | in the loop |
-| Bugs (correctness) | 1 | 0 | in the loop |
-| Security | 1 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 2 | 0 | in the loop |
+| Bugs (correctness) | 2 | 0 | in the loop |
+| Security | 2 | 0 | in the loop |
 
-Sweep 1's findings are all fixed in 1.8.0 (M12). Sweep 2 reads what sweep 1 did not: the React
-screens and `src/api.ts`, the Pi-hole write and rollback paths, `blocklists/library.mjs`,
-`blocklists/baselines.mjs`, `fleet/registry.mjs`, `netlogs.mjs`, `iocs/*` and the agent script.
+Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's are planned as M13. Neither sweep has come
+back clean, so all three categories stay in the loop. Sweep 3 reads what neither has: `fleet/registry.mjs`
+and `fleet/targeted.mjs`, `fleet/discovery.mjs`, `cves/match.mjs` and `cves/devices.mjs`,
+`exposure.mjs`, `alerts.mjs`, `digest.mjs`, `thisdevice.mjs`, `blocklists/parse.mjs` and
+`iocs/parse.mjs`, and the thirteen screens one at a time.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -100,3 +102,61 @@ stashing the fix and running the test):
 | C4 | The two shadowed `read`s in `index.mjs` are `syncProtec` and `readSites`. |
 | C5 | `hostsOf()` refuses a range over 1,024 addresses itself. |
 | C6 | `createRateLimit.middleware()` no longer depends on `this`. |
+
+## Sweep 2 — 5 Nov 2026, at 1.8.0
+
+Read in full: `pihole/sentinel.mjs`, `pihole/client.mjs` (write paths), `blocklists/library.mjs`,
+`blocklists/baselines.mjs` (apply and undo), `netlogs.mjs`, `agent-routes.mjs`, `iocs/openpgp.mjs`,
+`src/api.ts`, `src/App.tsx`, `src/SignIn.tsx`, `agent/theyspy-agent.py`. Swept: third-party data
+reaching `href`, response buffering, partial-failure paths, what is reachable without a session.
+
+**Baseline:** the designs sweep 1 could not see hold up well. `baselines.apply()` keeps an undo
+stack and unwinds it on any failure; `openpgp.mjs` refuses every shape it does not fully understand
+and verifies against a pinned key, so the issuer subpacket (which is not covered by the signature)
+cannot be used to swap keys; the DNS connectors synthesise stable query ids, so the watch's
+90-second poll overlap really does deduplicate; `sites.mjs` bounds every field another site sends.
+
+### Security
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| S6 | Four routes need no session and have no budget: `/api/agent/scanner`, `/api/agent/zero-breach.py`, `/api/agent/iocs.txt` and `/agent/theyspy-agent.py`. Anyone who can reach TheySpy can read the **active** indicator set — which includes anything the owner added or imported — and so learn exactly what TheySpy hunts for, and can pull 281 KB of scanner per request unmetered. SECURITY.md tells the owner "every screen and API call needs the owner session", which is not true of these. | `server/agent-routes.mjs` | medium |
+| S7 | The agent checks the scanner against a hash it fetched from the same server on the same connection, so the check is self-referential: it proves the server was consistent, not that this is zero-breach's signed scanner. M7 and the file's own comment say the agent "re-checks its hash". A TheySpy that is compromised — or impersonated, see S8 — can serve any Python and the agent runs it with `sys.executable`. The agent is one vendored file against a known release, so the hash can simply be pinned in it. | `agent/theyspy-agent.py` | medium |
+| S8 | The agent takes an `http://` server address at enrolment without a word. The enrolment token, the signing secret the server hands back, and every report afterwards then cross the network in the clear — on the same LAN the product exists to distrust. | `agent/theyspy-agent.py` | medium |
+| S9 | A URL from third-party data goes into `href` without a scheme check: a blocklist directory's `homepage` (FilterLists, AdGuard, Firebog — about 1,300 candidates) and a research feed's `<link>`. **Not exploitable today**: the CSP's `script-src 'self'` blocks `javascript:` navigation. Defence in depth, and a one-line check. | `src/screens/Blocklists.tsx`, `src/screens/Intel.tsx` | low |
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B7 | **The never-block list protects exact names, but the lists are published as rules that block subdomains.** `compile()` drops a protected name itself, then the output is written as `||name^` (Adblock), `address=/name/0.0.0.0` (dnsmasq) and `*.name CNAME .` (RPZ) — all of which cover children. So a list containing a *parent* blocks the protected child anyway: `||apple.com^` takes out `captive.apple.com`, `time.apple.com` and `ocsp.apple.com`; `||lencr.org^` takes out Let's Encrypt's OCSP responders; `||gstatic.com^` takes out Android's captive-portal check. Every compiled list's header says those names "are left out". `matchNames()` in the same file already does the suffix walk this needs. | `server/blocklists/library.mjs`, `server/blocklists/routes.mjs` | medium |
+| B8 | A half-applied push cannot be rolled back. `push()` adds the entries, re-lists to confirm, and only then writes the `pihole_pushes` row — so a throw in between (Pi-hole reporting entries it does not list, or any DB error) leaves entries in Pi-hole with no record, and the rollback the product promises has nothing to work from. `baselines.apply()` in the same codebase already does this correctly with an undo stack. | `server/pihole/sentinel.mjs` | medium |
+| B9 | A session that expires while a tab is open leaves the UI stuck. `signedIn` is read once from `/api/session` on mount and no 401 afterwards ever flips it, so every screen shows "Sign in first" in its error banner and the only way back is a manual reload or knowing to press Sign out. This app is meant to be left open on a wall screen; sessions last 14 days and a restart with a rotated `TS_SESSION_SECRET` ends them all at once. | `src/App.tsx`, `src/api.ts` | medium |
+| B10 | The owner's own Pi-hole is paced as if it were a public feed. `coverage()` makes 582 sequential searches (291 indicator domains, each checked for itself and a subdomain) and the default budget is a 250 ms gap and 1,000 requests an hour — so one check takes over two minutes, and a second check in the same hour fails with "TheySpy's hourly budget for 192.168.… is used up". The same default covers AdGuard, Technitium, OPNsense, NetAlertX, Protec and the other sites: all machines the owner runs. | `server/pacing.mjs`, `server/pihole/sentinel.mjs` | medium |
+| B11 | The agent reports nothing when it fails early. `scan()` fetches the scanner manifest and makes its temp directory *outside* its `try`, so a failure there propagates out of `run()` and no report is posted — the device silently keeps its last verdict instead of recording a gap, which is the one thing this product's finding model forbids. | `agent/theyspy-agent.py` | medium |
+| B12 | The agent's cleanup is `os.remove` per entry, so a subdirectory the scanner left raises `IsADirectoryError` inside `finally`, hiding the real error and leaving the temp directory behind. `shutil.rmtree` is the fix. | `agent/theyspy-agent.py` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C7 | `ioc_hit_events.source` is written as the literal `'pihole'` for all five DNS source modes, so an AdGuard, Technitium or OPNsense lookup is recorded as Pi-hole's, and a column that exists to tell them apart never varies. |
+| C8 | Two places subscribe Pi-hole to a compiled list with different rules: `sentinel.subscribe()` checks the address against `/lists/<token>/[a-z]+\.(txt\|…)$`, while `baselines.apply()` calls `addAdlist` inline — and a baseline address (`baseline-strict--device-…`) would fail the stricter check. One of them is the rule. |
+| C9 | The network-log import buffers everything: a 64 MB upload (which the route's own comment invites — "a day of a home network's DNS, TLS and HTTP is tens of megabytes") becomes a 64 MB body, then JS strings, then every event as an object before a single row is written. Several hundred megabytes of heap for one request, in a container BoxPilot sizes modestly. It should parse and write line by line. |
+| C10 | `netlogs` only skips a duplicate finding while the old one is `status = 'open'`, so a finding the owner dismissed comes back on the next import; `agents` has no such filter and never re-raises. One of the two is wrong. |
+| C11 | Malformed OpenPGP input raises `RangeError` out of `readUInt16BE`/`readUInt32BE` rather than `SignatureError`, so a corrupt signature on an indicator update is reported as an internal error instead of "that signature is not valid". Every other refusal in that file is a `SignatureError`. |
+| C12 | `waitForJob` polls for six minutes with nothing able to cancel it (no unmount check), and `api()` sets no timeout, so a hung request leaves a screen "busy" for ever. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- The quarantine gates (`size changed`, `would newly block a protected name`) are both guarded by
+  `if (previous …)`, so a list's **first** version is never quarantined. `compile()` filters
+  protected names at publish time regardless, so this is a gap in what the owner is *told*, not a
+  hole — and B7 is the part that actually matters.
+- `verifyDetached` reads the issuer from the unhashed subpacket area, which the signature does not
+  cover. It only labels the signature; verification is against the pinned key, so there is nothing
+  to exploit.
+- `express.raw({ type: "application/json" })` on the report route leaves `req.body` unparsed for any
+  other content type, which fails the signature check. Correct, if indirect.
+- The 64 MB and 8 MB parsers on the evidence routes do run after `requireOwner` (the M11 fix is
+  intact): the early exemption middleware only skips the 64 kb parser.
