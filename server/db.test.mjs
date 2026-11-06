@@ -19,4 +19,16 @@ describe("database", () => {
     settings.delete("appearance");
     expect(settings.get("appearance")).toBeUndefined();
   });
+
+
+  it("refuses data a newer TheySpy wrote rather than running against a schema it does not know", () => {
+    const db = openDatabase(":memory:");
+    // What a rollback to an older image finds: the data has been migrated past what this code knows.
+    db.exec(`PRAGMA user_version = ${migrations.length + 1}`);
+    expect(() => migrate(db)).toThrow(/written by a newer TheySpy/);
+    expect(() => migrate(db)).toThrow(/restore the backup taken before the update/);
+    // The same version it knows is of course fine.
+    db.exec(`PRAGMA user_version = ${migrations.length}`);
+    expect(migrate(db)).toBe(migrations.length);
+  });
 });

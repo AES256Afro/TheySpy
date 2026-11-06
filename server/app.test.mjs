@@ -307,4 +307,69 @@ describe("HTTP API", () => {
     await request("PUT", "/api/appearance", { look: "light" });
     expect((await request("GET", "/api/appearance")).body.appearance).toMatchObject({ name: "Home watch", accent: "#39c6ff", look: "light" });
   });
+
+  it("refuses a long MCP batch, and charges the token's budget for every call in one", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const { token } = (await request("POST", "/api/briefing/tokens", { name: "a client" })).body;
+    const mcp = (body) => request("POST", "/mcp", body, { authorization: `Bearer ${token}`, "x-theyspy": "" });
+    const ping = (id) => ({ jsonrpc: "2.0", id, method: "ping" });
+
+    // A batch of 20 is answered; 21 is refused before any of it runs.
+    const twenty = await mcp(Array.from({ length: 20 }, (_, i) => ping(i)));
+    expect(twenty.status).toBe(200);
+    expect(twenty.body).toHaveLength(20);
+    const long = await mcp(Array.from({ length: 21 }, (_, i) => ping(i)));
+    expect(long.status).toBe(400);
+    expect(long.body.error).toMatchObject({ code: -32600, message: "A batch may hold at most 20 messages; this one has 21" });
+
+    // The budget is 120 a minute. 20 calls already went; six more batches of 20 pass it, and the
+    // token is told to wait — which it was not, when a batch cost one request's worth.
+    const statuses = [];
+    for (let i = 0; i < 6; i += 1) statuses.push((await mcp(Array.from({ length: 20 }, (_, n) => ping(n)))).status);
+    expect(statuses).toContain(429);
+    const refused = await mcp([ping(1)]);
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toMatch(/^\d+$/);
+  });
+
+  it("answers 400 for a number it cannot read, and 404 for a name no table holds", async () => {
+    const { request, library } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+
+    // These were 500s: NaN bound to a SQL LIMIT, and NaN in new Date().toISOString().
+    expect(await request("GET", "/api/audit?limit=abc")).toMatchObject({ status: 400, body: { error: "limit must be a whole number" } });
+    expect(await request("GET", "/api/jobs/abc")).toMatchObject({ status: 400, body: { error: "The job id must be a whole number" } });
+    expect(await request("GET", "/api/fleet/devices/abc")).toMatchObject({ status: 400, body: { error: "The device id must be a whole number" } });
+    expect((await request("GET", "/api/audit?limit=5")).status).toBe(200);
+    expect((await request("GET", "/api/jobs/999")).status).toBe(404);
+
+    // An inherited property of a lookup table is not an entry of it.
+    expect((await request("GET", "/api/exposure/kits/constructor")).status).toBe(404);
+    expect((await request("GET", "/api/exposure/kits/apple")).status).toBe(200);
+    const token = library.listToken();
+    expect((await request("GET", `/lists/${token}/constructor.txt`)).status).toBe(404);
+    expect((await request("GET", `/lists/${token}/toString.txt`)).status).toBe(404);
+    expect((await request("GET", `/lists/${token}/security.txt`)).status).toBe(200);
+  });
+
+  it("tells the owner when the key to the stored passwords is in the backup, and when the session is in the clear", async () => {
+    // No TS_SESSION_SECRET: the key TheySpy generated lives in the database a backup copies.
+    const stored = await start({ services: { sessionSecret: null } });
+    await stored.request("POST", "/api/login", { password: "correct horse" });
+    const ids = (body) => body.notes.map((n) => n.id);
+    const notes = (await stored.request("GET", "/api/security")).body;
+    expect(ids(notes)).toContain("sealed-key-in-database");
+    expect(notes.notes.find((n) => n.id === "sealed-key-in-database").fix).toContain("TS_SESSION_SECRET");
+    // The request came from 127.0.0.1, so the cookie never crossed a network.
+    expect(ids(notes)).not.toContain("session-over-plain-http");
+    // Only the owner may read it.
+    const anyone = await start();
+    expect((await anyone.request("GET", "/api/security")).status).toBe(401);
+
+    // With the secret in the environment there is nothing to say.
+    const env = await start({ services: { sessionSecret: "from-the-environment" } });
+    await env.request("POST", "/api/login", { password: "correct horse" });
+    expect((await env.request("GET", "/api/security")).body.notes).toEqual([]);
+  });
 });

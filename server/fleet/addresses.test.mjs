@@ -21,4 +21,11 @@ describe("addresses", () => {
     expect(isRandomisedMac("da:a1:19:00:00:01")).toBe(true);
     expect(isRandomisedMac("a4:c1:38:0a:0b:19")).toBe(false);
   });
+
+
+  it("refuses to list the addresses of a range too big to sweep, rather than building them", () => {
+    expect(() => hostsOf("10.0.0.0/8")).toThrow(/holds 16777216 addresses/);
+    expect(() => hostsOf("192.168.0.0/16")).toThrow(/one sweep visits at most 1024/);
+    expect(hostsOf("192.168.4.0/22")).toHaveLength(1022);
+  });
 });

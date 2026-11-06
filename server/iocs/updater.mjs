@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCappedBytes } from "../shared.mjs";
 import { parseIocText } from "./parse.mjs";
 import { parseChecksums, readPublicKey, verifyDetached } from "./openpgp.mjs";
 import { sha256 } from "./store.mjs";
@@ -42,7 +42,7 @@ export function createIocUpdater({ fetchImpl = fetch, timeoutMs = 30_000 } = {})
     }
     if (response.status === 404) return null;
     if (!response.ok) throw new UpdateError(`${parsed.hostname} answered ${response.status} for ${parsed.pathname}`);
-    const body = Buffer.from(await response.arrayBuffer());
+    const body = await readCappedBytes(response, { what: parsed.hostname });
     if (body.length > maxBytes) throw new UpdateError(`${parsed.pathname} is larger than ${maxBytes} bytes`);
     return body;
   }

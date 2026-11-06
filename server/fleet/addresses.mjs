@@ -32,10 +32,18 @@ export function inCidr(ip, cidr) {
   return n !== null && range !== null && n >= range.first && n <= range.last;
 }
 
-/** The addresses a sweep of a range visits: all but the network and broadcast addresses. */
+/** The most addresses one sweep builds a list of: a /22, which is what the scope guard allows. */
+export const maxSweepAddresses = 1024;
+
+/**
+ * The addresses a sweep of a range visits: all but the network and broadcast addresses. A range
+ * too big to sweep fails here as well as in the scope guard, so no caller can ask this to
+ * allocate sixteen million strings.
+ */
 export function hostsOf(cidr) {
   const range = parseCidr(cidr);
   if (!range) return [];
+  if (range.size > maxSweepAddresses) throw Object.assign(new Error(`${range.cidr} holds ${range.size} addresses; one sweep visits at most ${maxSweepAddresses}`), { status: 400 });
   if (range.prefix >= 31) return Array.from({ length: range.size }, (_, i) => intToIpv4(range.first + i));
   return Array.from({ length: range.size - 2 }, (_, i) => intToIpv4(range.first + 1 + i));
 }

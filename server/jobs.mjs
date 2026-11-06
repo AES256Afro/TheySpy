@@ -48,7 +48,7 @@ export function createJobRunner({ db, audit, kinds = jobKinds, now = () => new D
 
   async function runOne(row) {
     const id = Number(row.id);
-    const kind = kinds[row.kind];
+    const kind = Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : null;
     start.run(now().toISOString(), id);
     audit.record(`job:${id}`, "job.started", row.kind);
     const log = (line) => appendLog.run(`${now().toISOString()} ${line}\n`, id);

@@ -7,6 +7,7 @@
 // What a site answers is another TheySpy's data, so it is re-checked and bounded before it is kept.
 
 import { randomBytes } from "node:crypto";
+import { readCappedJson } from "./shared.mjs";
 
 // eslint-disable-next-line no-control-regex -- stripping control characters from another site's answer is the point
 const clip = (value, max = 80) => { const t = String(value ?? "").replace(/[\u0000-\u001f<>]/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
@@ -28,10 +29,10 @@ export function createSites({ settings, secretBox, audit, fetchImpl = fetch, now
 
   /** @returns {Promise<any>} */
   async function read(site, path) {
-    const response = await fetchImpl(`${site.url}${path}`, { headers: { authorization: `Bearer ${secretBox.open(site.tokenSealed) ?? ""}`, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+    const response = await fetchImpl(`${site.url}${path}`, { headers: { authorization: `Bearer ${secretBox.open(site.tokenSealed, `site:${site.id}`) ?? ""}`, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
     if (response.status === 401) throw new Error("the site refused the token; create a new one there (Briefing → API and MCP)");
     if (!response.ok) throw new Error(`the site answered ${response.status}`);
-    return response.json();
+    return readCappedJson(response, { what: `the site at ${new URL(site.url).hostname}` });
   }
 
   const api = {
@@ -49,7 +50,8 @@ export function createSites({ settings, secretBox, audit, fetchImpl = fetch, now
       try { u = new URL(String(input.url)); } catch { u = null; }
       if (!u || !["http:", "https:"].includes(u.protocol) || u.username || u.password) throw Object.assign(new Error("The site's address must look like https://cabin.example.ts.net:8797"), { status: 400 });
       if (!/^tsy_[A-Za-z0-9_-]{16,}$/.test(String(input.token ?? ""))) throw Object.assign(new Error("Paste an API token from that TheySpy (Briefing → API and MCP); it starts with tsy_"), { status: 400 });
-      const site = { id: randomBytes(6).toString("hex"), name, url: u.origin, tokenSealed: secretBox.seal(String(input.token)) };
+      const id = randomBytes(6).toString("hex");
+      const site = { id, name, url: u.origin, tokenSealed: secretBox.seal(String(input.token), `site:${id}`) };
       settings.set("sites", [...list(), site]);
       audit.record(actor, "sites.added", name, { url: site.url });
       return { id: site.id, name, url: site.url };

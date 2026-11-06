@@ -143,4 +143,8 @@ If a device shows a **contacted** finding, especially on a phone, and you are a 
 
 With a different `TS_SESSION_SECRET`, the restore still works, but stored passwords (Pi-hole, ntfy) must be entered again.
 
+**Set `TS_SESSION_SECRET`, or the backup carries its own key.** Without it TheySpy generates the key that seals stored passwords and keeps it in the database — which the backup copies, so anyone holding the backup can open the Pi-hole password, the ntfy token and the agent keys. Activity shows a warning while that is the case. BoxPilot sets the secret for you; standalone, put it in `.env`, restart, and enter the Pi-hole password again.
+
+Activity also warns when you reached TheySpy over plain HTTP from another machine: the sign-in cookie crossed the network in the clear, and anything between could use it. Put TheySpy behind HTTPS (a reverse proxy, or Tailscale) and set `TS_COOKIE_SECURE=true`.
+
 CI runs the full cycle against the real image on every change: stop, archive, wipe, restore, then check that settings, tokens, devices and findings came back.

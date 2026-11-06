@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped, readCappedBytes, readCappedJson } from "../shared.mjs";
 import { createNvdKey, feedUrls, nvdDate, parseEpss, parseKev, parseNvdCve } from "./feeds.mjs";
 
 // The CVE aggregator (docs/PLAN.md M5): NVD for descriptions, scores and CPE criteria; CISA KEV for
@@ -89,7 +89,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
           response = await get(url, { headers: headers() });
         }
         if (!response.ok) throw Object.assign(new Error(`NVD answered ${response.status}${response.status === 403 ? " (rate limited; an API key raises the limit)" : ""}`), { final: true });
-        return /** @type {any} */ (await response.json());
+        return /** @type {any} */ (await readCappedJson(response, { what: "NVD" }));
       } catch (error) {
         if (error.final || attempt >= 4) throw error;
         log(`An NVD page was slow or cut off (${error.message}); fetching it again.`);
@@ -191,7 +191,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       const response = await get(feedUrls.kev, { headers: headers(previous?.etag ? { "if-none-match": previous.etag } : {}) });
       if (response.status === 304) { setStatus("kev", { at: now().toISOString(), changed: false }); succeeded("kev"); log("CISA KEV: unchanged."); return { changed: false, added: [] }; }
       if (!response.ok) throw new Error(`CISA KEV answered ${response.status}`);
-      const parsed = parseKev(await response.text());
+      const parsed = parseKev(await readCapped(response, { what: "CISA KEV" }));
       const added = store.applyKev(parsed);
       setStatus("kev", { at: now().toISOString(), etag: response.headers.get("etag"), version: parsed.version, count: parsed.entries.length, added: added.length, changed: true });
       succeeded("kev");
@@ -203,7 +203,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
     async syncEpss({ log = () => {} } = {}) {
       const response = await get(feedUrls.epss, { headers: headers() });
       if (!response.ok) throw new Error(`EPSS answered ${response.status}`);
-      const { scoreDate, scores } = parseEpss(Buffer.from(await response.arrayBuffer()));
+      const { scoreDate, scores } = parseEpss(await readCappedBytes(response, { what: "EPSS" }));
       if (scores.size < 100_000) throw new Error(`The EPSS file looked wrong (${scores.size} scores)`);
       const updated = store.applyEpss(scores);
       setStatus("epss", { at: now().toISOString(), scoreDate, scores: scores.size, updated });

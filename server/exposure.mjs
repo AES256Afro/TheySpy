@@ -1,5 +1,5 @@
 import { inCidr } from "./fleet/addresses.mjs";
-import { productVersion } from "./shared.mjs";
+import { productVersion, readCapped } from "./shared.mjs";
 
 // Ad exposure (docs/PLAN.md M8, mockup 07): Citizen Lab's defender guidance as live checks. Every
 // factor says pass, partial, fail or unknown, with the evidence it was decided on and the fix. A
@@ -130,10 +130,10 @@ export function createExposure({ fleet, sentinel, agents, read, deviceCves, sett
      * Starlink prefixes. Only when the owner presses the button; the address is not stored.
      */
     async checkEgress(actor) {
-      const trace = await (await fetchImpl(traceUrl, { headers: { "user-agent": `TheySpy/${productVersion}` }, signal: AbortSignal.timeout(15_000) })).text();
+      const trace = await readCapped(await fetchImpl(traceUrl, { headers: { "user-agent": `TheySpy/${productVersion}` }, signal: AbortSignal.timeout(15_000) }), { what: "Cloudflare’s trace" });
       const ip = /^ip=(.+)$/m.exec(trace)?.[1]?.trim();
       if (!ip) throw Object.assign(new Error("Could not read this network’s public address"), { status: 502 });
-      const feed = await (await fetchImpl(starlinkFeed, { headers: { "user-agent": `TheySpy/${productVersion}` }, signal: AbortSignal.timeout(30_000) })).text();
+      const feed = await readCapped(await fetchImpl(starlinkFeed, { headers: { "user-agent": `TheySpy/${productVersion}` }, signal: AbortSignal.timeout(30_000) }), { what: "SpaceX’s geofeed" });
       const result = { at: now().toISOString(), starlink: inStarlink(ip, feed), cgnat: inCidr(ip, "100.64.0.0/10") };
       settings.set("exposure_egress", result);
       audit.record(actor, "exposure.egress_checked", null, { starlink: result.starlink });

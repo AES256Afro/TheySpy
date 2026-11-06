@@ -7,16 +7,20 @@ function when(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : "—";
 }
 
+type SecurityNote = { id: string; title: string; detail: string; fix: string };
+
 export function ActivityScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [notes, setNotes] = useState<SecurityNote[]>([]);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [j, a] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit")]);
+      const [j, a, s] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit"), api<{ notes: SecurityNote[] }>("GET", "/api/security")]);
       setJobs(j.jobs);
       setAudit(a.entries);
+      setNotes(s.notes);
       setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -45,6 +49,13 @@ export function ActivityScreen() {
         <button className="btn primary" type="button" onClick={runTestJob} disabled={busy}>Run a test job</button>
       </div>
       {error && <div className="banner bad" role="alert">{error}</div>}
+      {notes.map((note) => (
+        <div className="banner warn" key={note.id}>
+          <strong>{note.title}</strong>
+          <p className="small">{note.detail}</p>
+          <p className="small">{note.fix}</p>
+        </div>
+      ))}
       <section className="card">
         <header><h2>Jobs</h2><span className="muted small">newest first</span></header>
         {jobs.length === 0 ? <p className="muted small">No jobs yet. “Run a test job” checks that the runner works.</p> : (

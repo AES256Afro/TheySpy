@@ -11,7 +11,7 @@ Open a private security advisory on GitHub (Security → Report a vulnerability)
 | Asset | Where it lives |
 | --- | --- |
 | The owner session and password | `sessions` and a scrypt hash in `settings` |
-| Pi-hole's app password, the ntfy token, agent secrets | `settings` / `agents`, sealed with AES-256-GCM under a key derived from `TS_SESSION_SECRET` |
+| Pi-hole's app password, the ntfy token, agent secrets | `settings` / `agents`, sealed with AES-256-GCM under a key derived from `TS_SESSION_SECRET`. One key per purpose, and where a key seals many rows (each agent, each site) the row it belongs to is bound in, so a blob moved between rows does not open |
 | Who looked up what (DNS history), the device map, findings | SQLite in `/data` |
 | The ability to change Pi-hole (lists, groups, clients) | Owner-only jobs, off unless allowed |
 | The lists Pi-hole subscribes to | `/lists/<token>/…`, behind a long random token |
@@ -69,7 +69,12 @@ The website check:
 
 **Someone with the backup file.**
 - Credentials inside it are sealed under `TS_SESSION_SECRET`, which is not in the database when set through the environment (BoxPilot generates it).
+- **If it is not set, the key is in the backup.** TheySpy then generates the key itself and keeps it in `settings`, in the same file the backup copies — so the backup carries the Pi-hole password, the ntfy token and the agent keys in a form that opens. Activity says so when this is the case; set `TS_SESSION_SECRET` and enter the Pi-hole password again to fix it.
 - The DNS history and the device map are not encrypted: keep backups where you keep other private data.
+
+**A service TheySpy reads that answers with too much.** Every outside answer is read with a ceiling (32 MB, 50 MB for a blocklist), counted as the bytes arrive rather than trusting `Content-Length`, so a feed that breaks or is taken over fails that one read instead of the container.
+
+**A rollback onto newer data.** TheySpy refuses to open a database a newer version migrated, rather than reading and writing a schema it does not know. Restore the backup taken before the update, or start the newer version again.
 
 ## What it does not do
 

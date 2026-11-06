@@ -1,3 +1,4 @@
+import { intParam } from "../params.mjs";
 import express from "express";
 import { citation } from "../iocs/exports.mjs";
 import { defang } from "../iocs/parse.mjs";
@@ -42,7 +43,7 @@ export function piholeRoutes({ sentinel, jobs, settings }) {
   router.post("/test", start("pihole.test"));
   router.post("/coverage", start("pihole.coverage"));
   router.post("/hunt", (req, res) => {
-    const windowDays = req.body?.windowDays === undefined ? undefined : Number(req.body.windowDays);
+    const windowDays = req.body?.windowDays === undefined ? undefined : intParam(req.body.windowDays, "windowDays");
     if (windowDays !== undefined && !(Number.isInteger(windowDays) && windowDays >= 1 && windowDays <= 365)) return res.status(400).json({ error: "window must be 1 to 365 days" });
     res.status(202).json({ job: jobs.enqueue("pihole.hunt", { actor: "owner", params: { windowDays } }) });
   });
@@ -54,7 +55,7 @@ export function piholeRoutes({ sentinel, jobs, settings }) {
     if (!Array.isArray(domains) || !domains.length || !domains.every((d) => typeof d === "string")) return res.status(400).json({ error: "Approve a push from the current preview" });
     res.status(202).json({ job: jobs.enqueue("pihole.push", { actor: "owner", params: { domains } }) });
   });
-  router.post("/pushes/:id/rollback", (req, res) => res.status(202).json({ job: jobs.enqueue("pihole.rollback", { actor: "owner", params: { pushId: Number(req.params.id) } }) }));
+  router.post("/pushes/:id/rollback", (req, res) => res.status(202).json({ job: jobs.enqueue("pihole.rollback", { actor: "owner", params: { pushId: intParam(req.params.id, "The push id") } }) }));
 
   return router;
 }

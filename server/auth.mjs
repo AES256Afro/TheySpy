@@ -67,6 +67,14 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
     generatedPassword,
 
     /**
+     * Whether the key that seals stored credentials lives in this database. It does when
+     * TS_SESSION_SECRET is not set in the environment: TheySpy generates one and keeps it in
+     * `settings`, which a backup copies along with the credentials it opens. The Activity screen
+     * says so, because nothing else would.
+     */
+    sessionSecretStored: !sessionSecret,
+
+    /**
      * A 32-byte key for one purpose, derived from the session secret. Settings encrypted with it
      * (the Pi-hole password) become unreadable when the secret changes, like sessions do. Keep
      * TS_SESSION_SECRET outside the database so a copied database alone does not unlock them.
