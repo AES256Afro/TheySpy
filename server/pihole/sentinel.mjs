@@ -1,3 +1,4 @@
+import { isListAddress } from "../blocklists/addresses.mjs";
 import { blocklistDomains } from "../iocs/exports.mjs";
 import { PiholeError, wildcardRegex } from "./client.mjs";
 import { createMatcher } from "./match.mjs";
@@ -27,10 +28,11 @@ const day = 24 * 60 * 60;
  * }} deps
  */
 export function createSentinel({ db, settings, audit, iocStore, secretBox, env = {}, fetchImpl, now = () => new Date() }) {
-  const insertEvent = db.prepare("INSERT OR IGNORE INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const insertEvent = db.prepare("INSERT OR IGNORE INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   const insertHunt = db.prepare("INSERT INTO pihole_hunts (mode, from_at, until_at, indicators, queries_seen, new_hits, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
   const lastHunt = db.prepare("SELECT * FROM pihole_hunts ORDER BY id DESC LIMIT 1");
   const insertPush = db.prepare("INSERT INTO pihole_pushes (status, entries, pushed_at, pushed_by) VALUES ('active', ?, ?, ?)");
+  const setPushEntries = db.prepare("UPDATE pihole_pushes SET entries = ? WHERE id = ?");
   const pushById = db.prepare("SELECT * FROM pihole_pushes WHERE id = ?");
   const pushList = db.prepare("SELECT id, status, entries, pushed_at, pushed_by, rolled_back_at, rolled_back_by FROM pihole_pushes ORDER BY id DESC LIMIT 20");
   const markRolledBack = db.prepare("UPDATE pihole_pushes SET status = 'rolled_back', rolled_back_at = ?, rolled_back_by = ? WHERE id = ?");
@@ -77,12 +79,18 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     return createMatcher(set);
   };
 
-  /** Stores new lookups; one audit entry per batch, naming the indicators and clients involved. */
+  /**
+   * Stores new lookups; one audit entry per batch, naming the indicators and clients involved. The
+   * source is the DNS server the lookup was read from - Pi-hole's API or database, or one of the
+   * three other servers - which is also part of what makes a row unique, so the same lookup from
+   * two sources is kept once per source rather than merged.
+   */
   function recordHits(hits, foundBy) {
     const fresh = [];
     const foundAt = now().toISOString();
+    const from = effective().mode ?? "pihole";
     for (const h of hits) {
-      const { changes } = insertEvent.run(h.queryId, h.at, h.indicator, h.domain, h.via, h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
+      const { changes } = insertEvent.run(from, h.queryId, h.at, h.indicator, h.domain, h.via, h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
       if (Number(changes)) fresh.push(h);
     }
     if (fresh.length) {
@@ -278,7 +286,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
      */
     async subscribe(address, label, actor) {
       if (!effective().write) throw Object.assign(new Error("Changing Pi-hole is turned off. Allow it on the Pi-hole Sentinel screen first."), { status: 403 });
-      if (!/^https?:\/\/[^/]+\/lists\/[\w-]+\/[a-z]+\.(txt|hosts|adblock|dnsmasq|rpz)$/.test(address)) throw Object.assign(new Error("Only TheySpy's own list addresses can be added"), { status: 400 });
+      if (!isListAddress(address)) throw Object.assign(new Error("Only TheySpy's own list addresses can be added"), { status: 400 });
       const s = source();
       if (!s.canWrite) throw new PiholeError("Subscribing needs the Pi-hole API.");
       return /** @type {ReturnType<typeof apiSource>} */ (s).client().session(async (c) => {
@@ -332,15 +340,28 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
         const existing = new Set((await c.listDomains("deny", "regex")).map((d) => d.domain));
         const patterns = wanted.map(wildcardRegex).filter((p) => !existing.has(p));
         if (!patterns.length) return { added: 0, pushId: null };
-        const processed = await c.addDenyRegex(patterns, `${tag} AdFection / Candiru indicator (zero-breach ${set.asof ?? "set"})`);
-        const added = (processed.success ?? []).map((s2) => s2.item);
-        const present = new Set((await c.listDomains("deny", "regex")).map((d) => d.domain));
-        const missing = added.filter((p) => !present.has(p));
-        if (missing.length) throw new PiholeError(`Pi-hole reported ${missing.length} entries added that it does not list`);
-        const pushId = Number(insertPush.run(JSON.stringify(added), now().toISOString(), actor).lastInsertRowid);
-        sentinel.markCoverageStale();
-        audit.record(actor, "pihole.denylist_pushed", `pihole-push:${pushId}`, { entries: added.length, errors: processed.errors?.length ?? 0 });
-        return { added: added.length, errors: processed.errors ?? [], pushId };
+        // The push is recorded before Pi-hole is touched. Anything that throws after this - Pi-hole
+        // failing part-way, or listing fewer entries than it said it added - leaves a row the owner
+        // can still roll back, which is the promise this feature makes. The row starts as what is
+        // about to be sent and is narrowed to what Pi-hole actually lists; a rollback removes only
+        // entries that are present and still carry TheySpy's comment, so a row holding more than
+        // landed is safe.
+        const pushId = Number(insertPush.run(JSON.stringify(patterns), now().toISOString(), actor).lastInsertRowid);
+        try {
+          const processed = await c.addDenyRegex(patterns, `${tag} AdFection / Candiru indicator (zero-breach ${set.asof ?? "set"})`);
+          const added = (processed.success ?? []).map((s2) => s2.item);
+          const present = new Set((await c.listDomains("deny", "regex")).map((d) => d.domain));
+          setPushEntries.run(JSON.stringify(added.filter((p) => present.has(p))), pushId);
+          const missing = added.filter((p) => !present.has(p));
+          if (missing.length) throw new PiholeError(`Pi-hole reported ${missing.length} entries added that it does not list`);
+          sentinel.markCoverageStale();
+          audit.record(actor, "pihole.denylist_pushed", `pihole-push:${pushId}`, { entries: added.length, errors: processed.errors?.length ?? 0 });
+          return { added: added.length, errors: processed.errors ?? [], pushId };
+        } catch (error) {
+          sentinel.markCoverageStale();
+          audit.record(actor, "pihole.denylist_push_failed", `pihole-push:${pushId}`, { error: error.message, pushId });
+          throw Object.assign(error, { pushId });
+        }
       });
     },
 

@@ -9,6 +9,11 @@ export class SignatureError extends Error {}
 
 /** Strips ASCII armour; checks the CRC-24 when present. */
 export function dearmor(text) {
+  return bounded(() => dearmorUnchecked(text));
+}
+
+/** @param {string} text */
+function dearmorUnchecked(text) {
   const lines = text.replace(/\r/g, "").split("\n");
   const begin = lines.findIndex((line) => /^-----BEGIN PGP [A-Z ]+-----$/.test(line));
   const end = lines.findIndex((line, i) => i > begin && /^-----END PGP [A-Z ]+-----$/.test(line));
@@ -35,8 +40,28 @@ function crc24(data) {
   return crc & 0xffffff;
 }
 
+/**
+ * Reads whatever `read` reads, turning a short buffer into a SignatureError. Without this a
+ * truncated signature came back as a RangeError from readUInt*, and the indicator updater reported
+ * an internal error instead of "that signature is not valid".
+ * @template T @param {() => T} read @returns {T}
+ */
+function bounded(read) {
+  try {
+    return read();
+  } catch (error) {
+    if (error instanceof RangeError) throw new SignatureError("truncated or malformed OpenPGP data");
+    throw error;
+  }
+}
+
 /** @returns {{ tag: number, body: Buffer }[]} */
 export function readPackets(data) {
+  return bounded(() => readPacketsUnchecked(data));
+}
+
+/** @returns {{ tag: number, body: Buffer }[]} */
+function readPacketsUnchecked(data) {
   const packets = [];
   let at = 0;
   while (at < data.length) {
@@ -80,6 +105,11 @@ function readMpi(buffer, at) {
  * @param {string} armored
  */
 export function readPublicKey(armored) {
+  return bounded(() => readPublicKeyUnchecked(armored));
+}
+
+/** @param {string} armored */
+function readPublicKeyUnchecked(armored) {
   const packet = readPackets(dearmor(armored)).find((p) => p.tag === 6);
   if (!packet) throw new SignatureError("no public key packet");
   const body = packet.body;
@@ -122,6 +152,11 @@ function parseSubpackets(area) {
  * @returns {{ signedAt: Date, issuer: string }}
  */
 export function verifyDetached(data, armoredSignature, publicKey) {
+  return bounded(() => verifyDetachedUnchecked(data, armoredSignature, publicKey));
+}
+
+/** @param {Buffer} data @param {string} armoredSignature @param {ReturnType<typeof readPublicKey>} publicKey */
+function verifyDetachedUnchecked(data, armoredSignature, publicKey) {
   const packet = readPackets(dearmor(armoredSignature)).find((p) => p.tag === 2);
   if (!packet) throw new SignatureError("no signature packet");
   const sig = packet.body;

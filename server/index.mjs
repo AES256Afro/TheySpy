@@ -56,7 +56,13 @@ createEgress({
 }).install();
 // Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
 // hold when one says to slow down. Installed before any service is made, as they take `fetch` then.
-globalThis.fetch = createPacedFetch(globalThis.fetch, { audit }).fetch;
+// Pi-hole (or AdGuard, Technitium, OPNsense), NetAlertX, Protec and the other sites are the
+// owner's own installations, so they are not paced. The blocklist and feed hosts above are other
+// people's servers and are.
+globalThis.fetch = createPacedFetch(globalThis.fetch, {
+  audit,
+  ownHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), hostOf(settings.get("protec")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url))],
+}).fetch;
 const sentinel = createSentinel({ db, settings, audit, iocStore, secretBox: createSecretBox(auth.deriveKey("settings")), env: config.pihole });
 const library = createBlocklistLibrary({ db, settings, audit, iocStore, popular: () => sentinel.topDomains() });
 const firstStart = library.seed();

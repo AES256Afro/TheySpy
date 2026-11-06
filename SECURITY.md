@@ -22,14 +22,20 @@ Open a private security advisory on GitHub (Security → Report a vulnerability)
 - Every screen and API call needs the owner session: an HttpOnly, `SameSite=Strict` cookie.
 - Sign-in locks an address out after five wrong passwords.
 - State-changing calls need an `X-TheySpy` header (a cross-site form cannot send one), and CORS is never enabled. Together these close CSRF.
-- The only routes that answer without a session:
-  - health;
-  - the appearance (for the sign-in page);
-  - the agent's routes;
-  - the compiled lists (behind a token, checked in constant time before any work is done);
-  - `/api/v1` and `/mcp` (bearer token).
+- The routes that answer without the owner session, and what each needs instead:
 
-  Each has a body limit, and those that check a secret have a per-address rate limit.
+  | Route | What it needs | What it gives away to a stranger |
+  | --- | --- | --- |
+  | `/healthz`, `/api/v1/health` | nothing | that TheySpy is running, and its version |
+  | `GET /api/appearance` | nothing | the name, tagline and look on the sign-in page |
+  | `POST /api/agent/enroll` | a single-use enrolment token the owner made | nothing |
+  | `POST /api/agent/report` | an enrolled agent's signature over the exact body | nothing |
+  | `GET /api/agent/scanner`, `/api/agent/zero-breach.py`, `/api/agent/iocs.txt` | an enrolled agent's signature over the path | nothing. The indicator file is the owner's **active** set, so whatever they added or imported is in it; it is not served to anything on the network that asks |
+  | `GET /agent/theyspy-agent.py` | nothing (a new machine has no key yet) | the agent source, which is the same file as in the repository |
+  | `GET /lists/<token>/…` | the list token, compared in constant time before anything is compiled | nothing |
+  | `/api/v1`, `/mcp` | a bearer token the owner made, stored as a hash | nothing |
+
+  Each has a body limit, and each has a per-address rate limit.
 
 **A web page the owner visits.**
 - No CORS, `SameSite=Strict`, and the `X-TheySpy` header rule (above).

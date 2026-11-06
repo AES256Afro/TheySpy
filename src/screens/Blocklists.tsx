@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, safeLink, waitForJob, type Job } from "../api.ts";
 
 type Source = {
   id: number; key: string; directory: string; name: string; description: string | null; url: string | null; homepage: string | null; license: string | null; syntax: string | null;
@@ -134,7 +134,7 @@ export function BlocklistsScreen() {
           <thead><tr><th>List</th><th>Categories</th><th>Entries</th><th>Changed</th><th>Health</th><th></th></tr></thead>
           <tbody>{sources.map((s) => (
             <tr key={s.id} style={{ opacity: s.status === "enabled" ? 1 : 0.6 }}>
-              <td><b>{s.name}</b><div className="muted small">{directoryLabel[s.directory] ?? s.directory}{s.license ? ` · ${s.license}` : ""}{s.homepage && <> · <a href={s.homepage} target="_blank" rel="noreferrer noopener">home</a></>}</div></td>
+              <td><b>{s.name}</b><div className="muted small">{directoryLabel[s.directory] ?? s.directory}{s.license ? ` · ${s.license}` : ""}{safeLink(s.homepage) && <> · <a href={safeLink(s.homepage)!} target="_blank" rel="noreferrer noopener">home</a></>}</div></td>
               <td><CategoryChips ids={s.categories} all={categories} /></td>
               <td className="mono">{s.directory === "builtin" ? "from Indicators" : n(s.entries)}</td>
               <td className="small">{when(s.lastChangedAt)}</td>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPacedFetch, retryAfterMs } from "./pacing.mjs";
 
-function world() {
+function world(options = {}) {
   let t = Date.parse("2026-10-30T12:00:00.000Z");
   const sent = [];
   const answers = new Map();
@@ -10,7 +10,7 @@ function world() {
   const audit = { record: (...args) => entries.push(args) };
   const paced = createPacedFetch(/** @type {any} */ (base), {
     budgets: { "api.github.com": { minIntervalMs: 1_000, perHour: 3 }, "services.nvd.nist.gov": { minIntervalMs: 600, perHour: 100, slowDown: [403], quietMs: 30_000 }, default: { minIntervalMs: 250, perHour: 1_000 } },
-    audit, now: () => t, sleep: async (ms) => { t += ms; },
+    audit, now: () => t, sleep: async (ms) => { t += ms; }, ...options,
   });
   return { paced, sent, answers, entries, advance: (ms) => { t += ms; }, now: () => t };
 }
@@ -69,14 +69,40 @@ describe("pacing outside services", () => {
 
   it("keeps the default budget for a host that is not an entry of the table", async () => {
     const w = world();
-    // "constructor" and the rest of Object.prototype are not budgets. Reading one as if it were
-    // left the host's next-allowed time NaN, and nothing was paced for it again.
-    for (const host of ["constructor", "toString", "hasOwnProperty"]) {
+    // Object.prototype's names are not budgets. Reading one as if it were left the host's
+    // next-allowed time NaN, and nothing was paced for that host again. (Such a host is now also
+    // treated as the owner's own and skipped before this point, so the guard in budgetOf is belt
+    // and braces - which is why these are dotted names that reach it.)
+    for (const host of ["constructor.example.com", "tostring.example.com"]) {
       const start = w.now();
       await w.paced.fetch(`https://${host}/a`);
       await w.paced.fetch(`https://${host}/b`);
       // The default budget's 250 ms gap, not "no gap at all".
       expect(w.now() - start, host).toBe(250);
     }
+  });
+
+  it("does not pace the owner's own machines", async () => {
+    const w = world({ ownHosts: () => ["pi.hole", "nas.example.com"] });
+    // Everything that can only be local: an address in a private range, a single-label name, the
+    // suffixes a home network and a tailnet use.
+    for (const host of ["192.168.1.5", "10.0.0.2", "127.0.0.1", "[fd00::1]", "localhost", "pihole", "nas.local", "box.lan", "theyspy.tailnet-1234.ts.net"]) {
+      expect(w.paced.isOwn(host.replace(/^\[|\]$/g, "")), host).toBe(true);
+    }
+    // And whatever the owner configured as a connector, wherever it is.
+    expect(w.paced.isOwn("pi.hole")).toBe(true);
+    expect(w.paced.isOwn("nas.example.com")).toBe(true);
+    // Not somebody else's server.
+    for (const host of ["services.nvd.nist.gov", "api.github.com", "ntfy.sh", "8.8.8.8"]) {
+      expect(w.paced.isOwn(host), host).toBe(false);
+    }
+
+    // So 600 searches of Pi-hole - what one coverage check is - take no time and hit no budget.
+    const start = w.now();
+    for (let i = 0; i < 600; i += 1) await w.paced.fetch(`http://192.168.1.5/api/search/d${i}.example`);
+    expect(w.now() - start).toBe(0);
+    // Before this, the default 1,000-an-hour budget meant a second check in the same hour failed.
+    for (let i = 0; i < 600; i += 1) await w.paced.fetch(`http://192.168.1.5/api/search/e${i}.example`);
+    expect(w.paced.held()).toEqual([]);
   });
 });
