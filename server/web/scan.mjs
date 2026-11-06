@@ -3,7 +3,7 @@ import { promises as dnsPromises } from "node:dns";
 import net from "node:net";
 import { Agent, fetch as undiciFetch } from "undici";
 import { productVersion } from "../shared.mjs";
-import { inCidr } from "../fleet/addresses.mjs";
+import { inCidr, isPublicAddress } from "../fleet/addresses.mjs";
 
 // The website check: what PHP (and a PHP CMS) a site runs, whether that version is still supported,
 // which CVEs NVD lists for it, and whether files that should never be public are reachable. It only
@@ -73,20 +73,6 @@ export function fingerprint(headers, body) {
   const joomla = /Joomla!?\s*(\d+(?:\.\d+)*)?/i.exec(generator);
   if (joomla) found.push({ product: "Joomla!", version: joomla[1] ?? null, cpe: ["joomla", "joomla\\!"], source: "generator tag" });
   return found;
-}
-
-// Addresses no website check may reach unless they are inside the owner's scan ranges: private,
-// loopback, link-local (cloud metadata), carrier-grade NAT, documentation, multicast and reserved.
-const nonPublic = new net.BlockList();
-for (const [a, p] of /** @type {[string, number][]} */ ([["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]])) nonPublic.addSubnet(a, p, "ipv4");
-for (const [a, p] of /** @type {[string, number][]} */ ([["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["64:ff9b::", 96], ["2001:db8::", 32]])) nonPublic.addSubnet(a, p, "ipv6");
-
-/** @param {string} ip */
-export function isPublicAddress(ip) {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
-  if (mapped) return isPublicAddress(mapped[1]);
-  const family = net.isIP(ip);
-  return family !== 0 && !nonPublic.check(ip, family === 6 ? "ipv6" : "ipv4");
 }
 
 /**

@@ -51,13 +51,17 @@ function fromEve(e) {
 }
 
 /**
- * Reads one log file, whatever its format, as events.
+ * Reads one log file, whatever its format, handing each event to `take` as it is read. Nothing is
+ * collected here: a day of a busy network is hundreds of thousands of events, and holding them all
+ * as objects before writing a single row was the largest thing this import did.
  * @param {string} name @param {string} text
- * @returns {{ tool: "zeek" | "suricata", log: string, events: NetEvent[] }}
+ * @param {(event: NetEvent, tool: "zeek" | "suricata", log: string) => void} take
+ * @returns {{ tool: "zeek" | "suricata", log: string, events: number }}
  */
-export function parseNetworkLog(name, text) {
+export function readNetworkLog(name, text, take) {
   const lines = String(text).split(/\r?\n/);
-  const events = [];
+  let events = 0;
+  const emit = (list, tool, log) => { for (const e of list) { take(e, tool, log); events += 1; } };
   if (lines.some((line) => line.startsWith("#fields"))) {
     // Zeek ASCII: the header names the log and its columns.
     const separator = /^#separator (.+)$/m.exec(text)?.[1]?.replace(/\\x([0-9a-f]{2})/gi, (_m, h) => String.fromCharCode(Number.parseInt(h, 16))) ?? "\t";
@@ -67,8 +71,8 @@ export function parseNetworkLog(name, text) {
       if (line.startsWith("#fields")) { fields = line.split(separator).slice(1); continue; }
       if (!line || line.startsWith("#")) continue;
       const values = line.split(separator);
-      events.push(...fromZeek(path, Object.fromEntries(fields.map((f, i) => [f, values[i]]))));
-      if (events.length > maxEvents) break;
+      emit(fromZeek(path, Object.fromEntries(fields.map((f, i) => [f, values[i]]))), "zeek", path);
+      if (events > maxEvents) break;
     }
     return { tool: "zeek", log: path, events };
   }
@@ -79,14 +83,26 @@ export function parseNetworkLog(name, text) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     if (!record || typeof record !== "object") continue;
-    if (record.event_type) { tool = "suricata"; log = "eve"; events.push(...fromEve(record)); }
+    if (record.event_type) { tool = "suricata"; log = "eve"; emit(fromEve(record), tool, log); }
     else {
       const path = record.query !== undefined ? "dns" : record.server_name !== undefined || record.ssl_history !== undefined ? "ssl" : record.method !== undefined && record.host !== undefined ? "http" : null;
-      if (path) { tool = "zeek"; log = path; events.push(...fromZeek(path, record)); }
+      if (path) { tool = "zeek"; log = path; emit(fromZeek(path, record), tool, log); }
     }
-    if (events.length > maxEvents) break;
+    if (events > maxEvents) break;
   }
   if (!tool) throw Object.assign(new Error(`${name} is not a Zeek dns, ssl or http log, nor a Suricata eve.json`), { status: 400 });
+  return { tool, log, events };
+}
+
+/**
+ * The same, with the events collected. For tests and anything small; the import reads them one at
+ * a time instead.
+ * @param {string} name @param {string} text
+ * @returns {{ tool: "zeek" | "suricata", log: string, events: NetEvent[] }}
+ */
+export function parseNetworkLog(name, text) {
+  const events = [];
+  const { tool, log } = readNetworkLog(name, text, (e) => { events.push(e); });
   return { tool, log, events };
 }
 
@@ -101,7 +117,9 @@ export function parseNetworkLog(name, text) {
  */
 export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new Date() }) {
   const q = {
-    contactExists: db.prepare("SELECT 1 FROM findings WHERE source = ? AND kind = 'contacted' AND indicator = ? AND location = ? AND COALESCE(device_id, -1) = COALESCE(?, -1) AND status = 'open'"),
+    // Without a status filter, so a finding the owner dismissed is not raised again by the next
+    // import of the same logs. The agent's side has always worked this way.
+    contactExists: db.prepare("SELECT 1 FROM findings WHERE source = ? AND kind = 'contacted' AND indicator = ? AND location = ? AND COALESCE(device_id, -1) = COALESCE(?, -1)"),
     addFinding: db.prepare("INSERT INTO findings (device_id, source, source_ref, kind, indicator, tier, confidence, location, detail, at) VALUES (?, ?, ?, 'contacted', ?, ?, ?, ?, ?, ?)"),
     clientKnown: db.prepare("SELECT 1 FROM ja4_fingerprints WHERE client_ip = ? LIMIT 1"),
     fingerprint: db.prepare("SELECT * FROM ja4_fingerprints WHERE client_ip = ? AND ja4 = ?"),
@@ -134,26 +152,27 @@ export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new 
       /** @type {Map<string, Map<string, { first: string, last: string, count: number, sni: string | null, tool: string }>>} */
       const seen = new Map();
       for (const file of files.slice(0, 20)) {
-        const parsed = parseNetworkLog(String(file.name ?? "log"), String(file.content ?? ""));
-        byTool[`${parsed.tool} ${parsed.log}`] = (byTool[`${parsed.tool} ${parsed.log}`] ?? 0) + parsed.events.length;
-        events += parsed.events.length;
-        for (const e of parsed.events) {
+        const name = String(file.name ?? "log");
+        const onEvent = (e, tool) => {
           if (e.ja4) {
             if (!seen.has(e.client)) seen.set(e.client, new Map());
-            const f = seen.get(e.client).get(e.ja4) ?? { first: e.at, last: e.at, count: 0, sni: e.name, tool: parsed.tool };
+            const f = seen.get(e.client).get(e.ja4) ?? { first: e.at, last: e.at, count: 0, sni: e.name, tool };
             f.count += 1; if (e.at < f.first) f.first = e.at; if (e.at > f.last) f.last = e.at; f.sni ??= e.name;
             seen.get(e.client).set(e.ja4, f);
           }
           const ind = e.name ? matcher.match(e.name) : null;
-          if (!ind) continue;
+          if (!ind) return;
           const d = device(e.client);
-          const location = `${parsed.tool} ${e.kind}`;
-          if (q.contactExists.get(parsed.tool, ind.value, location, d?.id ?? null)) continue;
-          q.addFinding.run(d?.id ?? null, parsed.tool, `${parsed.tool}:${file.name}`, ind.value, ind.tier ?? null, ind.confidence ?? null, location,
+          const location = `${tool} ${e.kind}`;
+          if (q.contactExists.get(tool, ind.value, location, d?.id ?? null)) return;
+          q.addFinding.run(d?.id ?? null, tool, `${tool}:${name}`, ind.value, ind.tier ?? null, ind.confidence ?? null, location,
             `${e.client}${d ? ` (${d.name})` : ""} ${e.kind === "dns" ? "looked up" : e.kind === "tls" ? "opened TLS to" : "asked HTTP for"} ${e.name} at ${e.at}${e.ja4 ? `; JA4 ${e.ja4}` : ""}`.slice(0, 300), at);
           added += 1;
           indicators.add(ind.value);
-        }
+        };
+        const parsed = readNetworkLog(name, String(file.content ?? ""), onEvent);
+        byTool[`${parsed.tool} ${parsed.log}`] = (byTool[`${parsed.tool} ${parsed.log}`] ?? 0) + parsed.events;
+        events += parsed.events;
       }
       const fresh = [];
       for (const [client, prints] of seen) {

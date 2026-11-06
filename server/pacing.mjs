@@ -1,8 +1,16 @@
+import { isOwnNetworkHost } from "./fleet/addresses.mjs";
+
 // Rate limits for every outside service TheySpy reads (feeds, directories, blocklists, NVD). Each
 // host gets a minimum gap between requests and an hourly budget, and when a service says to slow
 // down (429, or 503 with Retry-After) TheySpy holds back from it until the time it names. Short
 // waits are waited out; a long one fails at once with a plain message rather than tying up a job.
 // NVD and GitHub publish their limits; everything else gets a polite default.
+//
+// The owner's own machines are not outside services and are never paced. Pi-hole especially: a
+// coverage check is two searches for each of 291 indicator domains, which at the default gap took
+// over two minutes, and a second check inside the hour was refused for being over a budget meant
+// for somebody else's server. A host counts as the owner's when it can only be local
+// (isOwnNetworkHost) or when the owner configured it as a connector (`ownHosts`).
 
 /** Published limits, by host. A leading dot covers every name under the domain. */
 export const hostBudgets = {
@@ -27,12 +35,13 @@ export function retryAfterMs(value, nowMs) {
  * @param {{
  *   budgets?: Record<string, { minIntervalMs: number, perHour: number, slowDown?: number[], quietMs?: number }>,
  *   maxWaitMs?: number,
+ *   ownHosts?: () => Iterable<string | null | undefined>,
  *   audit?: { record: (...args: any[]) => void },
  *   now?: () => number,
  *   sleep?: (ms: number) => Promise<void>,
  * }} [options]
  */
-export function createPacedFetch(baseFetch, { budgets = hostBudgets, maxWaitMs = 120_000, audit, now = () => Date.now(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+export function createPacedFetch(baseFetch, { budgets = hostBudgets, maxWaitMs = 120_000, ownHosts = () => [], audit, now = () => Date.now(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   /** @type {Map<string, { next: number, sent: number[], heldUntil: number, reported: number }>} */
   const hosts = new Map();
   const budgetOf = (host) =>
@@ -45,11 +54,20 @@ export function createPacedFetch(baseFetch, { budgets = hostBudgets, maxWaitMs =
     return state;
   };
   const clock = (ms) => new Date(ms).toISOString().slice(11, 16);
+  // The configured connectors, re-read once a minute rather than per request.
+  let own = { at: 0, hosts: new Set() };
+  const isOwn = (host) => {
+    if (isOwnNetworkHost(host)) return true;
+    if (now() - own.at > 60_000) own = { at: now(), hosts: new Set([...ownHosts()].filter(Boolean).map((h) => String(h).toLowerCase())) };
+    return own.hosts.has(host);
+  };
 
   /** @type {typeof fetch} */
   const paced = async (input, init) => {
     let host;
     try { host = new URL(input instanceof Request ? input.url : String(input)).hostname.toLowerCase(); } catch { return baseFetch(input, init); }
+    // The owner's own Pi-hole, NetAlertX, Protec or other site: theirs to hammer.
+    if (isOwn(host)) return baseFetch(input, init);
     const budget = budgetOf(host);
     const state = stateOf(host);
     // Reserve this request's slot before waiting, so concurrent callers queue behind each other.
@@ -78,6 +96,8 @@ export function createPacedFetch(baseFetch, { budgets = hostBudgets, maxWaitMs =
 
   return {
     fetch: paced,
+    /** Whether a host is treated as the owner's own (for the Activity screen and tests). */
+    isOwn,
     /** Hosts TheySpy is holding back from right now, for the Activity screen and tests. */
     held: () => [...hosts].filter(([, state]) => state.heldUntil > now()).map(([host, state]) => ({ host, until: new Date(state.heldUntil).toISOString() })),
   };

@@ -171,4 +171,36 @@ describe("Pi-hole database source", () => {
     await sentinel.watch.poll();
     expect(settings.get("pihole_last_test")).toMatchObject({ ok: false, message: expect.stringMatching(/refused the password/) });
   });
+
+  it("records a push before applying it, so a part-applied one can still be rolled back", async () => {
+    const pihole = fakePihole({ queries: history });
+    // Pi-hole accepts the entries and then loses one: it lists fewer than it said it added, which
+    // is the shape push() refuses. Before this, the row was written only after that check passed,
+    // so the entry that did land was in Pi-hole with nothing to roll back.
+    let dropped = false;
+    const piholeFetch = async (input, init) => {
+      const response = await pihole.fetchImpl(input, init);
+      if (!dropped && String(input).includes("domains/deny/regex") && (init?.method ?? "GET") === "POST") {
+        dropped = true;
+        pihole.state.domains = pihole.state.domains.filter((d) => d.domain !== wildcardRegex(other));
+      }
+      return response;
+    };
+    const services = testServices({ piholeFetch, now: testClock("2026-10-29T12:00:00.000Z") });
+    services.sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass", write: true }, "owner");
+    const { sentinel, audit } = services;
+
+    await expect(sentinel.push([ioc, other], "owner")).rejects.toThrow(/does not list/);
+
+    // The push is on record, active, and holds what Pi-hole still has.
+    const [push] = sentinel.pushes();
+    expect(push).toMatchObject({ status: "active", entries: 1 });
+    expect(audit.list().some((e) => e.action === "pihole.denylist_push_failed")).toBe(true);
+    expect(pihole.state.domains.filter((d) => d.comment?.startsWith("TheySpy:")).map((d) => d.domain)).toEqual([wildcardRegex(ioc)]);
+
+    // And rolling it back takes the stranded entry out, leaving nothing of TheySpy's behind.
+    expect(await sentinel.rollback(push.id, "owner")).toEqual({ removed: 1, skipped: 0 });
+    expect(pihole.state.domains.filter((d) => d.comment?.startsWith("TheySpy:"))).toEqual([]);
+    expect(sentinel.pushes()[0]).toMatchObject({ status: "rolled_back" });
+  });
 });

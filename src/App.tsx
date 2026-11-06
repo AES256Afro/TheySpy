@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "./api.ts";
+import { api, whenSessionEnds } from "./api.ts";
 import { applyLook, mergeAppearance, readLocalAppearance, resolveLook, writeLocalAppearance, type Appearance } from "./looks/looks.ts";
 import { usePath } from "./router.tsx";
 import { screenById, screenForPath, screens, type Screen } from "./screens.ts";
@@ -31,6 +31,8 @@ export function App() {
   const [preview, setPreview] = useState<Partial<Appearance> | null>(null);
 
   useEffect(() => {
+    // Any 401 after sign-in means the session has gone, whichever screen asked.
+    whenSessionEnds(() => setSignedIn(false));
     api<{ signedIn: boolean }>("GET", "/api/session").then((s) => setSignedIn(s.signedIn), () => setSignedIn(false));
     api<AppearanceResponse>("GET", "/api/appearance").then((r) => setServer(r.appearance), () => {});
   }, []);

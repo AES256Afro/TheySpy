@@ -432,7 +432,13 @@ together. In the order they ship:
   `npm run check` green, 1.8.0 tagged, the BoxPilot manifest bumped and its digest pinned.
 
 ### M13 — Second sweep's findings (S)
-**Status (5 Nov 2026): planned.** Sweep 2 ([docs/AUDITS.md](AUDITS.md)) read what sweep 1 could not
+**Status (5 Nov 2026): done** (1.9.0), bar one part noted below. Every item shipped with a test
+that fails without its fix. Two things came out differently: the never-block fix excepts a
+protected name in the three formats that cover subdomains rather than dropping the parent, so a
+parent domain stays blocked (a baseline's own exceptions still drop it, because there the owner has
+asked for a whole site to keep working); and C9 is only half done — the import no longer builds
+every event as an object, but the 64 MB upload is still buffered whole, which needs a streaming
+upload rather than a bigger parser, so it goes back in the ledger for a later sweep. Sweep 2 ([docs/AUDITS.md](AUDITS.md)) read what sweep 1 could not
 reach: the Pi-hole write paths, the blocklist library and baselines, the network-log import, the
 unauthenticated agent surface, the OpenPGP verifier, the React shell and the agent script. Four
 security items, six bugs, six pieces of hygiene. The designs it checked mostly hold — the baseline
