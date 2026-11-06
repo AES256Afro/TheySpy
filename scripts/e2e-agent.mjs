@@ -25,9 +25,11 @@ db = sqlite3.connect(os.path.join(p, "History"))
 db.execute("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER, typed_count INTEGER, last_visit_time INTEGER, hidden INTEGER)")
 db.execute("INSERT INTO urls (url, title, visit_count, typed_count, last_visit_time, hidden) VALUES ('https://cdn.fearevolve.com/ad.js', 'ad', 1, 0, 13370000000000000, 0)")
 db.commit()`;
+// A throwaway TheySpy on the runner, reached over a Docker bridge: no TLS, and --insecure is how
+// the agent is told that this link is private by other means. Every other run must use https://.
 const server = `http://host.docker.internal:${process.env.PORT}`;
 const out = execFileSync("docker", ["run", "--rm", "-e", "SEED", "--add-host", "host.docker.internal:host-gateway", "python:3.12-slim", "sh", "-c",
-  `python3 -c "$SEED" && python3 -c "import urllib.request; open('/tmp/agent.py','wb').write(urllib.request.urlopen('${server}/agent/theyspy-agent.py').read())" && python3 /tmp/agent.py enroll ${server} ${token} && python3 /tmp/agent.py run --quick; echo "agent exit $?"`],
+  `python3 -c "$SEED" && python3 -c "import urllib.request; open('/tmp/agent.py','wb').write(urllib.request.urlopen('${server}/agent/theyspy-agent.py').read())" && python3 /tmp/agent.py enroll ${server} ${token} --insecure && python3 /tmp/agent.py run --quick --insecure; echo "agent exit $?"`],
   { env: { ...process.env, SEED: seed }, encoding: "utf8" }).replace(/^/gm, "    ");
 process.stdout.write(out);
 assert.match(out, /agent exit 2/, "the agent reports an indicator hit");
