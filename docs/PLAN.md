@@ -431,6 +431,64 @@ together. In the order they ship:
   `/lists/<token>/constructor.txt` answer 400 and 404; Activity names where the backup's key is.
   `npm run check` green, 1.8.0 tagged, the BoxPilot manifest bumped and its digest pinned.
 
+### M13 — Second sweep's findings (S)
+**Status (5 Nov 2026): planned.** Sweep 2 ([docs/AUDITS.md](AUDITS.md)) read what sweep 1 could not
+reach: the Pi-hole write paths, the blocklist library and baselines, the network-log import, the
+unauthenticated agent surface, the OpenPGP verifier, the React shell and the agent script. Four
+security items, six bugs, six pieces of hygiene. The designs it checked mostly hold — the baseline
+apply already unwinds itself, the verifier refuses what it does not fully understand, the DNS
+connectors really do deduplicate — but two findings break a promise the product makes in writing,
+and they lead:
+
+1. **Protect a name, not a string** (B7). The never-block list exists so TheySpy cannot take out
+   captive-portal checks, certificate revocation, time sync or package updates. `compile()` drops
+   the protected name, and then publishes the rest as `||name^`, `address=/name/0.0.0.0` and
+   `*.name CNAME .` — rules that cover children. One list carrying `apple.com` therefore blocks
+   `captive.apple.com`, `time.apple.com` and `ocsp.apple.com`, and every compiled list's header
+   says it did not. Walk the suffixes the way `matchNames()` already does, and in the three formats
+   that have exceptions (`@@||name^`, `server=/name/#`, `name CNAME rpz-passthru.`) emit one per
+   protected name so a parent can still be blocked without taking its children with it. `txt` and
+   `hosts` are exact-match and need nothing. The test is the one that would have caught it: a list
+   containing only `apple.com`, compiled in all five formats, must still leave
+   `captive.apple.com` resolvable.
+2. **Record a push before trusting it** (B8). `push()` writes its `pihole_pushes` row only after
+   confirming, so a throw in between leaves entries in Pi-hole that the rollback cannot see. Record
+   what was sent first, then verify, and mark the row as part-applied if verification fails — or
+   borrow `baselines.apply()`'s undo stack outright, since it is in the same codebase and already
+   right.
+3. **The agent's hash check must mean something** (S7). It compares the scanner to a hash from the
+   same server on the same connection. Pin zero-breach's released hash in the agent itself (it is
+   one vendored version, printed in M1) and check against that, so a compromised or impersonated
+   TheySpy cannot hand an endpoint arbitrary Python to run.
+4. **The agent refuses plain HTTP** (S8) unless told otherwise, and says why: the enrolment token,
+   the secret it is given and every report go in the clear otherwise.
+5. **A gap is reported even when the agent fails early** (B11). Move the manifest fetch and the
+   temp directory inside `scan()`'s `try`, so a failure becomes a report with a gap rather than a
+   traceback and silence. `shutil.rmtree` for the cleanup (B12) while there.
+6. **The owner's own machines are not public feeds** (B10). Pacing should leave private and
+   link-local addresses, and anything the owner configured as a connector, out of the default
+   budget — or give them a budget suited to a LAN. Today a second coverage check inside an hour
+   fails, and the first takes two minutes for 582 searches.
+7. **A session that ends is a sign-in screen** (B9). `api()` reports a 401 to the shell, which puts
+   the sign-in screen back, rather than every screen showing "Sign in first" until someone reloads.
+8. **The agent surface says what it is** (S6). Rate-limit the four unauthenticated routes, and
+   serve the indicator file only to a caller that holds an enrolment token or an agent signature —
+   the active set includes whatever the owner added. Then make SECURITY.md's claim true, or correct
+   it.
+9. **The rest.** A scheme check before a third-party URL reaches `href` (S9); the real source
+   recorded in `ioc_hit_events` (C7); one rule for subscribing Pi-hole to a list (C8); the
+   network-log import parsing line by line instead of buffering a 64 MB upload into several hundred
+   megabytes of heap (C9); one answer to whether a dismissed finding may come back (C10);
+   `SignatureError` for malformed OpenPGP rather than `RangeError` (C11); and a `waitForJob` that
+   stops when its screen goes away, with a timeout on `api()` (C12).
+
+- **Exit:** a test per item, each failing before its fix — a list holding only a parent domain
+  leaves every protected child resolvable in all five formats; a push whose confirmation fails is
+  still rollbackable; the agent refuses a scanner whose hash is not zero-breach's released one, and
+  refuses `http://` without the flag; an early agent failure still posts a report with a gap; a
+  coverage check twice in an hour works; a 401 puts the sign-in screen back; `/api/agent/iocs.txt`
+  needs a token. `npm run check` green, 1.9.0 tagged, the BoxPilot manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
