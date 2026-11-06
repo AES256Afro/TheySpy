@@ -4,11 +4,15 @@
     python3 theyspy-agent.py enroll https://theyspy.example:8797 tse_ONE_TIME_TOKEN
     python3 theyspy-agent.py run            # scan and report (schedule this daily)
     python3 theyspy-agent.py run --quick    # skip file fingerprinting (reported as a gap)
+    ... --insecure                          # allow a http:// TheySpy (readable on the network)
 
 What it does, and does not do:
-  * It downloads zero-breach's scanner from your TheySpy, checks its SHA-256 against the hash
-    TheySpy verified from zero-breach's signed release, and runs it unmodified. The scanner only
-    reads; it never contacts an indicator and refuses to run if anything tries.
+  * It downloads zero-breach's scanner from your TheySpy and checks its SHA-256 against the hash
+    pinned in this file - zero-breach's own released hash, not one the server supplies - then runs
+    it unmodified. So a TheySpy that has been tampered with cannot hand this computer a different
+    program to run. The scanner only reads; it never contacts an indicator and refuses to run if
+    anything tries.
+  * It needs an https:// address, because enrolment hands this computer its signing key.
   * It reads the versions of this computer's OS and browsers, for matching CVEs.
   * It sends one report to your TheySpy, signed with this computer's own key. Nothing else leaves.
 Standard library only; Python 3.9 or later; Windows, macOS and Linux.
@@ -20,6 +24,7 @@ import os
 import platform
 import plistlib
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -28,7 +33,29 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-VERSION = "1.0"
+VERSION = "1.1"
+
+# zero-breach's released scanner, as its signed SHA256SUMS.txt gives it. TheySpy checks the
+# signature; this is checked here as well so the agent does not have to take the server's word for
+# what it is about to execute. When TheySpy vendors a newer zero-breach, update the agent too
+# (your TheySpy serves the current one at /agent/theyspy-agent.py).
+SCANNER_VERSION = "0.1.8"
+SCANNER_SHA256 = "74740af20f609f82dc6e50d66f234d0c39a20f516caa35731c2d19c11684ef44"
+
+
+def check_server(url, insecure=False):
+    """Refuses a server that cannot keep the enrolment token and this computer's key private."""
+    if url.startswith("https://"):
+        return
+    if not insecure:
+        raise SystemExit(
+            "Refusing to use {}.\n"
+            "Without HTTPS the enrolment token, this computer's signing key and every report are\n"
+            "readable by anything on the network - the network TheySpy exists to distrust.\n"
+            "Use an https:// address, or pass --insecure if this link is private by other means\n"
+            "(a Tailscale or WireGuard address, or localhost).".format(url)
+        )
+    print("Warning: {} is not HTTPS. The token, this computer's key and every report are readable on the network.".format(url), file=sys.stderr)
 
 
 def config_path():
@@ -133,8 +160,26 @@ def inventory():
     return [i for i in items if i.get("version")]
 
 
-def enroll(server, token):
+def signed(cfg, payload):
+    """The headers TheySpy checks: HMAC-SHA256 of "<timestamp>.<payload>" under this computer's key."""
+    stamp = datetime.now(timezone.utc).isoformat()
+    body = payload if isinstance(payload, bytes) else payload.encode()
+    return stamp, {
+        "X-TheySpy-Agent": str(cfg["agentId"]),
+        "X-TheySpy-Timestamp": stamp,
+        "X-TheySpy-Signature": hmac.new(cfg["secret"].encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest(),
+    }
+
+
+def get_signed(cfg, path):
+    """A read TheySpy only answers for an enrolled agent: the indicator set is the owner's own."""
+    _, headers = signed(cfg, "GET " + path)
+    return request(cfg["server"] + path, None, headers)
+
+
+def enroll(server, token, insecure=False):
     server = server.rstrip("/")
+    check_server(server, insecure)
     body = json.dumps({"token": token, "hostname": platform.node(), "platform": platform.system(), "macs": macs()}).encode()
     answer = json.loads(request(server + "/api/agent/enroll", body, {"Content-Type": "application/json"}))
     save_config({"server": server, "agentId": answer["agentId"], "secret": answer["secret"]})
@@ -143,14 +188,25 @@ def enroll(server, token):
 
 
 def scan(cfg, quick):
-    """Downloads the scanner and indicators, checks them, runs the scan; returns (exit code, report or None, error)."""
-    meta = json.loads(request(cfg["server"] + "/api/agent/scanner"))
-    work = tempfile.mkdtemp(prefix="theyspy-agent-")
+    """Downloads the scanner and indicators, checks them, runs the scan; returns (exit code, report or None, error).
+
+    Everything is inside the try: a failure here has to come back as a gap on the dashboard, not as
+    a traceback and a device still showing last week's verdict.
+    """
+    work = None
     try:
-        scanner = request(cfg["server"] + "/api/agent/zero-breach.py")
-        if hashlib.sha256(scanner).hexdigest() != meta["sha256"]:
-            return 1, None, "the scanner TheySpy sent does not match the signed hash; not running it"
-        iocs = request(cfg["server"] + "/api/agent/iocs.txt")
+        meta = json.loads(get_signed(cfg, "/api/agent/scanner"))
+        work = tempfile.mkdtemp(prefix="theyspy-agent-")
+        scanner = get_signed(cfg, "/api/agent/zero-breach.py")
+        # Against the hash in this file, not the one the server just sent with it.
+        if meta.get("version") != SCANNER_VERSION:
+            return 1, None, "TheySpy offers zero-breach {} but this agent only trusts {}; update the agent from {}/agent/theyspy-agent.py".format(
+                meta.get("version"), SCANNER_VERSION, cfg["server"])
+        if hashlib.sha256(scanner).hexdigest() != SCANNER_SHA256:
+            return 1, None, "the scanner TheySpy sent is not zero-breach {} (its hash does not match the one pinned in this agent); not running it".format(SCANNER_VERSION)
+        # The indicator file is the owner's own live set, so there is no hash to pin: it is data the
+        # scanner reads, not code it runs. TheySpy's own hash for it is still checked.
+        iocs = get_signed(cfg, "/api/agent/iocs.txt")
         if hashlib.sha256(iocs).hexdigest() != meta["iocsSha256"]:
             return 1, None, "the indicator file does not match TheySpy's hash; not running"
         sp, ip, rp = (os.path.join(work, n) for n in ("zero-breach.py", "iocs.txt", "report.json"))
@@ -166,34 +222,39 @@ def scan(cfg, quick):
     except Exception as error:  # report the failure as a gap rather than nothing
         return 1, None, str(error)[:500]
     finally:
-        for name in os.listdir(work):
-            os.remove(os.path.join(work, name))
-        os.rmdir(work)
+        if work:
+            # rmtree, not a remove per entry: a directory the scanner left would raise in here and
+            # hide whatever actually went wrong.
+            shutil.rmtree(work, ignore_errors=True)
 
 
-def run(quick=False):
+def run(quick=False, insecure=False):
     cfg = load_config()
+    check_server(cfg["server"], insecure)
     code, report, error = scan(cfg, quick)
     body = json.dumps({
         "agentVersion": VERSION, "hostname": platform.node(), "platform": platform.system(), "macs": macs(),
         "inventory": inventory(), "scan": {"exitCode": code, "report": report, "error": error},
     }).encode()
-    stamp = datetime.now(timezone.utc).isoformat()
-    signature = hmac.new(cfg["secret"].encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    answer = json.loads(request(cfg["server"] + "/api/agent/report", body, {
-        "Content-Type": "application/json", "X-TheySpy-Agent": str(cfg["agentId"]), "X-TheySpy-Timestamp": stamp, "X-TheySpy-Signature": signature,
-    }))
+    _, headers = signed(cfg, body)
+    try:
+        answer = json.loads(request(cfg["server"] + "/api/agent/report", body, {"Content-Type": "application/json", **headers}))
+    except Exception as failure:
+        print("Could not report to {}: {}".format(cfg["server"], failure), file=sys.stderr)
+        print("The scan itself {}. Nothing was recorded; run it again.".format("found something" if report else "did not complete"), file=sys.stderr)
+        return 1
     v = answer.get("verdict", {})
     print("Reported: {} · {} indicator hit(s) · {} gap(s).".format(v.get("status"), v.get("hits"), answer.get("gaps")))
     return 2 if v.get("hits") else (1 if report is None else 0)
 
 
 def main(argv):
+    insecure = "--insecure" in argv
     if len(argv) >= 3 and argv[0] == "enroll":
-        enroll(argv[1], argv[2])
+        enroll(argv[1], argv[2], insecure)
         return 0
     if argv and argv[0] == "run":
-        return run(quick="--quick" in argv)
+        return run(quick="--quick" in argv, insecure=insecure)
     print(__doc__)
     return 64
 

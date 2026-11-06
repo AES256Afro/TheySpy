@@ -10,7 +10,7 @@ swept again unless something changes that area.
 | Bugs (correctness) | 2 | 0 | in the loop |
 | Security | 2 | 0 | in the loop |
 
-Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's are planned as M13. Neither sweep has come
+Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13). Neither sweep has come
 back clean, so all three categories stay in the loop. Sweep 3 reads what neither has: `fleet/registry.mjs`
 and `fleet/targeted.mjs`, `fleet/discovery.mjs`, `cves/match.mjs` and `cves/devices.mjs`,
 `exposure.mjs`, `alerts.mjs`, `digest.mjs`, `thisdevice.mjs`, `blocklists/parse.mjs` and
@@ -160,3 +160,27 @@ cannot be used to swap keys; the DNS connectors synthesise stable query ids, so 
   other content type, which fails the signature check. Correct, if indirect.
 - The 64 MB and 8 MB parsers on the evidence routes do run after `requireOwner` (the M11 fix is
   intact): the early exemption middleware only skips the 64 kb parser.
+
+### What shipped (sweep 2)
+
+All of sweep 2 is fixed in **1.9.0**, each with a test that fails without its fix (checked by
+stashing the fix and running the test):
+
+| # | Fix |
+| --- | --- |
+| S6 | `/api/agent/scanner`, `/api/agent/zero-breach.py` and `/api/agent/iocs.txt` need an enrolled agent's signature over `GET <path>` (ten-minute window, revocation honoured); all four agent routes are rate-limited. SECURITY.md now has a table of every route that answers without the owner session and what each gives away. |
+| S7 | The agent checks the scanner against `SCANNER_SHA256` pinned in its own file — zero-breach's released hash — and refuses a server offering a version it does not know, naming where to get a newer agent. A test ties the pin to `verifiedScanner()` so the two cannot drift. |
+| S8 | The agent refuses an `http://` server at enrolment and at run, saying what would be readable; `--insecure` allows it with a warning for a link that is private by other means. |
+| S9 | `safeLink()` in `src/api.ts`; the blocklist directory's homepage and a research feed's link go through it. |
+| B7 | `compile()` returns the protected names whose parent a list blocks, and the three formats that cover subdomains emit an exception for each (`@@||name^`, `server=/name/#`, `name CNAME rpz-passthru.`). The parent stays blocked. `txt` and `hosts` match exactly and say so in their header. |
+| B8 | `push()` writes its `pihole_pushes` row before touching Pi-hole and narrows it to what Pi-hole lists, so a part-applied push is still rollbackable; a failure is audited as `pihole.denylist_push_failed`. |
+| B9 | `whenSessionEnds()` — any 401 after sign-in puts the sign-in screen back, except on `/api/login`, where a 401 means the password was wrong. |
+| B10 | `isOwnNetworkHost()` (moved to `fleet/addresses.mjs` with `isPublicAddress`) plus the connectors the owner configured: neither is paced. 1,200 Pi-hole searches now cost nothing and hit no budget. |
+| B11 | The agent's manifest fetch and temp directory are inside its `try`, so an early failure comes back as a report with a gap. A report that cannot be delivered says so plainly instead of raising. |
+| B12 | `shutil.rmtree`, so a directory the scanner left does not raise in `finally` and hide the real error. |
+| C7 | `ioc_hit_events.source` is the DNS source the lookup was read from, not the literal `'pihole'`. |
+| C8 | `blocklists/addresses.mjs` holds the one rule for a compiled list's name and address; the route and the Pi-hole subscribe check both use it. |
+| C9 | `readNetworkLog()` hands each event to a callback and the import writes as it reads, so a day of logs is no longer turned into every event as an object first. **Partly done:** the 64 MB body is still buffered by `express.json`, which needs a streaming upload to fix — left for a later sweep, and recorded here rather than quietly. |
+| C10 | A finding the owner dismissed is not raised again by the next import of the same logs, matching the agent's side. |
+| C11 | Every refusal in `openpgp.mjs` is a `SignatureError`, including a truncated packet. |
+| C12 | `waitForJob(id, stopped)` stops when the screen that asked has gone. |

@@ -16,13 +16,24 @@ export function agentPublicRoutes({ agents }) {
   // Unauthenticated until the token or signature is checked, so each address gets a budget.
   const enrollLimit = createRateLimit({ limit: 10, windowMs: 10 * 60_000 }).middleware();
   const reportLimit = createRateLimit({ limit: 30, windowMs: 10 * 60_000 }).middleware();
+  // The scanner and the agent script are public code, but 281 KB a request is worth a budget.
+  const readLimit = createRateLimit({ limit: 60, windowMs: 10 * 60_000 }).middleware();
+  // An enrolled agent signs its reads, so the owner's indicator set is not served to the network.
+  const signedIn = (req, res, next) => {
+    try {
+      agents.authenticateRead(req.get("x-theyspy-agent"), req.get("x-theyspy-timestamp"), req.get("x-theyspy-signature"), req.path);
+      next();
+    } catch (error) {
+      res.status(Number(error.status) || 401).json({ error: error.message });
+    }
+  };
   router.post("/api/agent/enroll", enrollLimit, express.json({ limit: "16kb" }), (req, res) => res.status(201).json(agents.enroll(req.body ?? {}, req.ip)));
-  router.get("/api/agent/scanner", (_req, res) => {
+  router.get("/api/agent/scanner", readLimit, signedIn, (_req, res) => {
     const s = agents.scanner();
     res.json({ name: "zero-breach.py", version: s.version, sha256: s.sha256, iocsSha256: createHash("sha256").update(agents.indicators(), "utf8").digest("hex") });
   });
-  router.get("/api/agent/zero-breach.py", (_req, res) => res.type("text/x-python").send(agents.scanner().bytes));
-  router.get("/api/agent/iocs.txt", (_req, res) => res.type("text/plain").send(Buffer.from(agents.indicators(), "utf8")));
+  router.get("/api/agent/zero-breach.py", readLimit, signedIn, (_req, res) => res.type("text/x-python").send(agents.scanner().bytes));
+  router.get("/api/agent/iocs.txt", readLimit, signedIn, (_req, res) => res.type("text/plain").send(Buffer.from(agents.indicators(), "utf8")));
   router.post("/api/agent/report", reportLimit, express.raw({ type: "application/json", limit: "4mb" }), (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const timestamp = String(req.get("x-theyspy-timestamp") ?? "");
@@ -31,7 +42,9 @@ export function agentPublicRoutes({ agents }) {
     try { report = JSON.parse(raw.toString("utf8")); } catch { return res.status(400).json({ error: "The report is not JSON" }); }
     res.json(agents.ingest(agent, report, timestamp, req.ip));
   });
-  router.get("/agent/theyspy-agent.py", (_req, res) => res.type("text/x-python").set("Content-Disposition", 'attachment; filename="theyspy-agent.py"').send(readFileSync(agentScript)));
+  // The only one that cannot be signed: a new machine fetches the agent before it has a key. It is
+  // the same file as in the repository, so there is nothing of the owner's in it - just a budget.
+  router.get("/agent/theyspy-agent.py", readLimit, (_req, res) => res.type("text/x-python").set("Content-Disposition", 'attachment; filename="theyspy-agent.py"').send(readFileSync(agentScript)));
   return router;
 }
 

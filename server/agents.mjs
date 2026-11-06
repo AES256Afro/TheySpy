@@ -151,19 +151,41 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
     },
 
     /**
-     * Checks a report's signature: HMAC-SHA256 of "<timestamp>.<body>" under the agent's key, sent
-     * within ten minutes, and newer than the agent's last report (no replays). Returns the agent.
+     * Checks a signature: HMAC-SHA256 of "<timestamp>.<payload>" under the agent's key, sent within
+     * ten minutes of TheySpy's clock. Shared by reports (payload: the exact body) and by the reads
+     * an enrolled agent makes (payload: "GET <path>").
+     * @param {unknown} agentId @param {unknown} timestamp @param {unknown} signature @param {Buffer | string} payload @param {string} what
      */
-    authenticate(agentId, timestamp, signature, rawBody) {
+    verify(agentId, timestamp, signature, payload, what) {
       const agent = /** @type {any} */ (q.agent.get(Number(agentId)));
       if (!agent || agent.revoked_at) throw Object.assign(new Error("Unknown or revoked agent; enroll it again"), { status: 401 });
       const ts = Date.parse(String(timestamp));
-      if (!Number.isFinite(ts) || Math.abs(now().getTime() - ts) > 600_000) throw Object.assign(new Error("The report's timestamp is not within ten minutes of TheySpy's clock"), { status: 401 });
-      if (agent.last_report_at && new Date(ts).toISOString() <= agent.last_report_at) throw Object.assign(new Error("That report was already received"), { status: 409 });
-      const expected = createHmac("sha256", secretBox.open(agent.secret_sealed, `agent:${agent.id}`)).update(`${timestamp}.`).update(rawBody).digest();
+      if (!Number.isFinite(ts) || Math.abs(now().getTime() - ts) > 600_000) throw Object.assign(new Error(`The ${what}'s timestamp is not within ten minutes of TheySpy's clock`), { status: 401 });
+      const expected = createHmac("sha256", secretBox.open(agent.secret_sealed, `agent:${agent.id}`)).update(`${timestamp}.`).update(payload).digest();
       const given = Buffer.from(String(signature ?? ""), "hex");
-      if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw Object.assign(new Error("The report's signature does not match"), { status: 401 });
+      if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw Object.assign(new Error(`The ${what}'s signature does not match`), { status: 401 });
+      return { agent, ts };
+    },
+
+    /**
+     * Checks a report's signature over its exact bytes, and that it is newer than the agent's last
+     * report (no replays). Returns the agent.
+     */
+    authenticate(agentId, timestamp, signature, rawBody) {
+      const { agent, ts } = agents.verify(agentId, timestamp, signature, rawBody, "report");
+      if (agent.last_report_at && new Date(ts).toISOString() <= agent.last_report_at) throw Object.assign(new Error("That report was already received"), { status: 409 });
       return agent;
+    },
+
+    /**
+     * Checks an enrolled agent's signature over a read it is making. The indicator file is the
+     * owner's own active set - whatever they added or imported is in it - so it is not served to
+     * anything on the network that asks. Replays are not checked: these reads change nothing, and
+     * one run makes several.
+     * @param {string | undefined} agentId @param {string | undefined} timestamp @param {string | undefined} signature @param {string} path
+     */
+    authenticateRead(agentId, timestamp, signature, path) {
+      return agents.verify(agentId, timestamp, signature, `GET ${path}`, "request").agent;
     },
 
     /**
