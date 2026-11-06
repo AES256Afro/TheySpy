@@ -72,9 +72,22 @@ export function parseBlocklist(text) {
   return { domains, lines, skipped };
 }
 
+/**
+ * A name's parents, closest first, without the bare public suffix: a rule for any of these blocks
+ * `name` too in every format that covers subdomains, so protecting `name` means knowing them.
+ * @param {string} name @returns {string[]}
+ */
+export function parentsOf(name) {
+  const labels = String(name).split(".");
+  const out = [];
+  for (let i = 1; i < labels.length - 1; i += 1) out.push(labels.slice(i).join("."));
+  return out;
+}
+
 // Names a blocklist must never take away: connectivity and captive-portal checks, certificate
 // revocation, time, OS and package updates, and the services TheySpy and BoxPilot themselves need.
-// An update that newly adds one of these is held for review; compiled lists always leave them out.
+// An update that newly adds one of these is held for review; compiled lists always leave them out,
+// and when a list blocks a *parent* of one the compiled list excepts the name explicitly.
 export const neverBlock = Object.freeze([
   "connectivitycheck.gstatic.com", "connectivitycheck.android.com", "clients3.google.com", "captive.apple.com", "www.apple.com",
   "www.msftconnecttest.com", "www.msftncsi.com", "detectportal.firefox.com", "connectivity-check.ubuntu.com", "nmcheck.gnome.org", "network-test.debian.org",

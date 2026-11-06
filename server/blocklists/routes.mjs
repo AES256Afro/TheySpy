@@ -1,18 +1,23 @@
 import { timingSafeEqual } from "node:crypto";
 import net from "node:net";
 import express from "express";
+import { listFileName } from "./addresses.mjs";
 import { scopeKey } from "./baselines.mjs";
 import { compiledLists } from "./library.mjs";
 import { categories, categoryIds, groups, securityCategories } from "./taxonomy.mjs";
 import { defang } from "../iocs/parse.mjs";
 import { intParam, intQuery } from "../params.mjs";
 
+// `line` blocks a name. `except` lets one back through, for the formats whose rules cover
+// subdomains: without it, a list carrying a parent of a never-block name would take that name with
+// it. In each of the three, the more specific rule wins however the file is ordered. txt and hosts
+// match exactly, so a parent never reaches its children there and no exception is needed.
 export const listFormats = Object.freeze({
-  txt: { type: "text/plain", comment: "#", line: (d) => d, label: "Domains (Pi-hole, AdGuard Home, NextDNS)" },
-  hosts: { type: "text/plain", comment: "#", line: (d) => `0.0.0.0 ${d}`, label: "hosts file" },
-  adblock: { type: "text/plain", comment: "!", line: (d) => `||${d}^`, label: "Adblock / uBlock / AdGuard" },
-  dnsmasq: { type: "text/plain", comment: "#", line: (d) => `address=/${d}/0.0.0.0`, label: "dnsmasq" },
-  rpz: { type: "text/plain", comment: ";", line: (d) => `${d} CNAME .\n*.${d} CNAME .`, label: "Response Policy Zone" },
+  txt: { type: "text/plain", comment: "#", line: (d) => d, except: null, label: "Domains (Pi-hole, AdGuard Home, NextDNS)" },
+  hosts: { type: "text/plain", comment: "#", line: (d) => `0.0.0.0 ${d}`, except: null, label: "hosts file" },
+  adblock: { type: "text/plain", comment: "!", line: (d) => `||${d}^`, except: (d) => `@@||${d}^`, label: "Adblock / uBlock / AdGuard" },
+  dnsmasq: { type: "text/plain", comment: "#", line: (d) => `address=/${d}/0.0.0.0`, except: (d) => `server=/${d}/#`, label: "dnsmasq" },
+  rpz: { type: "text/plain", comment: ";", line: (d) => `${d} CNAME .\n*.${d} CNAME .`, except: (d) => `${d} CNAME rpz-passthru.\n*.${d} CNAME rpz-passthru.`, label: "Response Policy Zone" },
 });
 
 const listDefinition = (name) =>
@@ -33,7 +38,7 @@ export function publicListRoutes({ library, baselines, now = () => new Date() })
     const token = Buffer.from(String(req.params.token));
     const expected = Buffer.from(library.listToken());
     if (token.length !== expected.length || !timingSafeEqual(token, expected)) return res.status(404).type("text/plain").send("Not found\n");
-    const m = /^([a-z]+|baseline-([a-z]+)--(network|device-[0-9a-f-]+))\.(txt|hosts|adblock|dnsmasq|rpz)$/.exec(req.params.file);
+    const m = listFileName.exec(req.params.file);
     let definition = null;
     let compiled = null;
     if (m && m[2] && baselines) {
@@ -49,13 +54,17 @@ export function publicListRoutes({ library, baselines, now = () => new Date() })
     res.set({ "Content-Type": `${format.type}; charset=utf-8`, ETag: etag, "Cache-Control": "no-cache" });
     if (req.get("if-none-match") === etag) return res.status(304).end();
     const c = format.comment;
+    // A name whose parent this list blocks needs letting back through by name, where the format can.
+    const excepted = format.except ? (compiled.exceptions ?? []) : [];
     const head = [
       `${c} TheySpy ${definition.name} list (${m[4]})`,
       `${c} ${definition.description}`,
       `${c} ${compiled.domains.length} domains from ${compiled.sources} enabled lists, compiled ${now().toISOString()}.`,
       `${c} Names on TheySpy's never-block list (connectivity checks, certificates, updates, your pins) are left out.`,
+      ...(excepted.length ? [`${c} ${excepted.length} of them sit under a name this list blocks, so each is excepted below.`] : []),
+      ...(!format.except && (compiled.exceptions ?? []).length ? [`${c} This format matches names exactly, so a blocked parent does not reach them.`] : []),
     ];
-    res.send(`${[...head, ...compiled.domains.map(format.line)].join("\n")}\n`);
+    res.send(`${[...head, ...(format.except ? excepted.map(format.except) : []), ...compiled.domains.map(format.line)].join("\n")}\n`);
   });
   return router;
 }

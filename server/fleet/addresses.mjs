@@ -48,6 +48,41 @@ export function hostsOf(cidr) {
   return Array.from({ length: range.size - 2 }, (_, i) => intToIpv4(range.first + 1 + i));
 }
 
+// Addresses that are not on the public internet: private, loopback, link-local (which is where
+// cloud metadata lives), carrier-grade NAT, documentation, multicast and reserved. Used by the
+// website check to refuse a name pointed somewhere it may not reach, and by pacing to tell the
+// owner's own machines from outside services.
+const nonPublic = new net.BlockList();
+for (const [a, p] of /** @type {[string, number][]} */ ([["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]])) nonPublic.addSubnet(a, p, "ipv4");
+for (const [a, p] of /** @type {[string, number][]} */ ([["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["64:ff9b::", 96], ["2001:db8::", 32]])) nonPublic.addSubnet(a, p, "ipv6");
+
+/** @param {string} ip */
+export function isPublicAddress(ip) {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return isPublicAddress(mapped[1]);
+  const family = net.isIP(ip);
+  return family !== 0 && !nonPublic.check(ip, family === 6 ? "ipv6" : "ipv4");
+}
+
+/** Names that can only ever resolve on a local network, or over the owner's own tailnet. */
+const localSuffixes = Object.freeze([".local", ".lan", ".internal", ".home.arpa", ".ts.net", ".localhost"]);
+
+/**
+ * Whether a host can only be a machine on the owner's own network. Pacing uses it so Pi-hole and
+ * the other connectors are not rationed like a public feed; it answers only for what is certainly
+ * local, and anything it is unsure of is treated as outside.
+ * @param {string} host
+ */
+export function isOwnNetworkHost(host) {
+  const h = String(host ?? "").toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (!h) return false;
+  if (h === "localhost") return true;
+  if (net.isIP(h)) return !isPublicAddress(h);
+  // A single-label name ("pihole", "nas") has no public meaning.
+  if (!h.includes(".")) return true;
+  return localSuffixes.some((suffix) => h.endsWith(suffix));
+}
+
 export const privateRanges = Object.freeze(["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]);
 
 /** The /24 an IPv4 address is in. */

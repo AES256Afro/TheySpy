@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, safeLink, waitForJob, type Job } from "../api.ts";
 
 type Cve = {
   cveId: string; published: string | null; description: string | null; cvss: number | null; severity: string | null; vector: string | null; cwes: string[]; products: string[];
@@ -141,7 +141,7 @@ export function IntelScreen() {
             <h3>Research reports</h3>
             {data.research.length === 0 ? <p className="small muted">Citizen Lab and Amnesty Security Lab reports appear here after the next update.</p> : (
               <div className="list small">{data.research.slice(0, 8).map((r) => (
-                <div key={r.url} style={{ alignItems: "flex-start" }}><span className="grow"><a href={r.url} target="_blank" rel="noreferrer noopener">{r.title}</a><br /><span className="muted">{r.source}{r.at ? ` · ${r.at}` : ""}{r.cves.length ? ` · ${r.cves.join(", ")}` : ""}</span></span></div>
+                <div key={r.url} style={{ alignItems: "flex-start" }}><span className="grow">{safeLink(r.url) ? <a href={safeLink(r.url)!} target="_blank" rel="noreferrer noopener">{r.title}</a> : r.title}<br /><span className="muted">{r.source}{r.at ? ` · ${r.at}` : ""}{r.cves.length ? ` · ${r.cves.join(", ")}` : ""}</span></span></div>
               ))}</div>
             )}
           </section>

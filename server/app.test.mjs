@@ -1,10 +1,11 @@
+import { createHmac } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.mjs";
 import { readConfig } from "./config.mjs";
-import { fakePihole, testServices, vendored } from "./test-helpers.mjs";
+import { fakePihole, fakeWeb, testClock, testServices, vendored } from "./test-helpers.mjs";
 
 const servers = [];
 afterEach(() => { for (const server of servers.splice(0)) server.close(); });
@@ -371,5 +372,87 @@ describe("HTTP API", () => {
     const env = await start({ services: { sessionSecret: "from-the-environment" } });
     await env.request("POST", "/api/login", { password: "correct horse" });
     expect((await env.request("GET", "/api/security")).body.notes).toEqual([]);
+  });
+
+  it("lets a never-block name through by name when a list blocks its parent, in every format that can", async () => {
+    // A cryptomining list that also blocks apple.com, lencr.org and gstatic.com - parents of
+    // captive.apple.com, Let's Encrypt's OCSP responders and Android's portal check.
+    const reg = (id) => `https://adguardteam.github.io/HostlistsRegistry/assets/filter_${id}.txt`;
+    const abp = (...names) => `! Title: test\n${names.map((n) => `||${n}^`).join("\n")}\n`;
+    const web = fakeWeb({
+      [reg(31)]: abp("stalker-c2.example"), [reg(44)]: abp("malware-a.example"), [reg(11)]: abp("urlhaus-a.example"),
+      [reg(18)]: abp("phish-b.example"), [reg(34)]: abp("ads-0.example"),
+      [reg(8)]: abp("coin-a.example", "apple.com", "lencr.org", "gstatic.com"),
+    });
+    const { request, library } = await start({ services: { webFetch: web.fetchImpl } });
+    await library.update();
+    const token = library.listToken();
+    const get = async (format) => (await request("GET", `/lists/${token}/cryptomining.${format}`)).body;
+
+    const adblock = await get("adblock");
+    expect(adblock).toContain("||apple.com^");          // the parent is still blocked
+    expect(adblock).toContain("@@||captive.apple.com^"); // the child is let through
+    expect(adblock).toContain("@@||time.apple.com^");
+    expect(adblock).toContain("@@||r3.o.lencr.org^");
+    expect(adblock).toContain("@@||connectivitycheck.gstatic.com^");
+    // The exception must come before the rules, so a reader that stops at the first match is right too.
+    expect(adblock.indexOf("@@||captive.apple.com^")).toBeLessThan(adblock.indexOf("||apple.com^\n"));
+
+    const dnsmasq = await get("dnsmasq");
+    expect(dnsmasq).toContain("address=/apple.com/0.0.0.0");
+    expect(dnsmasq).toContain("server=/captive.apple.com/#");
+
+    const rpz = await get("rpz");
+    expect(rpz).toContain("*.apple.com CNAME .");
+    expect(rpz).toContain("captive.apple.com CNAME rpz-passthru.");
+
+    // txt and hosts match exactly, so a blocked parent never reaches a child: no exceptions, and
+    // the protected name is simply absent.
+    const txt = await get("txt");
+    expect(txt).toContain("\napple.com\n");
+    expect(txt).not.toContain("captive.apple.com");
+    expect(txt).toContain("This format matches names exactly");
+    expect(await get("hosts")).not.toContain("captive.apple.com");
+  });
+
+  it("serves the indicator set and the scanner only to an enrolled agent, and meters the agent download", async () => {
+    const clock = testClock();
+    const { request, agents } = await start({ services: { now: clock } });
+    const sign = (secret, stamp, payload) => createHmac("sha256", secret).update(`${stamp}.`).update(payload).digest("hex");
+
+    // Anything on the network used to be able to read the owner's active indicator set.
+    for (const path of ["/api/agent/iocs.txt", "/api/agent/zero-breach.py", "/api/agent/scanner"]) {
+      expect((await request("GET", path)).status, path).toBe(401);
+    }
+
+    await request("POST", "/api/login", { password: "correct horse" });
+    const { token } = agents.createEnrollment("lab", "owner");
+    const { agentId, secret } = agents.enroll({ token, hostname: "lab" }, "192.168.8.9");
+
+    const asAgent = (path, { id = agentId, key = secret, stamp = clock().toISOString() } = {}) =>
+      request("GET", path, undefined, { "x-theyspy-agent": String(id), "x-theyspy-timestamp": stamp, "x-theyspy-signature": sign(key, stamp, `GET ${path}`) });
+
+    expect((await asAgent("/api/agent/iocs.txt")).status).toBe(200);
+    expect((await asAgent("/api/agent/iocs.txt")).body).toContain("fearevolve.com");
+    expect((await asAgent("/api/agent/scanner")).body).toMatchObject({ version: "0.1.8" });
+    expect((await asAgent("/api/agent/zero-breach.py")).status).toBe(200);
+
+    // A signature for one path does not open another, a wrong key does nothing, and an old
+    // timestamp is refused.
+    const stamp = clock().toISOString();
+    expect((await request("GET", "/api/agent/iocs.txt", undefined, { "x-theyspy-agent": String(agentId), "x-theyspy-timestamp": stamp, "x-theyspy-signature": sign(secret, stamp, "GET /api/agent/scanner") })).status).toBe(401);
+    expect((await asAgent("/api/agent/iocs.txt", { key: "wrong" })).status).toBe(401);
+    expect((await asAgent("/api/agent/iocs.txt", { stamp: new Date(clock().getTime() - 3_600_000).toISOString() })).status).toBe(401);
+
+    // A revoked agent stops being able to read.
+    agents.revoke(agentId, "owner");
+    expect((await asAgent("/api/agent/iocs.txt")).status).toBe(401);
+
+    // The agent script itself cannot be signed for - a new machine has no key yet - but it is
+    // metered: 60 in ten minutes.
+    const statuses = [];
+    for (let i = 0; i < 62; i += 1) statuses.push((await request("GET", "/agent/theyspy-agent.py")).status);
+    expect(statuses[0]).toBe(200);
+    expect(statuses.at(-1)).toBe(429);
   });
 });

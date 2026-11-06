@@ -135,4 +135,29 @@ describe("blocklist library", () => {
     const builtin = lib.sources().find((s) => s.key === "builtin:zero-breach");
     await expect(lib.setStatus(builtin.id, "disabled", "owner")).rejects.toThrow(/stays on/);
   });
+
+  it("excepts a never-block name whose parent a list blocks, instead of letting the parent take it", async () => {
+    // One list that blocks parents of protected names: apple.com (captive/time/ocsp.apple.com),
+    // lencr.org (Let's Encrypt's OCSP responders) and gstatic.com (Android's portal check).
+    const web = fakeWeb({ ...starterFiles(), [reg(8)]: { body: abp("coin-a.example", "apple.com", "lencr.org", "gstatic.com"), etag: '"n2"' } });
+    const { library: lib } = library({ webFetch: web.fetchImpl });
+    await lib.update();
+    const compiled = lib.compile(["cryptomining"]);
+
+    // The parents stay blocked - that is the point of excepting rather than dropping them.
+    expect(compiled.domains).toEqual(expect.arrayContaining(["apple.com", "lencr.org", "gstatic.com"]));
+    // And every protected name under one of them is named as an exception.
+    expect(compiled.exceptions).toEqual(expect.arrayContaining([
+      "captive.apple.com", "time.apple.com", "ocsp.apple.com", "ocsp2.apple.com",
+      "mesu.apple.com", "swscan.apple.com", "swdist.apple.com",
+      "r3.o.lencr.org", "x1.c.lencr.org", "connectivitycheck.gstatic.com",
+    ]));
+    // Not names whose parent nothing blocks.
+    expect(compiled.exceptions).not.toContain("time.windows.com");
+    expect(compiled.exceptions).not.toContain("pool.ntp.org");
+    // www.apple.com is protected and apple.com is blocked, so it is excepted too.
+    expect(compiled.exceptions).toContain("www.apple.com");
+    // The etag moves when the exceptions do, so Pi-hole refetches.
+    expect(compiled.etag).not.toBe(library().library.compile(["cryptomining"]).etag);
+  });
 });

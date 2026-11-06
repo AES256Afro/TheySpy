@@ -3,7 +3,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { blocklistDomains } from "../iocs/exports.mjs";
 import { productVersion, readCapped } from "../shared.mjs";
 import { listName, readAdguard, readFilterLists, readFirebog, resolveFilterListsUrl } from "./directories.mjs";
-import { neverBlock, parseBlocklist, canonical } from "./parse.mjs";
+import { neverBlock, parentsOf, parseBlocklist, canonical } from "./parse.mjs";
 import { categories, categoryIds, securityCategories } from "./taxonomy.mjs";
 
 const maxBytes = 50 * 1024 * 1024;
@@ -329,7 +329,13 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
         for (const d of domainsOf(s)) if (!protectedNames.has(d)) out.add(d);
       }
       const domains = [...out].sort();
-      const result = { domains, sources, etag: createHash("sha256").update(domains.join("\n")).digest("hex").slice(0, 32) };
+      // Leaving the name itself out is not enough: Adblock, dnsmasq and RPZ rules cover subdomains,
+      // so a list carrying "apple.com" would still take out captive.apple.com and time.apple.com.
+      // Those get an explicit exception in the formats that have one, which keeps the parent
+      // blocked. (A baseline's own exceptions drop the parent instead - there the owner has asked
+      // for a whole site to keep working, not for one name to stay reachable.)
+      const exceptions = [...protectedNames].filter((name) => parentsOf(name).some((parent) => out.has(parent))).sort();
+      const result = { domains, exceptions, sources, etag: createHash("sha256").update(domains.join("\n")).update("\u0000").update(exceptions.join("\n")).digest("hex").slice(0, 32) };
       if (remember && domains.length <= cacheLimit) {
         cache.set(keyName, result);
         while (cache.size > cacheSize) cache.delete(cache.keys().next().value);
