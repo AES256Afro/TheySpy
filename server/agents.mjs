@@ -15,6 +15,8 @@ import { parseChecksums, readPublicKey, verifyDetached } from "./iocs/openpgp.mj
 const vendored = (path) => readFileSync(new URL(`../third_party/zero-breach/${path}`, import.meta.url));
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const hashToken = (token) => sha256(String(token));
+/** The most gap rows one report writes; past that the last row counts the rest. */
+const gapRows = 40;
 
 /** zero-breach's scanner, checked against its signed SHA256SUMS before TheySpy hands it out. */
 export function verifiedScanner() {
@@ -57,6 +59,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
     token: db.prepare("SELECT * FROM agent_tokens WHERE hash = ?"),
     useToken: db.prepare("UPDATE agent_tokens SET used_at = ? WHERE hash = ? AND used_at IS NULL"),
     addAgent: db.prepare("INSERT INTO agents (device_id, name, platform, secret_sealed, enrolled_at) VALUES (?, ?, ?, ?, ?)"),
+    sealSecret: db.prepare("UPDATE agents SET secret_sealed = ? WHERE id = ?"),
     agent: db.prepare("SELECT * FROM agents WHERE id = ?"),
     agents: db.prepare("SELECT a.*, d.label, d.hostname, d.ip FROM agents a LEFT JOIN devices d ON d.id = a.device_id ORDER BY a.id DESC"),
     reported: db.prepare("UPDATE agents SET last_report_at = ?, last_verdict = ?, device_id = COALESCE(?, device_id) WHERE id = ?"),
@@ -76,7 +79,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
     deviceProfile: db.prepare("SELECT profile FROM devices WHERE id = ?"),
   };
 
-  const known = (key) => knownSoftware[String(key).toLowerCase()] ?? null;
+  const known = (key) => { const name = String(key).toLowerCase(); return Object.hasOwn(knownSoftware, name) ? knownSoftware[name] : null; };
   const cleanVersion = (v) => (v && /^[0-9][0-9A-Za-z.\-_+]{0,40}$/.test(String(v)) ? String(v) : null);
 
   /** Replaces what one source says a device runs. */
@@ -140,7 +143,9 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       const secret = randomBytes(32).toString("hex");
       const deviceId = deviceFor({ macs: Array.isArray(macs) ? macs.slice(0, 16) : [], ip, hostname });
       const name = String(hostname ?? row.label ?? "agent").slice(0, 80);
-      const id = Number(q.addAgent.run(deviceId, name, String(platform ?? "").slice(0, 40) || null, secretBox.seal(secret), now().toISOString()).lastInsertRowid);
+      // The row's id is the context the secret is sealed with, so it is sealed once the row exists.
+      const id = Number(q.addAgent.run(deviceId, name, String(platform ?? "").slice(0, 40) || null, "", now().toISOString()).lastInsertRowid);
+      q.sealSecret.run(secretBox.seal(secret, `agent:${id}`), id);
       audit.record("system", "agent.enrolled", String(id), { name, platform, deviceId });
       return { agentId: id, secret };
     },
@@ -155,7 +160,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       const ts = Date.parse(String(timestamp));
       if (!Number.isFinite(ts) || Math.abs(now().getTime() - ts) > 600_000) throw Object.assign(new Error("The report's timestamp is not within ten minutes of TheySpy's clock"), { status: 401 });
       if (agent.last_report_at && new Date(ts).toISOString() <= agent.last_report_at) throw Object.assign(new Error("That report was already received"), { status: 409 });
-      const expected = createHmac("sha256", secretBox.open(agent.secret_sealed)).update(`${timestamp}.`).update(rawBody).digest();
+      const expected = createHmac("sha256", secretBox.open(agent.secret_sealed, `agent:${agent.id}`)).update(`${timestamp}.`).update(rawBody).digest();
       const given = Buffer.from(String(signature ?? ""), "hex");
       if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw Object.assign(new Error("The report's signature does not match"), { status: 401 });
       return agent;
@@ -190,7 +195,12 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       }
       const gaps = [...(zb?.verdict?.gaps ?? [])];
       if (!zb) gaps.unshift(`The scan could not run${scan.error ? `: ${String(scan.error).slice(0, 300)}` : ""}. Nothing on this device was checked.`);
-      for (const gap of gaps.slice(0, 40)) q.addFinding.run(deviceId, "agent", ref, "gap", null, null, null, null, String(gap).slice(0, 500), at);
+      // Only so many rows per report, but the count must still be the truth: the last row says how
+      // many were not listed, so the verdict's number and the Evidence locker agree.
+      const kept = gaps.length > gapRows
+        ? [...gaps.slice(0, gapRows - 1), `…and ${gaps.length - (gapRows - 1)} more checks could not run on this device; they are counted, not listed.`]
+        : gaps;
+      for (const gap of kept) q.addFinding.run(deviceId, "agent", ref, "gap", null, null, null, null, String(gap).slice(0, 500), at);
 
       const verdict = { status: zb?.verdict?.status ?? "NOT_RUN", hits: zb?.verdict?.hits_total ?? 0, gaps: gaps.length, exitCode: scan.exitCode ?? null, scanner: zb?.tool?.version ?? null, at };
       q.reported.run(at, JSON.stringify(verdict), deviceId, agent.id);

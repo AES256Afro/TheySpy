@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { PiholeError } from "./client.mjs";
 import { findHits } from "./match.mjs";
+import { readCappedJson } from "../shared.mjs";
 
 // DNS servers other than Pi-hole, read-only, behind the same interface as sources.mjs: hunting the
 // query log, the live watch, one domain's lookups, one device's lookups and the busiest devices.
@@ -85,7 +86,7 @@ function caller({ url, fetchImpl = fetch, headers = {}, name }) {
     }
     if (response.status === 401 || response.status === 403) throw new PiholeError(`${name} refused the sign-in (${response.status}); check the user and password or token.`);
     if (!response.ok) throw new PiholeError(`${name} answered ${response.status} to ${path.split("?")[0]}`);
-    return response.json();
+    return readCappedJson(response, { what: name });
   };
 }
 

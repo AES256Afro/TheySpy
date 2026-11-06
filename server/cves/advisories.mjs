@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped, readCappedJson } from "../shared.mjs";
 
 // Zero-day reports from vendors and researchers (docs/PLAN.md §5, M5 part 2): sources that say a
 // CVE "may have been exploited" before CISA adds it to KEV, or that tie it to a spyware campaign.
@@ -102,12 +102,12 @@ export function createAdvisories({ cves, settings, fetchImpl = fetch, now = () =
       const results = { exploited: [], errors: [], research: [] };
       const run = async (name, work) => { try { const found = await work(); results.exploited.push(...found); log(`${name}: ${found.length} exploited.`); } catch (error) { results.errors.push(`${name}: ${error.message}`); } };
 
-      await run("Chrome Releases", async () => parseChromeFeed(await (await get(advisoryUrls.chrome)).text()));
+      await run("Chrome Releases", async () => parseChromeFeed(await readCapped(await get(advisoryUrls.chrome), { what: "Chrome Releases" })));
       await run("Apple", async () => {
         const since = last?.at ? last.at.slice(0, 10) : new Date(now().getTime() - 45 * 86_400_000).toISOString().slice(0, 10);
-        const releases = parseAppleIndex(await (await get(advisoryUrls.apple)).text()).filter((r) => r.at && r.at >= since).slice(0, 15);
+        const releases = parseAppleIndex(await readCapped(await get(advisoryUrls.apple), { what: "Apple security releases" })).filter((r) => r.at && r.at >= since).slice(0, 15);
         const found = [];
-        for (const r of releases) found.push(...parseAppleRelease(await (await get(r.url)).text(), r));
+        for (const r of releases) found.push(...parseAppleRelease(await readCapped(await get(r.url), { what: "an Apple security release" }), r));
         return found;
       });
       await run("Microsoft", async () => {
@@ -117,12 +117,12 @@ export function createAdvisories({ cves, settings, fetchImpl = fetch, now = () =
           const response = await fetchImpl(advisoryUrls.msrc(m), { headers: { "user-agent": `TheySpy/${productVersion}`, accept: "application/json" }, signal: AbortSignal.timeout(180_000) });
           if (response.status === 404) continue; // the month's release is not out yet
           if (!response.ok) throw new Error(`MSRC answered ${response.status}`);
-          found.push(...parseMsrc(await response.json(), m));
+          found.push(...parseMsrc(await readCappedJson(response, { what: "MSRC" }), m));
         }
         return found;
       });
       for (const [source, url] of advisoryUrls.research) {
-        try { results.research.push(...parseRss(await (await get(url)).text(), source)); } catch (error) { results.errors.push(`${source}: ${error.message}`); }
+        try { results.research.push(...parseRss(await readCapped(await get(url), { what: source }), source)); } catch (error) { results.errors.push(`${source}: ${error.message}`); }
       }
       const added = cves.markExploited(results.exploited);
       settings.set("advisories_last", { at: now().toISOString(), exploited: results.exploited.length, added: added.length, errors: results.errors });

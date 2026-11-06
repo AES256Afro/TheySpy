@@ -35,7 +35,10 @@ export function retryAfterMs(value, nowMs) {
 export function createPacedFetch(baseFetch, { budgets = hostBudgets, maxWaitMs = 120_000, audit, now = () => Date.now(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   /** @type {Map<string, { next: number, sent: number[], heldUntil: number, reported: number }>} */
   const hosts = new Map();
-  const budgetOf = (host) => budgets[host] ?? Object.entries(budgets).find(([entry]) => entry.startsWith(".") && (host.endsWith(entry) || host === entry.slice(1)))?.[1] ?? budgets.default;
+  const budgetOf = (host) =>
+    (Object.hasOwn(budgets, host) ? budgets[host] : null)
+    ?? Object.entries(budgets).find(([entry]) => entry.startsWith(".") && (host.endsWith(entry) || host === entry.slice(1)))?.[1]
+    ?? budgets.default;
   const stateOf = (host) => {
     let state = hosts.get(host);
     if (!state) { state = { next: 0, sent: [], heldUntil: 0, reported: 0 }; hosts.set(host, state); }

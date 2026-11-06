@@ -379,6 +379,116 @@ Rate limits now cover agent enrollment and reports and wrong API tokens. Credent
 - Docs: install, Pi-hole setup, agent rollout, "what a finding means", when to call Access Now.
 - **Exit:** external review of the scanning and Pi-hole write paths; 1.0 tag.
 
+### M12 — Audit findings (S)
+**Status (5 Nov 2026): done** (1.8.0). Every item below shipped with a test that fails without its
+fix; the ledger in [docs/AUDITS.md](AUDITS.md) records what each one became. Two things changed in
+the doing: S3's description was wrong about sealed values crossing between fields (each caller
+already has its own key) and the real case was agent secrets and site tokens sealed under one key,
+which now carry the row they belong to as associated data; and the gap-row limit (B4) became "the
+last row counts the rest" rather than a smaller count, because a gap that is not shown is the one
+thing this product may not do. The first sweep of the rolling review in
+[docs/AUDITS.md](AUDITS.md) read the request, auth, token, egress and agent paths at 1.7.1 and found
+five security items, five bugs and six pieces of hygiene. None is an open hole — the scope guard,
+the website check's address pinning, the agent's signature and replay check and the CSRF rule all
+hold — but three of them widen a compromise or lose data quietly, and they are cheap to close
+together. In the order they ship:
+
+1. **Charge each JSON-RPC message, not each request** (S1). `/mcp` takes batches and runs them with
+   `Promise.all`, so one POST of 300 `check_domain` calls spends 300 passes over Pi-hole's history
+   against a 120-a-minute budget. Count every message against the token's budget, cap a batch at 20
+   messages, and answer the rest `-32600`.
+2. **Refuse a database from a newer TheySpy** (B3). `migrate()` silently accepts a `user_version`
+   above the migrations it knows, which is what BoxPilot's rollback leaves behind. Stop with
+   "this data was written by TheySpy ≥ x.y; restore the backup taken before the update" so the
+   rollback is visible instead of writing against a schema the code does not know.
+3. **One response reader, with a cap** (S4). `blocklists/library.mjs` already has `readCapped`;
+   lift it into `server/shared.mjs` and put every outbound reader behind it — the CVE feeds, the
+   advisories, the NVD lookups, the OUI registry, Pi-hole, the DNS connectors, the blocklist
+   directories, NetAlertX, Protec and the other sites. A feed that answers with a gigabyte should
+   fail that feed, not the container.
+4. **Say where the key to the backup is** (S2). When `TS_SESSION_SECRET` is not set in the
+   environment, the secret that seals the Pi-hole password, the ntfy token and the agent keys lives
+   in the same database the backup copies. Say so on Activity beside the download and in the
+   BoxPilot notes, with the one line that fixes it; keep the fact in `/api/v1/status` so BoxPilot
+   can show it too.
+5. **A number in a path is 400, not 500** (B2). One `intParam` / `intQuery` helper, used by every
+   router, so `?limit=abc` and `/devices/abc` say what is wrong instead of surfacing SQLite's
+   "datatype mismatch".
+6. **Own properties only** (B1). `Object.hasOwn` (or a `Map`) for `compiledLists`, `kits` and
+   `hostBudgets`, so an inherited name is a 404 rather than a 500 — and so pacing is not switched
+   off for a host by a `NaN` interval.
+7. **The small ones.** AAD on `secretBox` (S3), a warning when the session cookie would cross a
+   network unencrypted (S5), an agent verdict that counts the gaps it kept (B4), a status code the
+   error handler cannot trip over (B5), eviction on the three per-address maps and pruning that does
+   not walk 10,000 keys per request (C2, C3), the `/22` guard inside `hostsOf` as well as its
+   callers (C5), `middleware()` without `this` (C6), and the shadowed `read` in `index.mjs` (C4).
+8. **Delete the stale checkout** at `TheySpy/` inside the working tree (C1): a whole clone pinned at
+   0.9.0, clean, nothing unpushed, doubling every search hit in the repository.
+
+- **Exit:** a test per item, each failing before its fix — a 21-message MCP batch is refused and
+  spends one budget slot; a database stamped one migration ahead refuses to open with that message;
+  a feed answering more than the cap fails that feed and leaves the others; `?limit=abc` and
+  `/lists/<token>/constructor.txt` answer 400 and 404; Activity names where the backup's key is.
+  `npm run check` green, 1.8.0 tagged, the BoxPilot manifest bumped and its digest pinned.
+
+### M13 — Second sweep's findings (S)
+**Status (5 Nov 2026): planned.** Sweep 2 ([docs/AUDITS.md](AUDITS.md)) read what sweep 1 could not
+reach: the Pi-hole write paths, the blocklist library and baselines, the network-log import, the
+unauthenticated agent surface, the OpenPGP verifier, the React shell and the agent script. Four
+security items, six bugs, six pieces of hygiene. The designs it checked mostly hold — the baseline
+apply already unwinds itself, the verifier refuses what it does not fully understand, the DNS
+connectors really do deduplicate — but two findings break a promise the product makes in writing,
+and they lead:
+
+1. **Protect a name, not a string** (B7). The never-block list exists so TheySpy cannot take out
+   captive-portal checks, certificate revocation, time sync or package updates. `compile()` drops
+   the protected name, and then publishes the rest as `||name^`, `address=/name/0.0.0.0` and
+   `*.name CNAME .` — rules that cover children. One list carrying `apple.com` therefore blocks
+   `captive.apple.com`, `time.apple.com` and `ocsp.apple.com`, and every compiled list's header
+   says it did not. Walk the suffixes the way `matchNames()` already does, and in the three formats
+   that have exceptions (`@@||name^`, `server=/name/#`, `name CNAME rpz-passthru.`) emit one per
+   protected name so a parent can still be blocked without taking its children with it. `txt` and
+   `hosts` are exact-match and need nothing. The test is the one that would have caught it: a list
+   containing only `apple.com`, compiled in all five formats, must still leave
+   `captive.apple.com` resolvable.
+2. **Record a push before trusting it** (B8). `push()` writes its `pihole_pushes` row only after
+   confirming, so a throw in between leaves entries in Pi-hole that the rollback cannot see. Record
+   what was sent first, then verify, and mark the row as part-applied if verification fails — or
+   borrow `baselines.apply()`'s undo stack outright, since it is in the same codebase and already
+   right.
+3. **The agent's hash check must mean something** (S7). It compares the scanner to a hash from the
+   same server on the same connection. Pin zero-breach's released hash in the agent itself (it is
+   one vendored version, printed in M1) and check against that, so a compromised or impersonated
+   TheySpy cannot hand an endpoint arbitrary Python to run.
+4. **The agent refuses plain HTTP** (S8) unless told otherwise, and says why: the enrolment token,
+   the secret it is given and every report go in the clear otherwise.
+5. **A gap is reported even when the agent fails early** (B11). Move the manifest fetch and the
+   temp directory inside `scan()`'s `try`, so a failure becomes a report with a gap rather than a
+   traceback and silence. `shutil.rmtree` for the cleanup (B12) while there.
+6. **The owner's own machines are not public feeds** (B10). Pacing should leave private and
+   link-local addresses, and anything the owner configured as a connector, out of the default
+   budget — or give them a budget suited to a LAN. Today a second coverage check inside an hour
+   fails, and the first takes two minutes for 582 searches.
+7. **A session that ends is a sign-in screen** (B9). `api()` reports a 401 to the shell, which puts
+   the sign-in screen back, rather than every screen showing "Sign in first" until someone reloads.
+8. **The agent surface says what it is** (S6). Rate-limit the four unauthenticated routes, and
+   serve the indicator file only to a caller that holds an enrolment token or an agent signature —
+   the active set includes whatever the owner added. Then make SECURITY.md's claim true, or correct
+   it.
+9. **The rest.** A scheme check before a third-party URL reaches `href` (S9); the real source
+   recorded in `ioc_hit_events` (C7); one rule for subscribing Pi-hole to a list (C8); the
+   network-log import parsing line by line instead of buffering a 64 MB upload into several hundred
+   megabytes of heap (C9); one answer to whether a dismissed finding may come back (C10);
+   `SignatureError` for malformed OpenPGP rather than `RangeError` (C11); and a `waitForJob` that
+   stops when its screen goes away, with a timeout on `api()` (C12).
+
+- **Exit:** a test per item, each failing before its fix — a list holding only a parent domain
+  leaves every protected child resolvable in all five formats; a push whose confirmation fails is
+  still rollbackable; the agent refuses a scanner whose hash is not zero-breach's released one, and
+  refuses `http://` without the flag; an early agent failure still posts a report with a gap; a
+  coverage check twice in an hour works; a 401 puts the sign-in screen back; `/api/agent/iocs.txt`
+  needs a token. `npm run check` green, 1.9.0 tagged, the BoxPilot manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 

@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCappedJson } from "../shared.mjs";
 import { matchSoftware } from "./match.mjs";
 import { createNvdKey, parseNvdCve } from "./feeds.mjs";
 
@@ -43,7 +43,7 @@ export function createSoftwareLookup({ db, cves, nvdApiKey = null, nvdKey = crea
     // A refused key is set aside by nvdKey, so the second try goes without it.
     const response = (await request()) ?? (await request());
     if (!response.ok) throw new Error(`NVD answered ${response.status}`);
-    const data = /** @type {any} */ (await response.json());
+    const data = /** @type {any} */ (await readCappedJson(response, { what: "NVD" }));
     // NVD's virtualMatchString also returns CVEs that only name the product as the platform another
     // product runs on (vulnerable: false). Keep the ones whose vulnerable criteria cover this version.
     return (data.vulnerabilities ?? []).flatMap(({ cve }) => {

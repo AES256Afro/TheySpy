@@ -7,6 +7,8 @@
 //    is previewed first, and each write is one field through `update-column`: NetAlertX's
 //    `POST /device/<mac>` replaces every field and resets the ones it is not given.
 
+import { readCappedJson } from "../shared.mjs";
+
 const unknownName = /^\s*$|^\((unknown|name not found)\)$/i;
 const macPattern = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/;
 const mac = (value) => String(value ?? "").trim().toLowerCase().replace(/-/g, ":");
@@ -35,7 +37,7 @@ export function createNetAlertX({ settings, secretBox, fleet, audit, fetchImpl =
       throw Object.assign(new Error(`Could not reach NetAlertX at ${s.url}: ${error.cause?.code ?? error.message}`), { status: 502 });
     }
     if (response.status === 403 || response.status === 401) throw Object.assign(new Error("NetAlertX refused the API token (Settings → API → API_TOKEN)."), { status: 502 });
-    const body = await response.json().catch(() => ({}));
+    const body = await readCappedJson(response, { what: "NetAlertX" }).catch(() => ({}));
     if (!response.ok || body.success === false) throw Object.assign(new Error(`NetAlertX: ${body.error ?? body.message ?? response.status}`), { status: 502 });
     return body;
   }

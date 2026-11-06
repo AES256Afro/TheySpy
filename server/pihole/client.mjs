@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped } from "../shared.mjs";
 
 // A client for Pi-hole v6's REST API, shaped by what a live Pi-hole 6 (FTL v6.7) actually does:
 //  - POST /api/auth gives a session id, sent back as the X-FTL-SID header (no CSRF token needed
@@ -62,7 +62,7 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
     } catch (error) {
       throw new PiholeError(`Could not reach Pi-hole at ${base.origin}: ${error.cause?.code ?? error.message}`, { cause: error });
     }
-    const text = await response.text();
+    const text = await readCapped(response, { what: `Pi-hole at ${base.origin}` });
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { /* not JSON: an error page */ }
     if (!response.ok) {
@@ -207,7 +207,7 @@ export function createPiholeClient({ url, password, fetchImpl = fetch, timeoutMs
       } catch (error) {
         throw new PiholeError(`Could not reach Pi-hole at ${base.origin}: ${error.cause?.code ?? error.message}`, { cause: error });
       }
-      const text = await response.text();
+      const text = await readCapped(response, { what: `Pi-hole at ${base.origin}` });
       if (!response.ok) throw new PiholeError(`Pi-hole answered ${response.status} to its gravity update`, { status: response.status });
       // eslint-disable-next-line no-control-regex -- stripping the terminal colour codes in Pi-hole's gravity log
       return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");

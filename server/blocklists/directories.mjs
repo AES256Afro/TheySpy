@@ -1,4 +1,4 @@
-import { productVersion } from "../shared.mjs";
+import { productVersion, readCapped, readCappedJson } from "../shared.mjs";
 import { dnsSyntaxIds, fromAdguard, fromFilterListsTags, fromName } from "./taxonomy.mjs";
 
 // Where TheySpy finds blocklists it has not seen before. Each reader returns candidates; nothing
@@ -17,12 +17,12 @@ export const directoryHosts = Object.freeze(["adguardteam.github.io", "api.filte
 async function getJson(fetchImpl, url, timeoutMs) {
   const response = await fetchImpl(url, { headers: { "user-agent": `TheySpy/${productVersion}`, accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new Error(`${new URL(url).hostname} answered ${response.status}`);
-  return response.json();
+  return readCappedJson(response, { what: new URL(url).hostname });
 }
 async function getText(fetchImpl, url, timeoutMs) {
   const response = await fetchImpl(url, { headers: { "user-agent": `TheySpy/${productVersion}` }, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new Error(`${new URL(url).hostname} answered ${response.status}`);
-  return response.text();
+  return readCapped(response, { what: new URL(url).hostname });
 }
 
 /** @returns {Promise<Candidate[]>} */
