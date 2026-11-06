@@ -495,6 +495,57 @@ and they lead:
   coverage check twice in an hour works; a 401 puts the sign-in screen back; `/api/agent/iocs.txt`
   needs a token. `npm run check` green, 1.9.0 tagged, the BoxPilot manifest bumped and pinned.
 
+### M14 — Third sweep's findings (S)
+**Status: planned.** Sweep 3 ([docs/AUDITS.md](AUDITS.md)) read the fleet registry and its checks,
+the CVE matchers, exposure, alerts, the briefing, This device, both indicator parsers and the
+thirteen screens. It is the first sweep to come back clean for a category — security found nothing,
+so its streak is 1 of 3 — and the first to find that a previous sweep's fix did not land. Eight
+bugs, eight pieces of hygiene. Every finding was reproduced against the real modules first.
+
+What leads is a single mistake made in several places: **a device is keyed by its current address.**
+Indicator hits, exploited-CVE matches and the This device probe all match on `d.ip`, while the
+registry has recorded every address a device has held since M7. So an ordinary DHCP lease change
+detaches a device from its own evidence, and the Ad exposure screen then states, in those words,
+that there are no indicator lookups for a device whose unblocked C2 lookup is still in the database.
+That is the one promise this product cannot break, so it is item one.
+
+- **B13 — one device, all its addresses, everywhere.** Give the registry a single way to ask "which
+  device owns this address?" over `device_addresses`, not just `devices.ip`, and use it for the
+  exposure factors, `readmodel.exploited()`, the `/this-device` match and the per-device activity
+  read. A hit recorded under any address the device has held counts as that device's.
+- **B14 — a merge must not lose what it merged.** `merge()` keeps the surviving row's MAC, vendor and
+  hostname only where it has them, takes the other's where it does not, and `first_seen` becomes the
+  earlier of the two. The Fleet screen says which record will survive and warns before a merge that
+  would drop a MAC.
+- **B15 — stop inventing address changes.** Use each address's own `lastSeen` from Pi-hole's network
+  table, falling back to `lastQuery` only when the address has none, so only the address Pi-hole
+  really saw last is the latest. An `ip_changed` event needs a genuinely later sighting.
+- **B16 — a narrower check may not erase a wider one's findings.** `clearClosed` deletes only rows
+  for ports this profile actually probed; everything else keeps its earlier `last_seen` and is shown
+  with the date it was last confirmed.
+- **B17 — a failed check is a failed check.** Wrap `run()` so any throw writes `finished_at` and a
+  result that holds the error, and show the state in "Recent checks" rather than letting a failure
+  look like a result nobody opened.
+- **B18 — the briefing counts lookups.** Sum the lookups in the window instead of counting groups,
+  and bound the counted hits to the window rather than filtering groups by their last hit.
+- **B19 — the briefing reads structure, not prose.** Carry the matches on the alert and render them,
+  instead of recovering device names with `split(".")`.
+- **B20 — wire C12 up.** Every screen that calls `waitForJob` passes a `stopped` flag it sets on
+  unmount, and the test proves it through a screen, not through the parameter.
+- **C13–C20 — hygiene.** Hoist `sentinel.hits()` out of the per-device loop; remember that MagicDNS
+  is not there; make the alert listener's failure path safe and loud instead of unhandled and
+  silent; show a broken NetAlertX or Protec card instead of hiding it; finish B1's `Object.hasOwn`
+  pass across the five tables it missed; compute `given()` once per device; validate the Client
+  Hints version like `confirmedVersion`; and render an absent factor as "not known", not as "does
+  not apply".
+- **Exit:** a test per item, each failing before its fix — above all, a device whose address changed
+  after an unblocked indicator lookup still reads `fail` on Ad exposure, and merging a MAC-bearing
+  record into a MAC-less one leaves one device that the same MAC still matches. One sync of a Pi-hole
+  network table with three addresses for one MAC writes no `ip_changed` event; a Standard check after
+  a Deep one keeps the Deep-only ports; a check that throws is listed as failed and opens with its
+  error; the briefing reports 501 lookups as 501. `npm run check` green, 1.10.0 tagged, the BoxPilot
+  manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
