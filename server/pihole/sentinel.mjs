@@ -2,7 +2,7 @@ import { isListAddress } from "../blocklists/addresses.mjs";
 import { canonicalIp } from "../fleet/addresses.mjs";
 import { blocklistDomains } from "../iocs/exports.mjs";
 import { PiholeError, wildcardRegex } from "./client.mjs";
-import { createMatcher } from "./match.mjs";
+import { createMatcher, isBlocked } from "./match.mjs";
 import { apiSource, databaseSource } from "./sources.mjs";
 import { adguardSource, opnsenseSource, technitiumSource } from "./connectors.mjs";
 
@@ -47,9 +47,10 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     ORDER BY lastSeen DESC`);
   // Every hit as it happened, for attributing each to the device that held its address at the time.
   const hitEvents = db.prepare(`
-    SELECT e.at, e.indicator, e.domain, e.via, e.client_ip AS clientIp, e.client_name AS clientName, e.blocked, e.status, i.tier, i.confidence, i.source
-    FROM ioc_hit_events e LEFT JOIN iocs i ON i.value = e.indicator
+    SELECT e.id, e.at, e.indicator, e.domain, e.via, e.client_ip AS clientIp, e.client_name AS clientName, e.blocked, e.status, i.tier, i.confidence, i.source, c.queries AS context
+    FROM ioc_hit_events e LEFT JOIN iocs i ON i.value = e.indicator LEFT JOIN hit_context c ON c.hit_id = e.id
     WHERE e.at >= ? ORDER BY e.at`);
+  const insertContext = db.prepare("INSERT OR REPLACE INTO hit_context (hit_id, queries, fetched_at) VALUES (?, ?, ?)");
   // The window's own lookups, for the briefing: what happened this week, not the history of every
   // group that happened to recur this week.
   const hitsSince = db.prepare("SELECT client_ip AS clientIp, COUNT(*) AS lookups, SUM(blocked) AS blocked FROM ioc_hit_events WHERE at >= ? GROUP BY client_ip");
@@ -95,13 +96,13 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
    * three other servers - which is also part of what makes a row unique, so the same lookup from
    * two sources is kept once per source rather than merged.
    */
-  function recordHits(hits, foundBy) {
+  async function recordHits(hits, foundBy) {
     const fresh = [];
     const foundAt = now().toISOString();
     const from = effective().mode ?? "pihole";
     for (const h of hits) {
-      const { changes } = insertEvent.run(from, h.queryId, h.at, h.indicator, h.domain, h.via, canonicalIp(h.clientIp) ?? h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
-      if (Number(changes)) fresh.push(h);
+      const { changes, lastInsertRowid } = insertEvent.run(from, h.queryId, h.at, h.indicator, h.domain, h.via, canonicalIp(h.clientIp) ?? h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
+      if (Number(changes)) fresh.push({ ...h, id: Number(lastInsertRowid) });
     }
     if (fresh.length) {
       audit.record(foundBy === "watch" ? "system" : foundBy, "pihole.indicator_lookups", null, {
@@ -110,8 +111,43 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
         clients: [...new Set(fresh.map((h) => h.clientIp))].slice(0, 20),
         allowed: fresh.filter((h) => !h.blocked).length,
       });
+      await captureContext(fresh);
     }
     return fresh.length;
+  }
+
+  /**
+   * The minute around each new hit (M39): the client's lookups thirty seconds either side, from
+   * the source's query log, kept with the hit so the device page can show what it asked just
+   * before and after. One read per client and minute, at most the thirty lookups nearest the hit,
+   * and never more than fifty reads per batch; a read that fails leaves the hit without its minute
+   * rather than failing the hunt.
+   */
+  async function captureContext(fresh) {
+    const windows = new Map();
+    for (const h of fresh.slice(0, 200)) {
+      const t = Date.parse(h.at) / 1000;
+      const key = `${h.clientIp}\u0000${Math.floor(t / 60)}`;
+      if (!windows.has(key)) windows.set(key, { clientIp: canonicalIp(h.clientIp) ?? h.clientIp, from: t - 30, until: t + 30, hits: [] });
+      const w = windows.get(key);
+      w.from = Math.min(w.from, t - 30);
+      w.until = Math.max(w.until, t + 30);
+      w.hits.push(h);
+    }
+    let reads = 0;
+    for (const w of windows.values()) {
+      if (reads++ >= 50) break;
+      let queries;
+      try { queries = await source().queriesOf(w.clientIp, { from: w.from, until: w.until }); } catch (error) { console.error(`sentinel: could not read the minute around a hit from ${w.clientIp}: ${error.message}`); continue; }
+      for (const h of w.hits) {
+        const t = Date.parse(h.at);
+        const around = queries.filter((q) => Math.abs(Date.parse(q.at) - t) <= 30_000)
+          .map((q) => ({ at: q.at, domain: q.domain, status: q.status, blocked: isBlocked(q.status), hit: q.queryId === h.queryId && q.domain === h.domain }))
+          .sort((a, b) => Math.abs(Date.parse(a.at) - t) - Math.abs(Date.parse(b.at) - t)).slice(0, 30)
+          .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+        insertContext.run(h.id, JSON.stringify(around), now().toISOString());
+      }
+    }
   }
 
   // --- live watch ------------------------------------------------------------------------------
@@ -135,7 +171,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     try {
       const seen = [];
       const { hits } = await source().recent(matcher(), from, observers.size ? (q) => seen.push(q) : undefined);
-      watchState.newHits += recordHits(hits, "watch");
+      watchState.newHits += await recordHits(hits, "watch");
       for (const observe of observers) observe(seen);
       watchState.lastError = null;
       lastPoll = started;
@@ -219,7 +255,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       const from = until - (windowDays ?? c.windowDays) * day;
       const m = matcher();
       const { queriesSeen, hits } = await source().hunt(m, { from, until });
-      const fresh = recordHits(hits, actor);
+      const fresh = await recordHits(hits, actor);
       insertHunt.run(c.mode, new Date(from * 1000).toISOString(), new Date(until * 1000).toISOString(), m.size, queriesSeen, fresh, now().toISOString());
       return { queriesSeen, hits: hits.length, newHits: fresh, indicators: m.size, from: new Date(from * 1000).toISOString() };
     },
@@ -236,7 +272,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
 
     /** The hit events since `since` (all of them when null), oldest first. @param {string | null} [since] */
     hitEvents(since = null) {
-      return hitEvents.all(since ?? "").map((r) => ({ .../** @type {any} */ (r), blocked: Number(/** @type {any} */ (r).blocked) }));
+      return hitEvents.all(since ?? "").map((r) => { const row = /** @type {any} */ (r); return { ...row, blocked: Number(row.blocked), context: row.context ? JSON.parse(row.context) : null }; });
     },
     hits() {
       return hitGroups.all().map((r) => {

@@ -38,7 +38,7 @@ export function holderAt(holders, ip, at, { slackMs = holderSlackMs } = {}) {
 /**
  * Groups hit events by the device that held each one's address at the time, like `sentinel.hits()`
  * groups them by address: one group per device × indicator × domain × via.
- * @param {{ at: string, indicator: string, domain: string, via: string, clientIp: string, clientName?: string | null, blocked: number, status?: string | null, tier?: string | null, confidence?: string | null, source?: string | null }[]} events
+ * @param {{ at: string, indicator: string, domain: string, via: string, clientIp: string, clientName?: string | null, blocked: number, status?: string | null, tier?: string | null, confidence?: string | null, source?: string, context?: any[] | null | null }[]} events
  * @param {Holders} holders
  * @returns {Map<number | null, { indicator: string, domain: string, via: string, clientIp: string, clientName: string | null, firstSeen: string, lastSeen: string, lookups: number, blocked: number, lastStatus: string | null, tier: string | null, confidence: string | null, source: string | null }[]>}
  */
@@ -50,7 +50,7 @@ export function attributeHits(events, holders, options = {}) {
     const key = `${deviceId}\u0000${e.indicator}\u0000${e.domain}\u0000${e.via}\u0000${e.clientIp}`;
     let g = groups.get(key);
     if (!g) {
-      g = { indicator: e.indicator, domain: e.domain, via: e.via, clientIp: e.clientIp, clientName: e.clientName ?? null, firstSeen: e.at, lastSeen: e.at, lookups: 0, blocked: 0, lastStatus: e.status ?? null, tier: e.tier ?? null, confidence: e.confidence ?? null, source: e.source ?? null };
+      g = { indicator: e.indicator, domain: e.domain, via: e.via, clientIp: e.clientIp, clientName: e.clientName ?? null, firstSeen: e.at, lastSeen: e.at, lookups: 0, blocked: 0, lastStatus: e.status ?? null, tier: e.tier ?? null, confidence: e.confidence ?? null, source: e.source ?? null, lastContext: null };
       groups.set(key, g);
       if (!byDevice.has(deviceId)) byDevice.set(deviceId, []);
       byDevice.get(deviceId).push(g);
@@ -59,6 +59,8 @@ export function attributeHits(events, holders, options = {}) {
     g.blocked += Number(e.blocked) ? 1 : 0;
     if (e.at < g.firstSeen) g.firstSeen = e.at;
     if (e.at >= g.lastSeen) { g.lastSeen = e.at; g.lastStatus = e.status ?? g.lastStatus; }
+    // The minute around the newest hit that has one (M39).
+    if (e.context && (!g.lastContext || e.at >= g.lastContext.at)) g.lastContext = { at: e.at, queries: e.context };
     if (!g.clientName && e.clientName) g.clientName = e.clientName;
   }
   for (const list of byDevice.values()) list.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : a.lastSeen > b.lastSeen ? -1 : 0));
