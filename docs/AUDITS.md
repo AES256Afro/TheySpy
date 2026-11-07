@@ -7,7 +7,7 @@ swept again unless something changes that area.
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
 | Code (structure, hygiene, dead weight) | 15 | 3 | out of the loop (left after sweep 15) |
-| Bugs (correctness) | 21 | 0 | in the loop |
+| Bugs (correctness) | 25 | 3 | out of the loop (left after sweep 25) |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
@@ -16,14 +16,13 @@ in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9
 sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
 sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25); sweep 15's in 1.22.0 (M26);
 sweep 16's in 1.23.0 (M27); sweep 17's in 1.24.0 (M28); sweeps 18 and 19 found nothing; sweep 20's in 1.25.0 (M29); sweep 21's in
-1.26.0 (M30). Security left the loop after sweep 5 and code after sweep 15 (clean in sweeps 13, 14
-and 15). Bugs is the one category left; it was clean in sweeps 10, 18 and 19 and found one small
-thing in each of sweeps 20 and 21.
+1.26.0 (M30); sweep 22's in 1.27.0 (M31); sweeps 23, 24 and 25 found nothing. Security left the loop after
+sweep 5, code after sweep 15 and bugs after sweep 25 (clean in sweeps 23, 24 and 25): the first
+stage of the audit loop is closed. The second stage (readability, usability, visual, quality of
+life, features, optimisation) continues in [docs/UI-AUDIT.md](UI-AUDIT.md).
 
-Sweep 22 looks for the same thing everywhere: every form and control that takes the owner's
-input and throws part of it away or changes it (names clipped, lists filtered, values clamped)
-is listed from the code, and each is checked to say so in the screen; and every message a screen
-shows after an action is checked to describe what actually happened.
+No further sweep is queued here: every category of the first stage has left the loop. A new
+category, or a finding from the second stage that turns out to be a bug, reopens this ledger.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -1000,3 +999,96 @@ reason when refused; the console gained only the two deliberate 400s; the server
 | # | Fix |
 | --- | --- |
 | B41 | The route answers with what it ignored; the screen says "Saved 1 name; ignored 1 that is not a domain name: …". A test: a good name, a bad one and one with a trailing dot. |
+
+## Sweep 22 — 7 Nov 2026, at 1.26.0
+
+Every place the server clips, filters or clamps what the owner typed, listed from the code
+(`slice(0, n)`, `filter`, `Math.min(Math.max(…))` on input), and each checked to say so in the
+screen; then every message a screen shows after an action, read against what the action does.
+The messages hold ("is on and being fetched" enqueues the fetch; "Added; first reading taken"
+reads the site). Two limits are shown in their fields (the brand name and tagline), one was not.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B42 | **A device edit cuts what the owner typed to fit, in silence.** `fleet.edit()` clipped a label, owner or kind to 80 characters, notes to 2,000 and tags to 12 of 30 characters each, and the card showed the shortened result as if it were what was typed: the thirteenth tag was gone without a word (B41's class, one screen over). | `fleet/registry.mjs`, `Fleet.tsx` | low |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- Names that come from other systems (an agent's hostname, NetAlertX's, Protec's, a site's
+  device names, a list's title) are clipped on the way in; those are not the owner's typing.
+- `setPins` keeps at most 500 names and `targets` at most 8 networks (a 400 past 8); a pin list
+  of 500 is not a thing a household has.
+- The API token's and the enrollment's labels are cut at 60 and shown back at once in the same
+  card, so the owner sees what was kept.
+
+### What shipped (sweep 22) — 1.27.0, M31
+
+| # | Fix |
+| --- | --- |
+| B42 | Too long is a 400 that names the field and the limit; the card's fields carry `maxLength` and the tags field says "up to 12, 30 characters each". A test: an 81-character label, 13 tags and a 31-character tag are refused with their limits; 80 characters and 12 tags are kept. |
+
+## Sweep 23 — 7 Nov 2026, at 1.27.0
+
+Things at once, on a copy of the seeded database: three browsers polling the Overview, the Fleet
+and Ad exposure every 100 ms while, in the same second, a backup was taken twice (168 MB each), an
+MVT file of 3,000 items and a Zeek log of 50,000 records were imported, two tabs edited the same
+device (one its label, one its owner), a job ran and a consolidate ran. Everything answered 200
+(the job 202); both edits held (label from one tab, owner from the other); 3,000 findings, none
+lost or doubled; `PRAGMA integrity_check` ok; the server logged nothing. The polls paused while a
+backup copied — node:sqlite is synchronous, and a backup is an owner's click — and never failed.
+
+### Bugs
+
+None.
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- Two edits of one device from two tabs are two `UPDATE`s on one row; a tab that changes a field
+  the other also changed loses, which is what a last-write-wins form does, and the card shows what
+  was kept.
+- The live watch's poll cannot overlap a hunt in a way that counts twice: rows are unique by
+  query id and time (M2), and C33 made the poll itself one at a time.
+
+## Sweep 24 — 7 Nov 2026, at 1.27.0
+
+The clock. The Overview, the briefing, the summary and the read model composed with `now` at
+23:59:59 on 31 December, 00:00:01 on 1 January, the two daylight-saving changes, the last second of
+February and 29 February 2028, each with a device last seen exactly 15 minutes ago and one a
+millisecond earlier, and a lookup three days back: every number right, the device at 15:00 online
+and the one at 15:00.001 not, the digest's week `2026-W53` for both New Year instants and
+`2025-W01` for 30 December 2024 (ISO weeks, as `isoWeek()` promises), a session's expiry exactly
+14 days out. The screens format dates with the browser's own locale and never parse them back.
+
+### Bugs
+
+None.
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- The weekly digest goes out on the hourly timer's first run on Monday at or after 08:00 in the
+  container's `TZ`, keyed by the ISO week of the UTC date; east of UTC that label is the week that
+  just ended, which is the week the briefing is about.
+
+## Sweep 25 — 7 Nov 2026, at 1.27.0
+
+Start-up and recovery, on a fresh database file: a job left `running` by a process that died and
+a WAL left behind are found on the next start (the job marked interrupted, the audit log saying
+why, the WAL replayed); a database a newer TheySpy migrated is refused with the message M18 wrote
+("written by a newer TheySpy (schema 21; this version knows 18)"); `TS_PORT=abc`, `TS_PORT=70000`
+and a bad range in `TS_SCAN_RANGES` are refused by name; an empty `TS_SCAN_RANGES` is the private
+ranges and an unknown `TS_EGRESS` is enforce; the first start on an empty directory generates one
+owner password and the second start keeps it.
+
+### Bugs
+
+None: the third clean sweep running (23, 24, 25). Bugs leaves the loop, and with it the first
+stage of the audit closes.
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- A `settings` row whose value is not JSON makes `settings.get()` throw. TheySpy writes every
+  value with `JSON.stringify`, so that row can only come from a hand-edited or foreign database;
+  the backup's `integrity_check` and the schema guard are the owner's tools for those, and
+  guessing at a value TheySpy did not write would be worse than stopping.
