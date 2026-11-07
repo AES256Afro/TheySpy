@@ -300,9 +300,9 @@ Said plainly, in the order I would take them; none is a finding against what exi
    a public name is set, would make the plain-HTTP warning rare.
 3. **IPv6.** Scan ranges, sweeps and the network table are IPv4; a dual-stack household's devices
    are seen by their IPv4 only, and a lookup from an IPv6 address is credited to no device.
-4. **A second notification channel.** ntfy is the only one; e-mail or a webhook would cover the
+4. **A second notification channel** (built: M36, 1.32.0). ntfy is the only one; e-mail or a webhook would cover the
    owner who will not run an ntfy client.
-5. **Installable on a phone.** This device is the screen built for a phone; a web manifest and an
+5. **Installable on a phone** (built: M36, 1.32.0). This device is the screen built for a phone; a web manifest and an
    icon would let it sit on the home screen.
 6. **Pi-hole's own query log as evidence.** A hit is kept as one row; the surrounding minute of
    that client's lookups (what it asked just before and after) would turn a hit into a story
