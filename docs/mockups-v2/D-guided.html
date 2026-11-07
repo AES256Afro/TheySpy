@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · D · Guided</title><link rel="stylesheet" href="v2.css">
+<style>
+  .side a .st { margin-left: auto; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; border: 1.5px solid var(--line); color: var(--muted); }
+  .side a .st.done { background: var(--ok); border-color: var(--ok); color: var(--on-accent); }
+  .side a .st.bad { background: var(--crit); border-color: var(--crit); color: #fff; }
+  .side a .st.part { border-color: var(--high); color: var(--high); }
+  .progress { height: 6px; border-radius: 99px; background: var(--panel-2); overflow: hidden; margin: 6px 10px 2px; }
+  .progress i { display: block; height: 100%; width: 60%; background: var(--ok); }
+  .step { display: grid; grid-template-columns: 44px 1fr; gap: 14px; }
+  .step .num { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 18px; background: color-mix(in srgb, var(--crit) 20%, var(--panel)); color: var(--crit); }
+  .step h1 { font-size: 20px; }
+  .why { border-left: 3px solid var(--accent); padding: 8px 12px; color: var(--muted); font-size: 12.5px; }
+  .devrow { display: grid; grid-template-columns: 1fr 120px 150px auto; gap: 10px; align-items: center; }
+  .devrow .how { font-size: 11.5px; color: var(--muted); }
+  .steps-mobile { display: none; }
+  @media (max-width: 760px) { .devrow { grid-template-columns: 1fr auto; } .devrow .how, .devrow .when { display: none; } .steps-mobile { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; } }
+</style></head>
+<body><div class="app"><aside class="side">
+  <a class="brand"><span class="glyph">◉</span><span>TheySpy</span></a>
+  <div class="sep">Your network · 6 of 10 done</div><div class="progress"><i></i></div>
+  <a><span>1</span>Pi-hole connected<span class="st done">✓</span></a>
+  <a><span>2</span>Indicators blocked<span class="st done">✓</span></a>
+  <a><span>3</span>Live watch on<span class="st done">✓</span></a>
+  <a><span>4</span>Not on Starlink<span class="st">?</span></a>
+  <div class="sep">Each device</div>
+  <a><span>5</span>Through Pi-hole<span class="st done">✓</span></a>
+  <a><span>6</span>Ad blocker<span class="st part">!</span></a>
+  <a><span>7</span>Advertising ID off<span class="st part">!</span></a>
+  <a><span>8</span>Patched<span class="st bad">✕</span></a>
+  <a class="on"><span>9</span>No spyware contact<span class="st bad">✕</span></a>
+  <a><span>10</span>Scanned this week<span class="st part">!</span></a>
+  <div class="sep">Also</div>
+  <a class="more-only"><span>▦</span>All devices</a><a class="more-only"><span>¶</span>Briefing</a><a class="more-only"><span>✎</span>Settings</a>
+  <div class="foot"><span>Citizen Lab's defender guidance, as steps.</span><span>Version 1.10.0</span></div>
+</aside>
+<main>
+  <div class="steps-mobile"><a class="tag">1 ✓</a><a class="tag">2 ✓</a><a class="tag">3 ✓</a><a class="tag">4 ?</a><a class="tag">5 ✓</a><a class="tag">6 !</a><a class="tag">7 !</a><a class="tag">8 ✕</a><a class="tag" style="color:var(--text);border-color:var(--accent)">9 ✕</a><a class="tag">10 !</a></div>
+  <div class="step" style="margin-bottom:18px"><div class="num">9</div><div><h1>No device has contacted a spyware address</h1><p class="muted small">Failing on 1 of 27 devices · passing on 24 · unknown on 2 (Pi-hole has not seen them ask anything in a day)</p></div></div>
+
+  <div class="stack">
+    <div class="why">Why this matters: the indicator set is the 405 domains, addresses and hashes zero-breach has tied to AdFection and Candiru, the ad-delivered spyware this product exists to catch. A lookup of one is the earliest sign there is. It is not proof — but it is never nothing.</div>
+
+    <section class="card">
+      <header><h2>Failing</h2><span class="badge b-crit">1 device</span></header>
+      <div class="list">
+        <div class="devrow"><span><b>Kitchen Pixel</b><br><span class="small muted">looked up <span class="mono">noas-edge[.]example</span> 3× last night; not blocked</span></span><span class="when small muted">6 Nov 21:14</span><span class="how">Pi-hole, under 192.168.1.42</span><span class="row"><a class="btn danger small">Block</a><a class="btn small">Investigate</a></span></div>
+      </div>
+      <p class="small muted" style="margin-top:10px">Block adds the domain to Pi-hole's denylist (rollbackable). Investigate opens the device with MVT instructions for a phone, or the agent's report for a computer.</p>
+    </section>
+
+    <section class="card">
+      <header><h2>Not known</h2><span class="badge b-info">2 devices</span></header>
+      <div class="list">
+        <div class="devrow"><span><b>iPad</b></span><span class="when small muted">—</span><span class="how">Pi-hole has not seen it ask anything in a day</span><span class="row"><a class="btn small">Check its DNS</a></span></div>
+        <div class="devrow"><span><b>Thermostat</b></span><span class="when small muted">—</span><span class="how">same</span><span class="row"><a class="btn small">Check its DNS</a></span></div>
+      </div>
+      <p class="small muted" style="margin-top:10px">A device TheySpy could not check is listed here, never counted as passing.</p>
+    </section>
+
+    <section class="card">
+      <header><h2>Passing</h2><span class="badge b-ok">24 devices</span></header>
+      <p class="small muted">No lookups of indicator addresses in 30 days of Pi-hole's history, under any address each device has held. <a>Show them</a></p>
+    </section>
+
+    <div class="row"><a class="btn">← 8 · Patched</a><span class="grow"></span><a class="btn primary">10 · Scanned this week →</a></div>
+  </div>
+  <p class="note">Mock-up D · Guided. The ten checks TheySpy already computes become the navigation: each is a page with failing, unknown and passing, and the sidebar is the progress. First-run and tenth-month are the same screen. <a href="index.html">All five</a></p>
+</main></div></body></html>

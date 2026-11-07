@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · B · The device is the page</title><link rel="stylesheet" href="v2.css">
+<style>
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .devs { display: flex; flex-direction: column; gap: 4px; }
+  .dev { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 9px; border: 1px solid transparent; cursor: pointer; }
+  .dev:hover { background: var(--panel-2); }
+  .dev.on { background: var(--panel-2); border-color: var(--line); }
+  .dev b { display: block; font-size: 13px; } .dev span.sub { font-size: 11.5px; color: var(--muted); }
+  .dev .flags { display: flex; gap: 4px; }
+  .pill { font: 700 10px var(--font-body); padding: 2px 6px; border-radius: 5px; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 0 0 14px; }
+  .tabs a { padding: 9px 12px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs a.on { color: var(--text); border-color: var(--accent); }
+  .tabs a .n { font-size: 11px; margin-left: 6px; color: var(--crit); font-weight: 700; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .facts div { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
+  .facts b { display: block; font-size: 15px; } .facts span { font-size: 11px; color: var(--muted); }
+  .ev { border-left: 3px solid var(--crit); padding: 10px 14px; background: color-mix(in srgb, var(--crit) 7%, var(--panel)); border-radius: 0 10px 10px 0; }
+  .ev .w { font-size: 11.5px; color: var(--muted); }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .facts { grid-template-columns: repeat(2, 1fr); } }
+</style></head>
+<body><div class="app"><aside class="side">
+  <a class="brand"><span class="glyph">◉</span><span>TheySpy</span></a>
+  <a class="on"><span>▦</span>Devices<span class="n bad">1</span></a>
+  <a><span>◍</span>Network<span class="n ok"></span></a>
+  <a><span>⚠</span>Exploited bugs<span class="n warn">4</span></a>
+  <a><span>⌖</span>Indicators</a>
+  <div class="sep">More</div>
+  <a class="more-only"><span>¶</span>Briefing &amp; alerts</a><a class="more-only"><span>◇</span>Other sites</a><a class="more-only"><span>✎</span>Settings</a>
+  <div class="foot"><span><span class="dot ok"></span> Pi-hole · watching</span><span>Version 1.10.0</span></div>
+</aside>
+<main>
+  <div class="top"><div><h1>Devices</h1><p class="muted small">27 known · 23 online · everything TheySpy knows about each one, in one place.</p></div><div class="grow"></div><input class="btn" style="width:260px;text-align:left;font-weight:400;color:var(--muted)" value="⌕  name, address, MAC, CVE, domain…" readonly><a class="btn">Sweep</a></div>
+
+  <div class="layout">
+    <section class="card" style="padding:8px">
+      <div class="row small" style="padding:4px 8px 8px"><a class="tag" style="color:var(--text);border-color:var(--accent)">Needs attention 5</a><a class="tag">New 0</a><a class="tag">All 27</a><a class="tag">Offline 4</a></div>
+      <div class="devs">
+        <div class="dev on"><span class="dot bad"></span><div><b>Kitchen Pixel</b><span class="sub">phone · 192.168.1.42 · Pi-hole, agent n/a</span></div><div class="flags"><span class="pill b-crit">hit</span></div></div>
+        <div class="dev"><span class="dot warn"></span><div><b>MacBook Pro</b><span class="sub">laptop · 192.168.1.20 · agent 2 h ago</span></div><div class="flags"><span class="pill b-high">KEV</span></div></div>
+        <div class="dev"><span class="dot warn"></span><div><b>Work laptop</b><span class="sub">laptop · 192.168.1.31 · agent 9 days</span></div><div class="flags"><span class="pill b-high">KEV</span><span class="pill b-med">gap</span></div></div>
+        <div class="dev"><span class="dot warn"></span><div><b>Synology NAS</b><span class="sub">storage · 192.168.1.9 · Standard check</span></div><div class="flags"><span class="pill b-high">KEV</span></div></div>
+        <div class="dev"><span class="dot warn"></span><div><b>iPhone 16</b><span class="sub">phone · 192.168.1.44 · no MVT yet</span></div><div class="flags"><span class="pill b-med">gap</span></div></div>
+        <div class="dev"><span class="dot ok"></span><div><b>BoxPilot server</b><span class="sub">server · 192.168.1.5 · agent 2 h</span></div><div class="flags"></div></div>
+        <div class="dev"><span class="dot ok"></span><div><b>LG TV</b><span class="sub">tv · 192.168.1.61</span></div><div class="flags"></div></div>
+        <div class="dev"><span class="dot ok"></span><div><b>porch sensor</b><span class="sub">iot · 192.168.1.88 · Espressif</span></div><div class="flags"></div></div>
+        <div class="dev muted" style="justify-content:center"><span></span><span class="small">19 more, all quiet</span><span></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="margin-bottom:12px"><h1 style="font-size:20px">Kitchen Pixel</h1><span class="badge b-crit">reached an indicator</span><span class="grow"></span><a class="btn small">Trust</a><a class="btn small">Check now</a><a class="btn small">Edit</a></div>
+      <div class="facts">
+        <div><b>192.168.1.42</b><span>home · was .40 until Tue</span></div>
+        <div><b>a4:c1:38:…:19</b><span>Google · Pi-hole client “Pixel”</span></div>
+        <div><b>Android 16</b><span>from its own check, 3 days ago</span></div>
+        <div><b>Not trusted</b><span>seen since 12 Aug</span></div>
+      </div>
+      <div class="tabs" style="margin-top:14px"><a class="on">Evidence<span class="n">1</span></a><a>Exposure · 4 of 7</a><a>Bugs · 2</a><a>DNS activity</a><a>Ports</a><a>History</a></div>
+
+      <div class="stack">
+        <div class="ev">
+          <div class="row"><b>Looked up <span class="mono">noas-edge[.]example</span> · 3 times · 6 Nov 21:14 – 21:16</b><span class="badge b-crit">not blocked</span></div>
+          <div class="w" style="margin-top:4px">Indicator: AdFection C2, tier 1, primary confidence, zero-breach 2026-10-16. Recorded by Pi-hole under 192.168.1.42. A DNS lookup is a contact, not proof the phone is infected.</div>
+          <div class="row" style="margin-top:10px"><a class="btn danger small">Block in Pi-hole</a><a class="btn small">Run MVT on this phone</a><a class="btn small">Export STIX</a><span class="muted small">Chain of custody kept</span></div>
+        </div>
+        <div class="list small">
+          <div><span class="dot ok"></span><span class="grow">No other indicator contact in 30 days (1,204 lookups scanned).</span></div>
+          <div><span class="dot"></span><span class="grow">On-device check not possible: phones are checked with MVT, which has not been run on this one.</span><a>How</a></div>
+          <div><span class="dot warn"></span><span class="grow">Ad exposure: 4 of 7 known. Advertising ID not recorded; GPC and ad blocking unknown until the phone opens This device once.</span><a>Open on the phone</a></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mock-up B · The device is the page. Evidence, exposure, bugs, DNS activity and ports are tabs of a device instead of five screens with their own device tables. The sidebar shrinks to what is not about one device. <a href="index.html">All five</a></p>
+</main></div></body></html>
