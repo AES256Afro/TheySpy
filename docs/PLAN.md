@@ -780,7 +780,14 @@ write for that session (403, named), the sidebar hides what it cannot do, and th
 who looked.
 
 ### M38 — IPv6 (M)
-Scan ranges, sweeps, the network table, `deviceByAddress` and the lookup attribution all take
+**Status (7 Nov 2026): done** (1.34.0). BigBox confirmed the mechanism: not one of its 25 recorded
+addresses was IPv6, because the scope guard (IPv4 scan ranges) dropped every IPv6 address Pi-hole's
+table reported. Now an address has one spelling (`canonicalIp`: mapped IPv4 as IPv4, IPv6
+compressed and lower-case), ranges are either family (`parseRange`, IPv6 in the scope guard and
+never swept), Pi-hole's IPv6 addresses are kept whatever the ranges say, a device's IPv6 sits beside
+its IPv4 with no address-change event between families, lookups and the browser's own address are
+credited through the same spelling, and the explainer places link-local, unique-local, Tailscale
+and global IPv6 addresses. **Originally:** Scan ranges, sweeps, the network table, `deviceByAddress` and the lookup attribution all take
 IPv6: a device is one device under its IPv4 and its IPv6 addresses (held on `device_addresses`),
 a lookup from an IPv6 address is credited to the device that holds it, and the local-address rules
 (`addresses.mjs`) already know the private ranges.

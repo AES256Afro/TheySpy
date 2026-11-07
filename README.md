@@ -53,7 +53,7 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_PIHOLE_WRITE` | unset | `false` forbids changing Pi-hole whatever the screen says; `true` allows it. Unset: the screen decides. |
 | `TS_BLOCKLISTS_AUTO` | `true` | Update enabled blocklists every 6 hours and look for new ones daily (new lists only become candidates). |
 | `TS_FLEET_AUTO` | `true` | Read Pi-hole's network table every 5 minutes and sweep the networks chosen on the Fleet screen every 30 minutes. |
-| `TS_SCAN_RANGES` | private ranges | Comma-separated IPv4 ranges discovery may probe: `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10` by default. |
+| `TS_SCAN_RANGES` | private ranges | Comma-separated IPv4 or IPv6 ranges discovery may probe: `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7,fe80::/10` by default. IPv6 ranges are never swept; a device's global IPv6 address is recorded when Pi-hole reports it, and probed only if its prefix is listed here. |
 | `TS_CVES_AUTO` | `true` | CISA KEV hourly, NVD every 2 hours (the last 120 days on the first run), EPSS daily. |
 | `TS_NVD_API_KEY` | empty | Optional free NVD key: 50 requests per 30 seconds instead of 5. |
 | `TS_NTFY_URL` / `TS_NTFY_TOPIC` / `TS_NTFY_TOKEN` | empty | Where alerts and the weekly briefing go (ntfy). Also settable on the Briefing screen. |

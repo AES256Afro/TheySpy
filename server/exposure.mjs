@@ -29,7 +29,7 @@ export function scoreOf(factors) {
 export function inStarlink(ip, feedText) {
   return String(feedText).split("\n").some((line) => {
     const prefix = line.split(",")[0]?.trim();
-    return prefix && !prefix.includes(":") && inCidr(ip, prefix);
+    return Boolean(prefix) && inCidr(ip, prefix);
   });
 }
 

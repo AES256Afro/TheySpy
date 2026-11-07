@@ -94,3 +94,12 @@ describe("M16", () => {
     expect(exposure.forDevice(fleet.list().find((d) => d.hostname === "old-tablet").id).factors.find((f) => f.id === "clean").state).toBe("fail");
   });
 });
+
+describe("IPv6 (M38)", () => {
+  it("matches Starlink's IPv6 prefixes too", () => {
+    const feed = "98.97.0.0/17,US,US-CA,,\n2605:59c8::/32,US,US-CA,,\n";
+    expect(inStarlink("2605:59c8:1234::1", feed)).toBe(true);
+    expect(inStarlink("2a02:8010::1", feed)).toBe(false);
+    expect(inStarlink("98.97.14.2", feed)).toBe(true);
+  });
+});

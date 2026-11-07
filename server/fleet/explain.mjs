@@ -1,3 +1,4 @@
+import net from "node:net";
 import { inCidr, isRandomisedMac, slash24 } from "./addresses.mjs";
 
 // Turning what is known about an address into words: which network it is on, what kind of device it
@@ -12,7 +13,14 @@ export function networkOf(ip, gateway, mac = null) {
   if (!ip) return null;
   if (isDockerMac(mac)) return { kind: "docker", label: "Docker container", detail: `A container on a Docker network on the Pi-hole host (its MAC starts 02:42, Docker's prefix): an app asking Pi-hole, not a separate device.` };
   if (ip.startsWith("127.") || ip === "::1") return { kind: "local", label: "This machine", detail: "The machine Pi-hole runs on, asking itself." };
-  if (inCidr(ip, "100.64.0.0/10")) return { kind: "tailscale", label: "Tailscale", detail: "An address on your tailnet: the device reaches Pi-hole over Tailscale, from home or anywhere." };
+  if (inCidr(ip, "100.64.0.0/10") || inCidr(ip, "fd7a:115c:a1e0::/48")) return { kind: "tailscale", label: "Tailscale", detail: "An address on your tailnet: the device reaches Pi-hole over Tailscale, from home or anywhere." };
+  // IPv6 (M38): link-local and unique local addresses are on the owner's network by definition; a
+  // global one belongs to a dual-stack household's own device as often as not, and says nothing about which network.
+  if (net.isIPv6(ip)) {
+    if (inCidr(ip, "fe80::/10")) return { kind: "lan", label: "Your network (IPv6 link-local)", detail: "An IPv6 address that only works on the local link: the device is on your wired or Wi-Fi network." };
+    if (inCidr(ip, "fc00::/7")) return { kind: "lan", label: "Your network (IPv6)", detail: "A unique local IPv6 address: your router hands these out beside the IPv4 ones." };
+    return { kind: "other", label: "IPv6 address", detail: "A global IPv6 address. On a dual-stack network each of your own devices has one; it does not say which network the device is on." };
+  }
   if (gateway && slash24(ip) === slash24(gateway)) {
     return ip === gateway
       ? { kind: "router", label: "Your router", detail: `The router itself (${gateway}): its own lookups, and those it forwards for devices.` }

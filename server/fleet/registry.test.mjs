@@ -170,3 +170,30 @@ describe("M31 B42: an edit that is too long is refused with the limit, not cut i
     expect(fleet.edit(d.id, { label: "x".repeat(80), tags: Array.from({ length: 12 }, (_, i) => `T${i}`) }, "owner")).toMatchObject({ label: "x".repeat(80), tags: Array.from({ length: 12 }, (_, i) => `t${i}`) });
   });
 });
+
+describe("IPv6 (M38)", () => {
+  it("keeps a device's IPv6 addresses beside its IPv4 one, as one device, with no address change between them", () => {
+    const { fleet } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "macbook", seenAt: at("2026-11-07T11:00:00Z") }], "pihole", { inventory: true });
+    fleet.observe([{ ip: "2001:DB8:0:0:0:0:0:20", mac: "f0:18:98:00:00:0c", seenAt: at("2026-11-07T11:30:00Z") }, { ip: "fe80::1a2b:3c4d:5e6f:0020%eth0", mac: "f0:18:98:00:00:0c", seenAt: at("2026-11-07T11:31:00Z") }], "pihole");
+    const devices = fleet.list();
+    expect(devices).toHaveLength(1);
+    const [d] = devices;
+    expect(d.ip).toBe("192.168.1.20"); // the IPv4 stays the main address
+    expect(fleet.addressesOf(d.id).sort()).toEqual(["192.168.1.20", "2001:db8::20", "fe80::1a2b:3c4d:5e6f:20"]);
+    expect(fleet.events(d.id).map((e) => e.kind)).toEqual(["inventoried"]);
+    // A lookup from the IPv6 address is credited to the device, however the source spelled it.
+    expect(fleet.deviceByAddress().get("2001:db8::20")).toBe(d.id);
+    // An IPv4 change is still a change.
+    fleet.observe([{ ip: "192.168.1.21", mac: "f0:18:98:00:00:0c", seenAt: at("2026-11-07T11:40:00Z") }], "pihole");
+    expect(fleet.events(d.id).map((e) => e.kind)).toEqual(["ip_changed", "inventoried"]);
+    expect(fleet.list()[0].ip).toBe("192.168.1.21");
+  });
+
+  it("records a device seen only by IPv6, and a mapped IPv4 as its IPv4", () => {
+    const { fleet } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    fleet.observe([{ ip: "fd12:3456:789a::42", mac: "a4:c1:38:00:00:19", seenAt: at("2026-11-07T11:00:00Z") }, { ip: "::ffff:192.168.1.7", mac: "a4:c1:38:00:00:20", seenAt: at("2026-11-07T11:00:00Z") }], "pihole");
+    expect(fleet.list().map((d) => d.ip).sort()).toEqual(["192.168.1.7", "fd12:3456:789a::42"]);
+    expect(fleet.list().find((d) => d.ip === "fd12:3456:789a::42").network).toMatchObject({ kind: "lan", label: "Your network (IPv6)" });
+  });
+});

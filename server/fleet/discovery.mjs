@@ -185,7 +185,9 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
       const inventory = fleet.isEmpty();
       let fromPihole = 0;
       if (sentinel.effective().mode) {
-        const observations = fromPiholeNetwork(await sentinel.source().networkDevices()).filter((o) => allowed(o.ip));
+        // An IPv6 address in Pi-hole's own table asked Pi-hole from the network (M38): kept whatever
+        // the scan ranges say, which gate what TheySpy may probe, not what it may know.
+        const observations = fromPiholeNetwork(await sentinel.source().networkDevices()).filter((o) => allowed(o.ip) || net.isIPv6(o.ip));
         fleet.observe(observations, "pihole", { inventory });
         fromPihole = observations.length;
         log(`Pi-hole's network table: ${fromPihole} addresses.`);
