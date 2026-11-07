@@ -52,6 +52,8 @@ On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. Devices i
 
 **Or a webhook** (the card below ntfy): an address of yours that takes a POST, such as a Discord or Slack relay, Home Assistant or n8n. Each alert and the weekly briefing arrive as JSON (`event`, `key`, `at`, `kind`, `priority`, `title`, `message`, `link`, `detail`). With a secret set, the `X-TheySpy-Signature` header is `sha256=` followed by the HMAC-SHA256 of the exact body, hex, so the receiver can refuse anything else. Both channels can be on at once; an alert counts as delivered when every channel has it, and a retry goes only to the one that has not.
 
+**A password for the household** (Activity → Household): a second password that opens the Overview, Checks, Fleet and the device pages, and This device, and changes nothing. The family signs in with it on the same page as you; the sidebar shows them only those screens, every change is refused, and the audit log records who signed in with it. Clear it there to end their sessions.
+
 **On a phone**, open TheySpy in the browser and add it to the home screen: it opens on **This device**, full screen, with its own icon.
 
 You then get a message for:
