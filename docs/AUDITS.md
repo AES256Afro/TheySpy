@@ -416,3 +416,13 @@ capped, parsed defensively and bounded before it is stored or shown. **Security 
 - `syncNvd` and the updater keep their earlier non-findings.
 - `cves/lookup` queues NVD requests one at a time with the pause NVD asks for; the device page
   waits on it when nothing is cached. Honest, bounded, unchanged.
+
+### What shipped (sweep 5) — 1.13.0, M17
+
+| # | Fix |
+| --- | --- |
+| B25 | `netlogs.importLogs()` credits each event to `holderAt(addressHolders, client, at)`; fingerprints are named by the holder at their last sighting; `/api/pihole/hits` carries `device` (the holder at the row's last sighting) and the Sentinel table shows it, saying "held the address at the time". The JA4 baseline itself is still per address: that is a schema change, left for a later milestone and said here. |
+| B24 | A site's snapshot keeps the keys of every got-through pair (bounded at 500) beside the twenty rows it shows, and "new since last reading" is computed against the keys. |
+| C28 | `listName()` keeps a segment it cannot decode as it is. |
+| C29 | The updater passes its 5 MB limit to `readCappedBytes`, so an oversized body is refused as it arrives. |
+| C30 | `importMvt` bounds the module name at 80 characters. |

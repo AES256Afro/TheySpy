@@ -284,7 +284,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       for (const file of files.slice(0, 50)) {
         let items;
         try { items = JSON.parse(String(file.content)); } catch { throw Object.assign(new Error(`${file.name} is not JSON`), { status: 400 }); }
-        const module = String(file.name).replace(/\.json$/i, "").replace(/_detected$/i, "");
+        const module = String(file.name).replace(/\.json$/i, "").replace(/_detected$/i, "").slice(0, 80);
         for (const item of Array.isArray(items) ? items : []) {
           const matched = item?.matched_indicator;
           const value = String(matched?.value ?? matched ?? "").toLowerCase().replace(/\[\.\]/g, ".").slice(0, 253);

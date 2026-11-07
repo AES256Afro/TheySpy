@@ -1,3 +1,4 @@
+import { holderAt } from "./fleet/attribution.mjs";
 import { createMatcher } from "./pihole/match.mjs";
 
 // Network logs from Zeek or Suricata (docs/PLAN.md "Later"): what the owner's sensor saw on the
@@ -128,9 +129,12 @@ export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new 
     fingerprints: db.prepare("SELECT * FROM ja4_fingerprints ORDER BY is_new DESC, last_seen DESC LIMIT 500"),
     acknowledge: db.prepare("UPDATE ja4_fingerprints SET is_new = 0 WHERE client_ip = ? AND ja4 = ?"),
   };
+  // The device that held an address at a time (M16's attribution): a log is a record of the past,
+  // and an address changes hands.
   const deviceOf = () => {
-    const byIp = new Map(fleet.list().map((d) => [d.ip, d]));
-    return (ip) => byIp.get(ip) ?? null;
+    const holders = fleet.addressHolders();
+    const byId = new Map(fleet.list().map((d) => [d.id, d]));
+    return (ip, at) => { const id = holderAt(holders, ip, at); return id === null ? null : byId.get(id) ?? null; };
   };
 
   return {
@@ -162,7 +166,7 @@ export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new 
           }
           const ind = e.name ? matcher.match(e.name) : null;
           if (!ind) return;
-          const d = device(e.client);
+          const d = device(e.client, e.at);
           const location = `${tool} ${e.kind}`;
           if (q.contactExists.get(tool, ind.value, location, d?.id ?? null)) return;
           q.addFinding.run(d?.id ?? null, tool, `${tool}:${name}`, ind.value, ind.tier ?? null, ind.confidence ?? null, location,
@@ -180,7 +184,7 @@ export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new 
         for (const [ja4, f] of prints) {
           if (q.fingerprint.get(client, ja4)) { q.seeFingerprint.run(f.first, f.last, f.count, f.sni, client, ja4); continue; }
           q.addFingerprint.run(client, ja4, f.first, f.last, f.count, f.sni, f.tool, baseline ? 0 : 1);
-          if (!baseline) fresh.push({ client, device: device(client)?.name ?? null, ja4, sni: f.sni });
+          if (!baseline) fresh.push({ client, device: device(client, f.last)?.name ?? null, ja4, sni: f.sni });
         }
       }
       audit.record(actor, "evidence.network_logs_imported", null, { files: files.length, events, findings: added, newFingerprints: fresh.length });
@@ -194,7 +198,7 @@ export function createNetworkLogs({ db, fleet, iocStore, audit, now = () => new 
       const device = deviceOf();
       return q.fingerprints.all().map((raw) => {
         const r = /** @type {any} */ (raw);
-        return { client: r.client_ip, device: device(r.client_ip)?.name ?? null, ja4: r.ja4, firstSeen: r.first_seen, lastSeen: r.last_seen, count: r.count, sni: r.sni, source: r.source, isNew: Boolean(r.is_new) };
+        return { client: r.client_ip, device: device(r.client_ip, r.last_seen)?.name ?? null, ja4: r.ja4, firstSeen: r.first_seen, lastSeen: r.last_seen, count: r.count, sni: r.sni, source: r.source, isNew: Boolean(r.is_new) };
       });
     },
 

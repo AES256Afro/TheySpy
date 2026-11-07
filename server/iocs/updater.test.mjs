@@ -117,3 +117,12 @@ describe("indicator store and updater", () => {
     expect(() => services.iocStore.apply(pending.id, "owner")).toThrow(/Only a pending update/);
   });
 });
+
+describe("M17 C29", () => {
+  it("refuses a body over its own 5 MB limit as it arrives, naming the limit", async () => {
+    const { createIocUpdater } = await import("./updater.mjs");
+    const big = Buffer.alloc(6 * 1024 * 1024, 0x20);
+    const updater = createIocUpdater({ fetchImpl: async () => new Response(big, { status: 200, headers: { "content-type": "application/json" } }) });
+    await expect(updater.fetchCandidate("release")).rejects.toThrow(/more than 5242880 bytes/);
+  });
+});

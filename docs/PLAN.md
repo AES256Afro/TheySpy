@@ -619,7 +619,7 @@ is the time-bounded attribution the data already supports.
   the manifest bumped and pinned.
 
 ### M17 — Fifth sweep's findings (S)
-**Status: planned.** Sweep 5 ([docs/AUDITS.md](AUDITS.md)) read every place another machine's data
+**Status (7 Nov 2026): done** (1.13.0). Every item shipped with a test that fails without its fix. The JA4 baseline stays per address (a schema change for another milestone); fingerprints are *named* by the holder at the time. **Originally:** Sweep 5 ([docs/AUDITS.md](AUDITS.md)) read every place another machine's data
 enters. Security found nothing for the third sweep running and leaves the loop. Two bugs, three
 pieces of hygiene, all reproduced.
 
