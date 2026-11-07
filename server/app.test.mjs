@@ -141,7 +141,7 @@ describe("HTTP API", () => {
     expect(overview.subscriptions.find((l) => l.id === "spyware").url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/lists\/[\w-]+\/spyware\.adblock$/);
     expect((await request("GET", "/api/blocklists/candidates?category=bypass")).body.candidates.map((c) => c.key)).toEqual(["adguard:hagezi_encrypted_dns_vpn_tor_proxy_bypass"]);
     expect((await request("POST", "/api/blocklists/sources", { url: "ftp://x" })).status).toBe(400);
-    expect((await request("PUT", "/api/blocklists/pins", { pins: ["Example.COM", "not a name"] })).body).toEqual({ pins: ["example.com"] });
+    expect((await request("PUT", "/api/blocklists/pins", { pins: ["Example.COM", "not a name"] })).body).toEqual({ pins: ["example.com"], ignored: ["not a name"] });
   });
 
   it("previews baselines with security names defanged, and checks what it is asked to apply", async () => {
