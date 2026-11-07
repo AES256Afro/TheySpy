@@ -6,22 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 5 | 0 | in the loop |
-| Bugs (correctness) | 5 | 0 | in the loop |
-| Security | 5 | **3** | **out of the loop** (left after sweep 5) |
+| Code (structure, hygiene, dead weight) | 6 | 0 | in the loop |
+| Bugs (correctness) | 6 | 0 | in the loop |
+| Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
-sweep 4's in 1.12.0 (M16); sweep 5's are planned as M17. **Security has gone three sweeps without a
-finding and leaves the loop.** It is swept again only if a later change opens new surface (a new
-unauthenticated route, a new outbound connector, a new parser of third-party input). Code and bugs
-both found things in sweep 5 and stay at 0.
+sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18). Security left the
+loop after sweep 5. Code and bugs both found things again in sweep 6 and stay at 0.
 
-Sweep 6 reads what is left: `blocklists/library.mjs`'s fetch and quarantine paths in full,
-`blocklists/taxonomy.mjs`, `pihole/match.mjs`, `pihole/sources.mjs`, `agents.mjs`'s enrol and report
-paths (as code, not security), `auth.mjs`'s session lifecycle, `config.mjs`, `index.mjs`'s
-schedulers, `src/names.ts`, `src/api.ts`'s `useStopped`, and the remaining screens (`Indicators`,
-`Evidence`, `Intel`, `Briefing`, `Activity`, `Appearance`, `Sites`, `ThisDevice`) in full; and it
-re-reads `netlogs.mjs` and `sites.mjs` once M17 lands.
+Sweep 7 has read every module and screen at least once. It goes round again from the top, reading
+for what the fixes since sweep 1 have changed: `app.mjs`, `agents.mjs`, `pihole/sentinel.mjs`,
+`blocklists/library.mjs`, `fleet/registry.mjs`, `exposure.mjs`, `overview.mjs`, `netlogs.mjs`,
+and the screens that were rewritten (`Overview`, `Device`, `Fleet`, `Pihole`). It should also
+measure rather than read: the Overview, Fleet, Exposure and Blocklists endpoints on a seeded
+database of realistic size, since the two sweeps that measured something found the largest things.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -426,3 +424,52 @@ capped, parsed defensively and bounded before it is stored or shown. **Security 
 | C28 | `listName()` keeps a segment it cannot decode as it is. |
 | C29 | The updater passes its 5 MB limit to `readCappedBytes`, so an oversized body is refused as it arrives. |
 | C30 | `importMvt` bounds the module name at 80 characters. |
+
+## Sweep 6 — 7 Nov 2026, at 1.13.0
+
+Read in full: `blocklists/library.mjs`, `pihole/match.mjs`, `pihole/sources.mjs`, `auth.mjs`,
+`config.mjs`, `index.mjs`'s schedulers, `src/names.ts`, `src/api.ts`, and `Indicators.tsx`,
+`Evidence.tsx`, `Intel.tsx`, `Briefing.tsx`, `Activity.tsx`, `ThisDevice.tsx` (Appearance and Sites
+were read for the interface audit). With this sweep every module and screen has been read at least
+once. Swept: what the library keeps and throws away, what the schedulers do with failure, and
+whether anything the product promises in prose is contradicted by what it does.
+
+**Baseline:** `npm run check` green at 295 tests. `auth.mjs` is as sweep 1 found it. The library's
+gates hold: a redirect off HTTPS is refused, bodies are capped at 50 MB, and `compile()` excepts a
+protected name whose parent a list blocks (B7). The database source streams Pi-hole's `queries`
+table rather than loading it.
+
+**Every finding below was reproduced against the real modules.**
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B27 | **The names the network looks up most are kept off every compiled list — and on an unblocked network those are the trackers.** `rememberPopular()` takes Pi-hole's top 200 *allowed* names and `neverBlockSet()` exempts them from every compilation, so the lists meant to block `app-measurement.com` and `doubleclick.net` cannot, precisely because every device already talks to them. Reproduced: with those two among the popular names, the compiled ads/trackers list omits both. The exemption was meant to stop a *security* list from taking out a site the household uses; as written it stops the ad lists from doing their job, and it refreshes itself on every update, so what it protects can never become blocked. A busy name should be a reason to *hold an update for review*, not a silent hole in the list. | `blocklists/library.mjs` | **medium** |
+| B26 | **A held update is held again on every fetch.** `fetchOne()` compares the new digest with the *active* version only, so a list whose update failed a gate (size jump, newly blocked protected name) is fetched every six hours, differs from the active version every time, and inserts another quarantined version — each with a packed copy of the whole list. Reproduced: three fetches of one unchanged held update, three quarantined rows, three "Update held" cards for the same list. Until the owner decides, the database grows by a copy of the list four times a day. | `blocklists/library.mjs` | medium |
+| B28 | **A scheduled Pi-hole read, sweep, vendor update or NetAlertX pull that keeps failing is recorded and never shown.** `index.mjs`'s `quietly()` writes `fleet_last_<name>_error` to settings; nothing reads those keys (Protec's error is the only one surfaced). A Pi-hole password that stopped working fails every five minutes for weeks with the Fleet screen reading "Pi-hole read: 3 days ago" and nothing else. | `index.mjs`, `fleet/routes.mjs`, `src/screens/Fleet.tsx` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C31 | `matchNames()` walks every domain of every enabled list on every call, and the Fleet activity card and the device page's DNS tab call it with a dozen names each time they open. Measured: **193 ms for 3 names over 1,000,000 enabled names**; a household with HaGeZi's threat feed and Pro++ has three times that. It should remember answers between calls, until the lists change. |
+| C32 | This device says "Public IP and Starlink egress: coming in a later version." The check has existed since M8, on the Ad exposure screen. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- The CVE `first` run and the hourly KEV sync can overlap once, ninety seconds after start; both
+  apply the catalogue inside a transaction, so the second is a wasted fetch, not a wrong result.
+- `useStopped()` sets its flag false again on effect start, so React's StrictMode double-invoke
+  does not leave it stuck at true.
+- The weekly briefing's hourly check sends once per ISO week because the alert key is the week.
+
+### What shipped (sweep 6) — 1.14.0, M18
+
+| # | Fix |
+| --- | --- |
+| B27 | `compile()` excepts the built-in never-block names and the owner's pins only. `fetchOne()` holds an update that newly blocks a name this network looks up most — for a first version too — and says which; the sample lists them with the protected names. The Blocklists copy says what "never block" now means. |
+| B26 | A fetch whose digest matches an already-held version is "held, unchanged" and inserts nothing; a newer held version supersedes the older. One held version per list. |
+| B28 | `server/quietly.mjs`: one run at a time, the failure recorded, cleared on the next success; `GET /api/fleet` carries `errors` and the Fleet screen shows each as a banner. |
+| C31 | `matchNames()` remembers up to 2,000 answers until the lists change. |
+| C32 | This device points at the Ad exposure check. A source test refuses "coming in a later version" and milestone words on any screen. |
