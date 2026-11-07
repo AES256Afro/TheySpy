@@ -21,7 +21,10 @@ export function fromPiholeNetwork(devices) {
   for (const d of devices) {
     const mac = String(d.hwaddr ?? "").startsWith("ip-") ? null : normaliseMac(d.hwaddr);
     for (const a of d.ips ?? []) {
-      const seen = Math.max(Number(a.lastSeen ?? 0), Number(d.lastQuery ?? 0));
+      // Each address's own last sighting. The device's lastQuery is a fallback for an address with
+      // none, not a floor for all of them: stamping every address a MAC ever held with the newest
+      // time made each sync write an "address changed" event between them.
+      const seen = Number(a.lastSeen ?? 0) || Number(d.lastQuery ?? 0);
       if (!a.ip || !seen || a.ip.startsWith("127.") || a.ip === "::1") continue;
       out.push({ ip: String(a.ip), mac, hostname: a.name || null, vendor: d.macVendor || null, seenAt: new Date(seen * 1000).toISOString() });
     }
