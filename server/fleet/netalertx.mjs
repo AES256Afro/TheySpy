@@ -10,6 +10,18 @@
 import { readCappedJson } from "../shared.mjs";
 
 const unknownName = /^\s*$|^\((unknown|name not found)\)$/i;
+/**
+ * NetAlertX's times are "YYYY-MM-DD HH:MM:SS" in its own timezone (usually this machine's); null
+ * when there is none or it is not a time. Never later than `latest`.
+ * @param {unknown} value @param {Date} latest
+ */
+export function netalertxTime(value, latest) {
+  const text = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(text)) return null;
+  const t = Date.parse(text.replace(" ", "T"));
+  if (Number.isNaN(t)) return null;
+  return new Date(Math.min(t, latest.getTime())).toISOString();
+}
 const macPattern = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/;
 const mac = (value) => String(value ?? "").trim().toLowerCase().replace(/-/g, ":");
 
@@ -94,7 +106,15 @@ export function createNetAlertX({ settings, secretBox, fleet, audit, fetchImpl =
       const remote = (await devices()).filter((r) => macPattern.test(mac(r.devMac)));
       const first = !settings.get("netalertx_last_sync");
       const seenAt = now().toISOString();
-      const observed = remote.filter((r) => r.devLastIP || r.devPrimaryIPv4).map((r) => ({ ip: String(r.devPrimaryIPv4 || r.devLastIP), mac: mac(r.devMac), hostname: null, seenAt }));
+      // A device NetAlertX saw in its last scan was seen now; one it has not seen lately was seen
+      // when NetAlertX last saw it, not now (B34: every pull marked every device online and moved
+      // it back to NetAlertX's last address). One with no usable time is not an observation at all.
+      const present = (r) => r.devPresentLastScan === 1 || r.devPresentLastScan === true || r.devPresentLastScan === "1";
+      const saysWhen = (r) => r.devPresentLastScan !== undefined || r.devLastConnection !== undefined; // an API that does not say is taken at its word: seen now
+      const observed = remote.filter((r) => r.devLastIP || r.devPrimaryIPv4).map((r) => ({
+        ip: String(r.devPrimaryIPv4 || r.devLastIP), mac: mac(r.devMac), hostname: null,
+        seenAt: present(r) || !saysWhen(r) ? seenAt : netalertxTime(r.devLastConnection, now()), firstSeenAt: netalertxTime(r.devFirstConnection, now()),
+      })).filter((o) => o.seenAt);
       const created = observed.length ? fleet.observe(observed, "netalertx", first ? { inventory: true } : {}) : [];
       const byMac = new Map(fleet.list().filter((d) => d.mac).map((d) => [mac(d.mac), d]));
       let named = 0;

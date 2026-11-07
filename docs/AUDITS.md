@@ -6,20 +6,22 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 12 | 0 | in the loop |
-| Bugs (correctness) | 12 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 13 | 1 | in the loop |
+| Bugs (correctness) | 13 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
-sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23). Security left
-the loop after sweep 5. Bugs found something in every sweep but 10; code in every sweep so far.
+sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
+sweep 13's in 1.20.0 (M24). Security left the loop after sweep 5. Bugs found something in every
+sweep but 10; code came back clean for the first time in sweep 13.
 
-Sweep 13 continues the third pass: `integrations.mjs`, `summary.mjs`, `alerts.mjs` and `digest.mjs`
-after M14 and M23, `fleet/registry.mjs` and `fleet/discovery.mjs` after M16, `thisdevice.mjs`,
-`netalertx.mjs` and `protec.mjs`, and the Intel, Blocklists and Briefing screens; it measures
-`summarize()` and the MCP's tools on the seeded database.
+Sweep 14 finishes the third pass: `agent-routes.mjs`, `auth.mjs`, `app.mjs` and `index.mjs`
+after M18–M23, `cves/devices.mjs`, `cves/lookup.mjs`, `cves/advisories.mjs` and `cves/match.mjs`,
+`fleet/targeted.mjs`, `fleet/explain.mjs` and `fleet/oui.mjs`, and the Check, Exposure, Activity
+and Indicators screens; it measures `deviceCves.inventory()` and the targeted check's history reads
+on the seeded database.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -725,3 +727,43 @@ request path.
 | B32 | `indicatorLookups(days)` is built from the window's own events, attributed by `attributeHits()` like the Overview. A test: the tablet's July and the laptop's November lookups, apart, in the week and in the year. |
 | B33 | `act()` keeps a message the action returns; both imports return theirs. A test imports an MVT file and reads "2 new finding(s) from MVT.". |
 | C40 | `Object.hasOwn` for the verdict tables; the same test renders an agent whose status is "constructor". |
+
+## Sweep 13 — 7 Nov 2026, at 1.19.0
+
+The third pass continued: `integrations.mjs`, `summary.mjs`, `alerts.mjs` and `digest.mjs` after
+M14 and M23, `fleet/registry.mjs` and `fleet/discovery.mjs` after M16, `thisdevice.mjs`,
+`netalertx.mjs` and `protec.mjs`, and the Intel, Blocklists and Briefing screens.
+
+**Measured:** `summarize(7)` on the seeded database is 30 ms (27 ms again); the MCP's tools call
+the same read model as the API (lookups 3 ms, exploited 1 ms after C21; `check_domain` is a
+Pi-hole read, budgeted per token).
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B34 | **A NetAlertX pull marks every NetAlertX device as seen now.** `pull()` stamps each device with the pull's own time, whether NetAlertX saw it in its last scan or last September, so every device NetAlertX knows is "online" for the fifteen minutes after each half-hourly pull, its last-seen time is meaningless, and a device Pi-hole sees at a new address is moved back to NetAlertX's `devLastIP` on every pull (an `ip_changed` event each way, B15's class). NetAlertX says which devices were in its last scan (`devPresentLastScan`) and when it last saw each (`devLastConnection`). | `fleet/netalertx.mjs` | medium |
+
+### Code
+
+None.
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `fleet.observe()` credits a MAC-less sighting at an address nobody holds now to the address's last
+  holder (`byAddress`). Without a MAC there is nothing better; a new record per sighting would
+  multiply devices on every lease change for sources that cannot see MACs (a sweep from a bridged
+  container).
+- The briefing's "by N devices" counts addresses (`hitsSince` groups by client), not attributed
+  devices; the sentence is about the week's lookups, and a device with two addresses is rare in a
+  week.
+- `alerts.fromAudit()` keys a lookup alert by clients, indicators and date: one a day per set,
+  which is the stated design.
+- `integrations.mjs` charges a batch per message and caps it at 20; wrong tokens are counted per
+  address and blocked for the wait the limiter gives.
+
+### What shipped (sweep 13) — 1.20.0, M24
+
+| # | Fix |
+| --- | --- |
+| B34 | A present device is seen now; an absent one at NetAlertX's last-connection time (bounded by now); one that was never connected is not an observation; a record that says nothing about when (an older API) is taken at its word. `devFirstConnection` backdates the holding. A test: the printer NetAlertX last saw in September stays offline with September's time; the laptop in the last scan is online; a device that never connected is not added. |
