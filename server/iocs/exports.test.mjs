@@ -36,3 +36,11 @@ describe("exports", () => {
     expect(() => renderExport(/** @type {any} */ ("csv"), set)).toThrow(/Unknown export format/);
   });
 });
+
+describe("M20 C37", () => {
+  it("does not read a citation through the prototype", async () => {
+    const { citation } = await import("./exports.mjs");
+    expect(citation("constructor")).toBe("constructor");
+    expect(citation("")).toBe("source unspecified");
+  });
+});

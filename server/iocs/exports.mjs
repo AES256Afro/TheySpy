@@ -37,7 +37,7 @@ export const tierDescriptions = Object.freeze({
 
 /** "Publisher, Title, date" for a source key; an unknown key is shown as-is, never re-attributed. */
 export function citation(sourceKey) {
-  const cite = sources[sourceKey];
+  const cite = Object.hasOwn(sources, String(sourceKey)) ? sources[sourceKey] : null;
   if (!cite) return sourceKey || "source unspecified";
   return `${cite[0]}, ${cite[1]}, ${cite[2]}`;
 }
@@ -120,7 +120,7 @@ const citizenLabUrl = sources["citizenlab-adfection-2026"][3];
 
 /** @returns {Record<string, string>} */
 function stixReference(sourceKey) {
-  const cite = sources[sourceKey];
+  const cite = Object.hasOwn(sources, String(sourceKey)) ? sources[sourceKey] : null;
   if (!cite) return { source_name: sourceKey || "unspecified" };
   const ref = { source_name: cite[0], description: `${cite[1]} (${cite[2]})` };
   if (cite[3]) ref.url = cite[3];
@@ -217,7 +217,7 @@ export function mispEvent(set, { now = () => new Date() } = {}) {
   }));
   const sourcesUsed = [...new Set(set.indicators.map((ind) => ind.source || ""))].sort().map((key) => {
     const entry = { key: key || "unspecified", citation: citation(key) };
-    if (sources[key]?.[3]) entry.url = sources[key][3];
+    if (Object.hasOwn(sources, key) && sources[key][3]) entry.url = sources[key][3];
     return entry;
   });
   return {

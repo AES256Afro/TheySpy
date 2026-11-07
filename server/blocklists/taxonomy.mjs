@@ -32,7 +32,7 @@ const allowlistTag = 10;
 /** Categories for a FilterLists entry, or null when it is an allowlist (never a blocklist). */
 export function fromFilterListsTags(tagIds) {
   if (tagIds.includes(allowlistTag)) return null;
-  const out = new Set(tagIds.flatMap((id) => filterListsTags[id] ?? []));
+  const out = new Set(tagIds.flatMap((id) => (Object.hasOwn(filterListsTags, String(id)) ? filterListsTags[id] : [])));
   return out.size ? [...out] : ["other"];
 }
 
@@ -66,7 +66,7 @@ const adguardGroups = { 1: ["ads", "trackers"], 2: ["other"], 3: ["other"], 4: [
 /** Categories for an AdGuard registry entry, or null for its allowlists. */
 export function fromAdguard({ filterKey, groupId, name }) {
   if (/allowlist/i.test(filterKey)) return null;
-  if (adguardKeys[filterKey]) return adguardKeys[filterKey];
+  if (Object.hasOwn(adguardKeys, String(filterKey))) return adguardKeys[filterKey];
   if (/tracker/i.test(filterKey) || /tracker/i.test(name)) return ["telemetry"];
   return adguardGroups[groupId] ?? ["other"];
 }

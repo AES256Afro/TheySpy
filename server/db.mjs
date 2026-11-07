@@ -394,6 +394,8 @@ export const migrations = [
    INSERT OR IGNORE INTO cve_products (product, cve_id) SELECT j.value, c.cve_id FROM cves c, json_each(c.products) j;`,
   // M19: hit events are read by time (the week's lookups, the attribution's window); the only index was by indicator and client.
   `CREATE INDEX ioc_hit_events_at ON ioc_hit_events (at);`,
+  // M20: the imports ask "is this contact already recorded?" per item; the only index was by device and time.
+  `CREATE INDEX findings_contact ON findings (device_id, source, indicator);`,
 ];
 
 /**
