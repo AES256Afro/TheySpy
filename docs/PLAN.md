@@ -771,7 +771,10 @@ in a header, so a Discord, Slack or Home Assistant relay can take it; delivery a
 has them.
 
 ### M37 — A read-only password for the household (S)
-A second password that opens the Overview, Checks, Fleet and the device pages, This device and
+**Status (7 Nov 2026): done** (1.33.0). The Briefing stayed the owner's (its page carries where
+alerts go and the API tokens); Exposure joined the household's screens, as Checks reads it. A
+household session gets 403 with the reason, never 401, so the shell does not throw it out.
+**Originally:** A second password that opens the Overview, Checks, Fleet and the device pages, This device and
 the Briefing, and nothing that changes Pi-hole, the lists or the settings. The API refuses every
 write for that session (403, named), the sidebar hides what it cannot do, and the audit log says
 who looked.

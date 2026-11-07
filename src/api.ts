@@ -13,6 +13,14 @@ export class ApiError extends Error {
  * "Sign in first" in every screen's error banner and the only way back was to reload the page.
  */
 let onSessionEnded: () => void = () => {};
+
+/** Whose session this is (M37): the owner's, or the household's read-only one. Set by the shell after sign-in. */
+export type Role = "owner" | "household";
+let currentRole: Role | null = null;
+export const setRole = (role: Role | null) => { currentRole = role; };
+export const role = () => currentRole;
+/** The screens a household session may open; the rest are the owner's. */
+export const householdScreens = ["overview", "checks", "fleet", "device", "exposure"];
 export const whenSessionEnds = (handler: () => void) => { onSessionEnded = handler; };
 
 /** JSON over fetch. State-changing calls carry X-TheySpy, which the server requires (CSRF guard). */

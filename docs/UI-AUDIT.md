@@ -307,7 +307,7 @@ Said plainly, in the order I would take them; none is a finding against what exi
 6. **Pi-hole's own query log as evidence.** A hit is kept as one row; the surrounding minute of
    that client's lookups (what it asked just before and after) would turn a hit into a story
    without storing the whole log.
-7. **A read-only view for the household.** One owner password opens everything; a second password
+7. **A read-only view for the household** (built: M37, 1.33.0). One owner password opens everything; a second password
    that opens the Overview, Checks and the device pages only would let the family look without
    being able to change Pi-hole.
 8. **The agent on a schedule from TheySpy's side.** The agent is scheduled by hand (cron, launchd,
