@@ -6,25 +6,24 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 14 | 2 | in the loop |
-| Bugs (correctness) | 14 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 15 | 3 | out of the loop (left after sweep 15) |
+| Bugs (correctness) | 15 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
 sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
-sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25). Security left the loop after sweep 5.
-Bugs found something in every sweep but 10; code has been clean since sweep 13 (two sweeps).
+sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25); sweep 15's in 1.22.0 (M26). Security left
+the loop after sweep 5 and code after sweep 15 (clean in sweeps 13, 14 and 15). Bugs has found
+something in every sweep but 10, and is the one category left.
 
-Sweep 15 begins the fourth pass with what the third pass changed: `readmodel.mjs` (M23),
-`fleet/netalertx.mjs` (M24), `fleet/targeted.mjs` (M25), the Overview, Evidence and Check screens
-(M22, M23, M25), and the tests those milestones added; then the modules no sweep has read since the
-first pass: `jobs.mjs`, `audit.mjs`, `db.mjs`, `settings`, `secrets.mjs`, `config.mjs`,
-`ratelimit.mjs`, `egress.mjs`, `pacing.mjs`, `appearance.mjs`, `iocs/store.mjs`, `iocs/updater.mjs`,
-`iocs/parse.mjs`, `iocs/openpgp.mjs`, `pihole/client.mjs`, `pihole/sources.mjs`,
-`pihole/connectors.mjs`, `pihole/match.mjs`, `fleet/services.mjs`, `blocklists/baselines.mjs`,
-`blocklists/parse.mjs`, `blocklists/routes.mjs`, `cves/feeds.mjs` and `cves/routes.mjs`.
+Sweep 16 (bugs only, now) continues the fourth pass with what no sweep has read since the first:
+`shared.mjs`, `params.mjs`, `fleet/addresses.mjs`, the network-log parsers in `netlogs.mjs`, the
+report ingest in `agents.mjs`, `agent/theyspy-agent.py`, `src/api.ts`, `src/App.tsx`,
+`src/names.ts`, `src/screens.ts`, `src/looks/looks.ts`, `shared/contrast.mjs`, and the Baselines,
+Sites, Appearance and Activity screens; then every route's query and body parameters against
+`params.mjs`, since B37 was one that was missed.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -806,3 +805,45 @@ None.
 | --- | --- |
 | B35 | `dnsView()` attributes the address's hit events with `attributeHits()` and shows a device its own; an address with no device known shows every holder's. The domain result names a client after the holder at its last lookup. Tests: the laptop sees its one blocked lookup and the tablet its three from July; a client that asked in the tablet's lease is "tablet". |
 | B36 | The screen reads `lastSeen` and says how many were not blocked. A test renders a check and finds the date, not "Invalid Date". |
+
+## Sweep 15 — 7 Nov 2026, at 1.21.0
+
+The fourth pass began with what the third changed (`readmodel.mjs`, `fleet/netalertx.mjs`,
+`fleet/targeted.mjs`, the Overview, Evidence and Check screens and their new tests), then the
+modules no sweep had read since the first pass: `jobs.mjs`, `audit.mjs`, `db.mjs`, `secrets.mjs`,
+`config.mjs`, `ratelimit.mjs`, `egress.mjs`, `pacing.mjs`, `appearance.mjs`, the indicator store,
+updater, parser and OpenPGP verifier, the Pi-hole client, sources and connectors, the matcher, the
+port checks, the baselines, the blocklist parser and routes, and the CVE feeds and routes.
+
+**Probed and not a finding:** a signature whose subpacket area holds a zero-length subpacket does
+not loop (`parseSubpackets` consumes the length byte before the length), and the verifier refuses
+it as unsigned by the pinned key.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B37 | **`/api/cves?limit=abc` answers 500.** `params.mjs` was written for exactly this ("abc became NaN, went into a statement, and the owner saw Something went wrong"), and the CVE list's `limit` and `offset` were the two query numbers it missed: `Number("abc")` reaches `cves.list()`, whose `Math.min(Math.max(NaN…))` is `NaN`, and SQLite answers "datatype mismatch". Reproduced. Only a hand-made request can send it; the screen sends numbers. | `cves/routes.mjs` | low |
+
+### Code
+
+None (the third clean sweep: code leaves the loop).
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `jobs.mjs` runs one job at a time and a job that never settles holds the queue; every job kind
+  carries its own timeouts, and the runner is meant to be simple.
+- `pacing.mjs` filters a host's sent-times list on every request (at most the hourly budget long)
+  and reserves a slot before sleeping, so concurrent callers queue.
+- `ratelimit.mjs` sweeps its windows once a window; `egress.mjs` reports a refused host once an
+  hour.
+- The OpenPGP verifier accepts only v4 EdDSA document signatures from the pinned key and refuses
+  everything else by shape; the updater fetches only from the two GitHub hosts over HTTPS with no
+  redirects.
+- The database-file source opens Pi-hole's database read-only with `query_only` on, per call.
+
+### What shipped (sweep 15) — 1.22.0, M26
+
+| # | Fix |
+| --- | --- |
+| B37 | `intQuery` for `limit` (1–200, default 50) and `offset`; a test: `?limit=abc` and `?offset=1e3` are 400s. |
