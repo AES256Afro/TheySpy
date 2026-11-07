@@ -660,6 +660,12 @@ the agent script, and measured the endpoints M16 and M17 added. Four small thing
 test: the live watch polls one at a time; an export format named through the prototype is 404; a
 baseline exception must be a domain name; hit events are indexed by time.
 
+### M20 — Ninth sweep's findings (S)
+**Status (7 Nov 2026): done** (1.16.0). Sweep 9 ([docs/AUDITS.md](AUDITS.md)) measured the import
+paths: network logs stream (500,000 records in 0.6 s); the MVT import was quadratic and not atomic.
+It is now one transaction with an indexed existence check, and the last prototype-chain reads in
+the exports and the taxonomy are gone.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 

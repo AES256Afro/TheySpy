@@ -281,20 +281,35 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
       const at = now().toISOString();
       let added = 0;
       const values = new Set();
-      for (const file of files.slice(0, 50)) {
+      // Parsed before anything is written, and written in one transaction: a malformed third file
+      // leaves nothing behind from the first two (M20, B30).
+      const parsed = files.slice(0, 50).map((file) => {
         let items;
         try { items = JSON.parse(String(file.content)); } catch { throw Object.assign(new Error(`${file.name} is not JSON`), { status: 400 }); }
-        const module = String(file.name).replace(/\.json$/i, "").replace(/_detected$/i, "").slice(0, 80);
-        for (const item of Array.isArray(items) ? items : []) {
-          const matched = item?.matched_indicator;
-          const value = String(matched?.value ?? matched ?? "").toLowerCase().replace(/\[\.\]/g, ".").slice(0, 253);
-          if (!value) continue;
-          if (q.contactExists.get(deviceId, "mvt", value, module)) continue;
-          const detail = String(item.url ?? item.domain ?? item.name ?? item.path ?? "").slice(0, 300);
-          q.addFinding.run(deviceId, "mvt", `mvt:${module}`, "contacted", value, null, null, module, detail || null, at);
-          added += 1;
-          values.add(value);
+        return { module: String(file.name).replace(/\.json$/i, "").replace(/_detected$/i, "").slice(0, 80), items: Array.isArray(items) ? items : [] };
+      });
+      const seen = new Set(); // what this import has already written: the database is asked once per new pair
+      db.exec("BEGIN");
+      try {
+        for (const { module, items } of parsed) {
+          for (const item of items) {
+            const matched = item?.matched_indicator;
+            const value = String(matched?.value ?? matched ?? "").toLowerCase().replace(/\[\.\]/g, ".").slice(0, 253);
+            if (!value) continue;
+            const pair = `${module}\u0000${value}`;
+            if (seen.has(pair)) continue;
+            seen.add(pair);
+            if (q.contactExists.get(deviceId, "mvt", value, module)) continue;
+            const detail = String(item.url ?? item.domain ?? item.name ?? item.path ?? "").slice(0, 300);
+            q.addFinding.run(deviceId, "mvt", `mvt:${module}`, "contacted", value, null, null, module, detail || null, at);
+            added += 1;
+            values.add(value);
+          }
         }
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
       audit.record(actor, "evidence.mvt_imported", String(deviceId), { files: files.length, findings: added });
       if (added) audit.record("system", "agent.indicator_found", String(deviceId), { device: fleet.get(deviceId)?.name ?? null, indicators: [...values].slice(0, 20), source: "mvt" });
