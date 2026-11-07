@@ -614,7 +614,6 @@ describe("M40 TLS of its own", () => {
   it("reports the certificate, and a session set over HTTPS is Secure while one over HTTP is not", async () => {
     const { selfSignedCertificate } = await import("./tls.mjs");
     const https = await import("node:https");
-    const { Agent } = await import("undici");
     const made = selfSignedCertificate({ names: ["localhost"], addresses: ["127.0.0.1"] });
     const tls = { port: 0, fingerprint: made.fingerprint, notAfter: made.notAfter, names: made.names, addresses: made.addresses };
     const { request, config, ...services } = await start({ tls });
@@ -633,11 +632,15 @@ describe("M40 TLS of its own", () => {
     servers.push(server);
     await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(null)));
     const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
-    const dispatcher = new Agent({ connect: { rejectUnauthorized: false, checkServerIdentity: () => undefined } });
-    const response = await fetch(`https://127.0.0.1:${port}/api/login`, { method: "POST", dispatcher, headers: { "content-type": "application/json", "x-theyspy": "1" }, body: JSON.stringify({ password: "correct horse" }) });
+    // node:https rather than fetch: the project's undici and Node's own differ, and a dispatcher from one is refused by the other.
+    const response = await new Promise((resolve, reject) => {
+      const body = JSON.stringify({ password: "correct horse" });
+      const req = https.request({ host: "127.0.0.1", port, path: "/api/login", method: "POST", rejectUnauthorized: false, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-theyspy": "1" } }, (res) => { res.resume(); res.on("end", () => resolve({ status: res.statusCode, cookie: String(res.headers["set-cookie"] ?? "") })); });
+      req.on("error", reject);
+      req.end(body);
+    });
     expect(response.status).toBe(200);
-    expect(response.headers.get("set-cookie")).toContain("; Secure");
-    await dispatcher.close();
+    expect(response.cookie).toContain("; Secure");
     void services;
   });
 

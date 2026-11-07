@@ -3,11 +3,21 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { Agent } from "undici";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureCertificate, selfSignedCertificate } from "./tls.mjs";
 
 const dirs = [];
+/** A GET over HTTPS that accepts the self-signed certificate and reports its fingerprint (node:https, not fetch: the project's undici and Node's own differ). */
+const get = (port) => new Promise((resolve, reject) => {
+  const req = https.request({ host: "127.0.0.1", port, path: "/", rejectUnauthorized: false }, (res) => {
+    let body = "";
+    res.setEncoding("utf8");
+    res.on("data", (c) => { body += c; });
+    res.on("end", () => resolve({ status: res.statusCode, body, fingerprint: /** @type {import("node:tls").TLSSocket} */ (res.socket).getPeerCertificate().fingerprint256 }));
+  });
+  req.on("error", reject);
+  req.end();
+});
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("TLS of its own (M40)", () => {
@@ -35,17 +45,9 @@ describe("TLS of its own (M40)", () => {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(null)));
     try {
       const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
-      let seen = null;
-      const dispatcher = new Agent({ connect: { rejectUnauthorized: false, checkServerIdentity: () => undefined } });
-      const response = await fetch(`https://127.0.0.1:${port}/`, { dispatcher });
-      expect(await response.text()).toBe("hello over tls");
-      await new Promise((resolve, reject) => {
-        const req = https.request({ host: "127.0.0.1", port, rejectUnauthorized: false }, (res) => { seen = /** @type {import("node:tls").TLSSocket} */ (res.socket).getPeerCertificate().fingerprint256; res.resume(); res.on("end", resolve); });
-        req.on("error", reject);
-        req.end();
-      });
-      expect(seen).toBe(made.fingerprint);
-      await dispatcher.close();
+      const answer = await get(port);
+      expect(answer.body).toBe("hello over tls");
+      expect(answer.fingerprint).toBe(made.fingerprint);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
