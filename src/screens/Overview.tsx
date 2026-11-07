@@ -54,7 +54,7 @@ function sentence(q: Data["questions"], status: Data["status"]) {
   if (q.exploited.count) parts.push(`${q.exploited.count} exploited CVE${q.exploited.count === 1 ? "" : "s"} on ${q.exploited.devices.length} device${q.exploited.devices.length === 1 ? "" : "s"}`);
   if (q.newDevices.count) parts.push(`${q.newDevices.count} new device${q.newDevices.count === 1 ? "" : "s"}`);
   if (q.network.failing) parts.push(`${q.network.failing} network check${q.network.failing === 1 ? "" : "s"} failing`);
-  if (!status.pihole) return "Pi-hole is not connected: indicator lookups and network checks are not being read.";
+  if (!status.pihole) parts.push("Pi-hole is not connected, so new lookups are not being read");
   if (!parts.length) return "No indicator contacts, no exploited CVEs on devices, no new devices, network checks passing.";
   return `${parts.join("; ")}.`;
 }

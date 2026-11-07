@@ -553,7 +553,7 @@ That is the one promise this product cannot break, so it is item one.
   manifest bumped and pinned.
 
 ### M15 — Layouts (M)
-**Status: planned.** From the interface audit ([docs/UI-AUDIT.md](UI-AUDIT.md)) and its five
+**Status (7 Nov 2026): done** (1.11.0). Built as planned; the source test that guards the copy lives in `server/copy.test.mjs`. **Originally:** From the interface audit ([docs/UI-AUDIT.md](UI-AUDIT.md)) and its five
 mock-ups ([docs/mockups-v2](mockups-v2/index.html)). The owner chooses the layout; TheySpy does not
 choose for them. Copy is technical and short: a screen gets a title and at most one line that
 carries information, no quotations, no slogans.
