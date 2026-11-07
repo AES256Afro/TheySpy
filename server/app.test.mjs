@@ -530,3 +530,13 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ioc_hit_events_at'").get()).toBeTruthy();
   });
 });
+
+describe("M28 B39", () => {
+  it("answers 409, not 500, when a baseline preview is asked for before Pi-hole is connected", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const r = await request("GET", "/api/blocklists/baselines/preview");
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/Pi-hole is not connected/);
+  });
+});

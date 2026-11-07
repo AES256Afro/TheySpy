@@ -79,7 +79,8 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     if (c.mode === "adguard" && c.url) return adguardSource({ url: c.url, username: c.username, password: c.password, fetchImpl });
     if (c.mode === "technitium" && c.url) return technitiumSource({ url: c.url, password: c.password, fetchImpl });
     if (c.mode === "opnsense" && c.url) return opnsenseSource({ url: c.url, username: c.username, password: c.password, fetchImpl });
-    throw new PiholeError("Pi-hole is not connected yet. Add its address on the Pi-hole Sentinel screen.");
+    // A state the owner can see and fix, not a fault: a 409, so a route that reaches it says so instead of "Something went wrong" (B39).
+    throw new PiholeError("Pi-hole is not connected yet. Add its address on the Pi-hole Sentinel screen.", { status: 409 });
   }
   const matcher = () => {
     const set = iocStore.activeSet();
