@@ -13,8 +13,8 @@ description: "Watches for ad-delivered spyware. Hunts your Pi-hole's DNS history
 website: https://github.com/AES256Afro/TheySpy
 risk: low
 image:
-  reference: ghcr.io/aes256afro/theyspy:1.26.0@sha256:dff7d7297b032a7c2b8a005646e7fe49df678a1d0ca28b2c51127c6d2bde8e85
-  version: "1.26.0"
+  reference: ghcr.io/aes256afro/theyspy:1.27.0
+  version: "1.27.0"
 user: "1000:1000"
 ports:
   - id: web

@@ -348,15 +348,22 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       const row = /** @type {any} */ (q.byId.get(id));
       if (!row) throw Object.assign(new Error("No such device"), { status: 404 });
       const next = { label: row.label, owner: row.owner, kind: row.kind, notes: row.notes };
+      // Too long is refused with the limit named, not cut to fit in silence (B42); the screen's
+      // fields carry the same limits.
       for (const field of editable) {
         if (input[field] === undefined) continue;
-        const value = input[field] === null ? null : String(input[field]).trim().slice(0, field === "notes" ? 2000 : 80) || null;
+        const limit = field === "notes" ? 2000 : 80;
+        const value = input[field] === null ? null : String(input[field]).trim() || null;
+        if (value && value.length > limit) throw Object.assign(new Error(`${field} is at most ${limit} characters`), { status: 400 });
         next[field] = value;
       }
       let tags = JSON.parse(row.tags);
       if (input.tags !== undefined) {
         if (!Array.isArray(input.tags)) throw Object.assign(new Error("tags must be a list"), { status: 400 });
-        tags = [...new Set(input.tags.map((t) => String(t).trim().toLowerCase().slice(0, 30)).filter(Boolean))].slice(0, 12);
+        tags = [...new Set(input.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))];
+        if (tags.length > 12) throw Object.assign(new Error(`at most 12 tags (${tags.length} given)`), { status: 400 });
+        const long = tags.find((t) => t.length > 30);
+        if (long) throw Object.assign(new Error(`a tag is at most 30 characters ("${long.slice(0, 30)}…")`), { status: 400 });
       }
       const trusted = input.trusted === undefined ? row.trusted : input.trusted ? 1 : 0;
       if (input.trusted !== undefined) {
