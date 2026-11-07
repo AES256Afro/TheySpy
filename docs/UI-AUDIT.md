@@ -292,7 +292,7 @@ findings, 7 readability, 8 usability, 5 visual, 3 quality-of-life and 1 optimisa
 
 Said plainly, in the order I would take them; none is a finding against what exists.
 
-1. **Retention.** `ioc_hit_events`, `audit_log`, `jobs` and `checks` grow for ever. At a household's
+1. **Retention** (built: M35, 1.31.0). `ioc_hit_events`, `audit_log`, `jobs` and `checks` grow for ever. At a household's
    rate that is years, but nothing trims them and nothing says how big the database is. A retention
    setting (keep hits a year, audit and jobs ninety days) and a size line on Activity.
 2. **HTTPS of its own.** TheySpy relies on a reverse proxy or Tailscale for TLS and says so on

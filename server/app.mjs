@@ -59,6 +59,7 @@ function readCookie(header, name) {
  *   exposure: ReturnType<typeof import("./exposure.mjs").createExposure>,
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
+ *   retention: ReturnType<typeof import("./retention.mjs").createRetention>,
  *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
  *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
  *   protec: ReturnType<typeof import("./protec.mjs").createProtec>,
@@ -67,7 +68,7 @@ function readCookie(header, name) {
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup, retention, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -238,6 +239,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.put("/api/protec", requireOwner, (req, res) => res.json(protec.configure(req.body ?? {}, "owner")));
   app.post("/api/protec/sync", requireOwner, async (_req, res) => { const r = await protec.sync("owner"); settings.delete("protec_last_error"); res.json(r); });
   app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), intParam(req.body?.deviceId, "deviceId"), "owner"); res.json({ linked: true }); });
+  // How big the database is, what fills it, and how long each kind of record is kept (retention.mjs).
+  app.get("/api/retention", requireOwner, (_req, res) => res.json({ policy: retention.policy(), labels: retention.policyLabels, limits: retention.policyLimits, size: retention.size() }));
+  app.put("/api/retention", requireOwner, (req, res) => res.json({ policy: retention.configure(req.body ?? {}, "owner") }));
   app.get("/api/audit", requireOwner, (req, res) => res.json({ entries: audit.list(intQuery(req.query.limit, { name: "limit", fallback: 100, min: 1, max: 500 })) }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
