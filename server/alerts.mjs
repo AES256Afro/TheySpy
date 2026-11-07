@@ -16,7 +16,7 @@ const tags = { new_device: "computer", indicator_lookup: "rotating_light", kev_m
  *   audit: ReturnType<typeof import("./audit.mjs").createAuditLog>,
  *   secretBox: ReturnType<typeof import("./secrets.mjs").createSecretBox>,
  *   env?: { url?: string, topic?: string, token?: string },
- *   names?: () => Record<string, { name: string }>,
+ *   names?: () => Record<string, { id?: number, name: string }>,
  *   kevMatches?: (cveIds: string[]) => { cveId: string, devices: string[] }[],
  *   fetchImpl?: typeof fetch,
  *   now?: () => Date,
@@ -45,6 +45,8 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
 
   const who = (ip) => (names()[ip]?.name && names()[ip].name !== ip ? `${names()[ip].name} (${ip})` : ip);
   const link = (path) => (settings.get("lists_base_url") ? `${settings.get("lists_base_url")}${path}` : null);
+  /** The device page for an address TheySpy knows a device at, so a tap on the alert lands on the item, not the screen. */
+  const deviceLink = (ip) => { const known = ip ? names()[ip] : null; return known?.id ? link(`/fleet/devices/${known.id}`) : null; };
 
   /** Audit entry → alert, or null for the ones that are not worth a notification. */
   function fromAudit({ at, action, target: subject, detail }) {
@@ -53,13 +55,13 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
     switch (action) {
       case "fleet.new_device":
         return { key: `new-device:${subject}`, kind: "new_device", priority: "default", title: "New device on your network",
-          message: `${d.hostname ?? d.vendor ?? "A device"} at ${d.ip}${d.mac ? ` (MAC ${d.mac})` : ""}, found by ${d.source === "sweep" ? "a network sweep" : d.source === "netalertx" ? "NetAlertX" : "Pi-hole"}. If you do not know it, look at it in Fleet.`, link: link("/fleet") };
+          message: `${d.hostname ?? d.vendor ?? "A device"} at ${d.ip}${d.mac ? ` (MAC ${d.mac})` : ""}, found by ${d.source === "sweep" ? "a network sweep" : d.source === "netalertx" ? "NetAlertX" : "Pi-hole"}. If you do not know it, look at it in Fleet.`, link: deviceLink(d.ip) ?? link("/fleet") };
       case "pihole.indicator_lookups": {
         const clients = [...(d.clients ?? [])].sort();
         const indicators = [...(d.indicators ?? [])].sort();
         return { key: `indicator:${clients.join(",")}:${indicators.join(",")}:${date}`, kind: "indicator_lookup", priority: d.allowed ? "urgent" : "high",
           title: d.allowed ? "A device reached a spyware/ADINT address" : "A device asked for a spyware/ADINT address (blocked)",
-          message: `${clients.map(who).join(", ")} looked up ${indicators.join(", ").replaceAll(".", "[.]")}: ${d.lookups} lookup${d.lookups === 1 ? "" : "s"}, ${d.allowed ? `${d.allowed} not blocked` : "all blocked"}. A DNS lookup does not prove infection; see Pi-hole Sentinel for what to do next.`, link: link("/pihole") };
+          message: `${clients.map(who).join(", ")} looked up ${indicators.join(", ").replaceAll(".", "[.]")}: ${d.lookups} lookup${d.lookups === 1 ? "" : "s"}, ${d.allowed ? `${d.allowed} not blocked` : "all blocked"}. A DNS lookup does not prove infection; see Pi-hole Sentinel for what to do next.`, link: (clients.length === 1 ? deviceLink(clients[0]) : null) ?? link("/pihole") };
       }
       case "cves.zero_day_reported":
       case "cves.kev_added": {

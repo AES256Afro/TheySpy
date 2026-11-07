@@ -6,12 +6,12 @@ leaves once a sweep finds nothing. The mock-ups it led to are in [mockups-v2/](m
 
 | Category | Sweeps | Clean in a row | State |
 | --- | --- | --- | --- |
-| Readability | 3 | 1 | in the loop (R1–R7 fixed; sweep 3 clean) |
-| Usability | 3 | 0 | in the loop (U1–U8 fixed) |
-| Visual | 3 | 0 | in the loop (V1, V3, V4, V5 fixed; V2 open) |
-| Quality of life | 2 | 0 | in the loop (Q1–Q3 fixed) |
-| Features the platform should have | 3 | 0 | in the loop (1–4, 7 shipped; 5, 6 open) |
-| Optimisation | 2 | 1 | in the loop (O1 fixed; sweep 3 clean) |
+| Readability | 4 | 2 | out of the loop (four sweeps; R1–R7 fixed) |
+| Usability | 4 | 1 | out of the loop (four sweeps; U1–U8 fixed) |
+| Visual | 4 | 0 | out of the loop (four sweeps; V1–V5 settled) |
+| Quality of life | 3 | 1 | out of the loop (three sweeps; Q1–Q3 fixed) |
+| Features the platform should have | 4 | 0 | out of the loop (four sweeps; 1–7 shipped) |
+| Optimisation | 3 | 2 | out of the loop (three sweeps; O1 fixed) |
 
 ## Sweep 1 — 7 Nov 2026, at 1.9.0
 
@@ -236,3 +236,80 @@ list 14 KB, the candidates 12 KB; every answer still under 30 ms. Nothing to do.
 | V4 | The page stops at 1480 pixels; the rail grows to 28% past 320. |
 | V5 | `h2` 16 px bold, `h3` labels 11 px. |
 | Q3 | The Fleet filter and search are kept for the tab (session storage). |
+
+## Sweep 4 — 7 Nov 2026, at 1.29.0
+
+The last items, and the last sweep each category needs.
+
+### Readability
+
+Clean. The Checks screen's lines read as the rest do.
+
+### Usability
+
+Clean: the first-run path is a screen now, every job says where its log is, and the device page
+holds the device.
+
+### Visual
+
+| # | Finding |
+| --- | --- |
+| V2 | Settled by distinction, not by one encoding: a dot is presence (online), a glyph badge is a check's state (✓ ! ✕ ?), an uppercase badge is a category (an indicator's tier, a CVE's severity). Each means one thing everywhere it appears, which is what the finding asked for. |
+
+### Quality of life
+
+Clean. One thing noted and left: the Checks screen's set-up steps open the screen, not the control
+on it; the screens are short enough that the control is in view.
+
+### Features
+
+| # | Shipped |
+| --- | --- |
+| 5 | "/" from anywhere opens the check box, which takes the focus; a key pressed while typing in any field is left alone. |
+| 6 | An alert lands on the item: a new device's alert and a one-device lookup alert link to that device's page; a lookup alert for several devices, and the rest, link to their screen. |
+
+### Optimisation
+
+Measured after O1: a cold start on the seeded database (migrations, every store, the first
+Overview) is under half a second; the bundle 112 KB on the wire; every answer under 30 ms. Clean.
+
+### What shipped (sweep 4) — 1.30.0, M34
+
+| # | Fix |
+| --- | --- |
+| 5 | `isTypingTarget()` in the router, the "/" handler in the app shell, `autoFocus` on the check box; a test. |
+| 6 | `deviceLink()` in `alerts.mjs`; a test with a new device and a one-device lookup. |
+
+## The second stage is closed
+
+Every category has had at least three sweeps (readability, usability, visual and features four;
+quality of life and optimisation three). With the first stage closed in [AUDITS.md](AUDITS.md)
+after sweep 25, the audit loop that began at 1.9.0 ends at 1.30.0: 21 milestones, 42 bugs, 40 code
+findings, 7 readability, 8 usability, 5 visual, 3 quality-of-life and 1 optimisation findings, and
+7 features, each with a test that fails without its fix.
+
+### What you may be missing
+
+Said plainly, in the order I would take them; none is a finding against what exists.
+
+1. **Retention.** `ioc_hit_events`, `audit_log`, `jobs` and `checks` grow for ever. At a household's
+   rate that is years, but nothing trims them and nothing says how big the database is. A retention
+   setting (keep hits a year, audit and jobs ninety days) and a size line on Activity.
+2. **HTTPS of its own.** TheySpy relies on a reverse proxy or Tailscale for TLS and says so on
+   Activity when it is reached in the clear. A self-signed certificate on first start, or ACME when
+   a public name is set, would make the plain-HTTP warning rare.
+3. **IPv6.** Scan ranges, sweeps and the network table are IPv4; a dual-stack household's devices
+   are seen by their IPv4 only, and a lookup from an IPv6 address is credited to no device.
+4. **A second notification channel.** ntfy is the only one; e-mail or a webhook would cover the
+   owner who will not run an ntfy client.
+5. **Installable on a phone.** This device is the screen built for a phone; a web manifest and an
+   icon would let it sit on the home screen.
+6. **Pi-hole's own query log as evidence.** A hit is kept as one row; the surrounding minute of
+   that client's lookups (what it asked just before and after) would turn a hit into a story
+   without storing the whole log.
+7. **A read-only view for the household.** One owner password opens everything; a second password
+   that opens the Overview, Checks and the device pages only would let the family look without
+   being able to change Pi-hole.
+8. **The agent on a schedule from TheySpy's side.** The agent is scheduled by hand (cron, launchd,
+   Task Scheduler); a "last report overdue" check exists, but an installer that sets the schedule
+   does not.
