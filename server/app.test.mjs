@@ -456,3 +456,15 @@ describe("HTTP API", () => {
     expect(statuses.at(-1)).toBe(429);
   });
 });
+
+describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
+  it("B21: the Baselines screen loads on a fresh install, before Pi-hole is connected", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const response = await request("GET", "/api/blocklists/baselines");
+    expect(response.status).toBe(200);
+    expect(response.body.pihole.connected).toBe(false);
+    expect(response.body.scopes).toMatchObject({ pihole: false, devices: [], network: { key: "network", suggested: "balanced" } });
+    expect(response.body.baselines.map((b) => b.id)).toEqual(["essential", "balanced", "strict", "lockdown"]);
+  });
+});
