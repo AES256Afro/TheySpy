@@ -38,7 +38,7 @@ export function BriefingScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Briefing</h1><p className="muted small">{days === 7 ? `The week to ${when(data.digest.until)} (${data.digest.week})` : "The last 24 hours"} in plain language. Sent to ntfy every Monday morning.</p></div>
+        <div><h1>Briefing</h1><p className="muted small">{days === 7 ? `The week to ${when(data.digest.until)} (${data.digest.week})` : "The last 24 hours"}. Sent to ntfy on Monday mornings.</p></div>
         <div className="grow" />
         <div className="seg" role="group" aria-label="Period">{[[1, "24 hours"], [7, "Week"]].map(([d, label]) => <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(Number(d))}>{label}</button>)}</div>
         <button className="btn" type="button" onClick={() => window.print()}>Print</button>

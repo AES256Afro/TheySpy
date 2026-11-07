@@ -15,7 +15,7 @@ export type AppearanceControls = {
 };
 
 type Scope = "browser" | "everyone";
-const fieldLabels: Record<keyof Appearance, string> = { look: "look", name: "name", tagline: "tagline", glyph: "logo", accent: "accent", home: "home screen", density: "density" };
+const fieldLabels: Record<keyof Appearance, string> = { look: "look", name: "name", tagline: "tagline", glyph: "logo", accent: "accent", home: "home screen", density: "density", layout: "overview layout", sidebar: "sidebar" };
 
 function LookCard({ id, name, description, pressed, onPick }: { id: string; name: string; description: string; pressed: boolean; onPick: () => void }) {
   const preview = id === "auto" ? (
@@ -71,7 +71,7 @@ export function AppearanceScreen({ appearance, server, local, setLocal, setPrevi
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Appearance &amp; branding</h1><p className="muted small">Every mockup’s style is a look. Pick one for the whole app, then make it yours.</p></div>
+        <div><h1>Appearance &amp; branding</h1><p className="muted small">Look, name, logo, accent, home screen, density.</p></div>
         <div className="grow" />
         <div className="seg" role="group" aria-label="Apply changes to">
           <button type="button" aria-pressed={scope === "browser"} onClick={() => { setScope("browser"); setDraft({}); }}>This browser</button>
@@ -113,7 +113,7 @@ export function AppearanceScreen({ appearance, server, local, setLocal, setPrevi
               <div className="row" role="group" aria-labelledby="logo-label">
                 {glyphs.map((glyph) => <button key={glyph} type="button" className="glyph-pick" aria-pressed={shown.glyph === glyph} onClick={() => change("glyph", glyph)}>{glyph}</button>)}
               </div>
-              <span className="hint">Uploading your own SVG or PNG arrives with the branding store in M10.</span></div>
+              </div>
             <div className="field"><span className="label" id="accent-label">Accent colour</span>
               <div className="row" role="group" aria-labelledby="accent-label">
                 <button type="button" className={`btn small ${shown.accent ? "" : "primary"}`} onClick={() => change("accent", "")}>Look’s own</button>
@@ -131,6 +131,15 @@ export function AppearanceScreen({ appearance, server, local, setLocal, setPrevi
                 {screens.filter((s) => s.id !== "appearance").map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
               <span className="hint">What opens at “/” and where the logo links.</span></div>
+            <div className="field"><span className="label" id="layout-label">Overview layout</span>
+              <div className="seg" role="group" aria-labelledby="layout-label">
+                {(["verdict", "ledger", "console"] as const).map((layout) => <button key={layout} type="button" aria-pressed={shown.layout === layout} onClick={() => change("layout", layout)}>{layout === "verdict" ? "Verdict" : layout === "ledger" ? "Ledger" : "Console"}</button>)}
+              </div>
+              <span className="hint">Verdict: one line and four questions. Ledger: the last day as a log. Console: one row per device with an inspector.</span></div>
+            <div className="field"><span className="label" id="sidebar-label">Sidebar</span>
+              <div className="seg" role="group" aria-labelledby="sidebar-label">
+                {(["full", "short"] as const).map((sidebar) => <button key={sidebar} type="button" aria-pressed={shown.sidebar === sidebar} onClick={() => change("sidebar", sidebar)}>{sidebar === "full" ? "Every screen" : "Five and More"}</button>)}
+              </div></div>
             <div className="field"><span className="label" id="density-label">Density</span>
               <div className="seg" role="group" aria-labelledby="density-label">
                 {(["comfortable", "compact"] as const).map((density) => <button key={density} type="button" aria-pressed={shown.density === density} onClick={() => change("density", density)}>{density === "comfortable" ? "Comfortable" : "Compact"}</button>)}

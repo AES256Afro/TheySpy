@@ -92,7 +92,7 @@ export function BlocklistsScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Blocklist library</h1><p className="muted small">Every DNS blocklist TheySpy knows about, sorted into categories and kept up to date. New lists are found automatically and wait for you; updates that look wrong are held for review.</p></div>
+        <div><h1>Blocklist library</h1><p className="muted small">DNS blocklists by category: discovery, versions, update gates, Pi-hole subscription addresses.</p></div>
         <div className="grow" />
         <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => run("discover", () => api("POST", "/api/blocklists/discover"))}>{busy === "discover" ? "Looking…" : "Discover now"}</button>
         <button className="btn primary" type="button" disabled={Boolean(busy)} onClick={() => run("update", () => api("POST", "/api/blocklists/update"))}>{busy === "update" ? "Updating…" : "Update lists"}</button>

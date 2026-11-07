@@ -26,9 +26,11 @@ export type Appearance = {
   accent: string; // "" = the look's own
   home: string; // a screen id
   density: "comfortable" | "compact";
+  layout: "verdict" | "ledger" | "console"; // how the Overview is laid out
+  sidebar: "full" | "short"; // every screen grouped, or five places and More
 };
 
-export const appearanceDefaults: Appearance = { look: "auto", name: "TheySpy", tagline: "", glyph: "◉", accent: "", home: "overview", density: "comfortable" };
+export const appearanceDefaults: Appearance = { look: "ops", name: "TheySpy", tagline: "", glyph: "◉", accent: "", home: "overview", density: "comfortable", layout: "verdict", sidebar: "full" };
 
 const cssName: Record<TokenName, string> = {
   bg: "--bg", panel: "--panel", panel2: "--panel-2", line: "--line", text: "--text", muted: "--muted",
