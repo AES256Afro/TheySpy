@@ -7,13 +7,13 @@ export type Screen = {
   icon: string;
   group: string;
   look: string;
-  milestone: string;
-  mockup: string | null;
   summary: string;
 };
 
 export const screens = screensFile.screens as Screen[];
 export const screenGroups: string[] = screensFile.groups;
+/** The five screens the short sidebar shows; the rest go under More. */
+export const screenPlaces: string[] = screensFile.places;
 
 export function screenForPath(pathname: string): Screen | undefined {
   const clean = pathname.replace(/\/+$/, "") || "/";

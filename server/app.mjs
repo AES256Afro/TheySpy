@@ -62,10 +62,11 @@ function readCookie(header, name) {
  *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
  *   protec: ReturnType<typeof import("./protec.mjs").createProtec>,
  *   netlogs: ReturnType<typeof import("./netlogs.mjs").createNetworkLogs>,
+ *   overview: ReturnType<typeof import("./overview.mjs").createOverview>,
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, backup, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -196,6 +197,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/evidence", requireOwner, evidenceRoutes({ agents, netlogs }));
 
   // Ad exposure: the checklist per device and for the network, the egress check, the kits.
+  app.get("/api/overview", requireOwner, (_req, res) => res.json(overview.compose()));
   app.get("/api/exposure", requireOwner, (_req, res) => res.json(exposure.overview()));
   app.post("/api/exposure/egress", requireOwner, async (_req, res) => res.json(await exposure.checkEgress("owner")));
   app.get("/api/exposure/kits/:id", requireOwner, (req, res) => {

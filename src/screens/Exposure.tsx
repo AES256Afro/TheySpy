@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.ts";
+import { Link } from "../router.tsx";
 
 type Factor = { id: string; label: string; state: "pass" | "partial" | "fail" | "unknown" | "na"; evidence: string; fix: string };
 type Scored = { score: number | null; tone: "good" | "warn" | "bad" | "unknown"; known: number; of: number };
@@ -52,7 +53,7 @@ export function ExposureScreen() {
             <thead><tr><th>Device</th>{["Pi-hole DNS", "Blocker", "Ad ID off", "GPC", "Patched", "No contact", "Scanned"].map((h) => <th key={h}>{h}</th>)}<th>Score</th></tr></thead>
             <tbody>{data.devices.map((d) => (
               <tr key={d.id} className={open === d.id ? "sel" : undefined}>
-                <td><button type="button" className="linkish" onClick={() => setOpen(d.id)}><b>{d.name}</b></button><div className="muted small">{d.kind ?? ""}</div></td>
+                <td><button type="button" className="linkish" onClick={() => setOpen(d.id)}><b>{d.name}</b></button> <Link className="small" href={`/fleet/devices/${d.id}`}>page</Link><div className="muted small">{d.kind ?? ""}</div></td>
                 {columns.map((c) => { const f = d.factors.find((x) => x.id === c); return <td key={c} title={f ? `${f.label}: ${f.evidence}` : "This check was not reported"}>{!f ? <span className="badge b-info">{mark.unknown}</span> : f.state !== "na" ? <span className={`badge ${markBadge[f.state]}`}>{mark[f.state]}</span> : <span className="muted">–</span>}</td>; })}
                 <td>{d.score === null ? <span className="muted">—</span> : <span className={`badge ${toneBadge[d.tone]}`} title={d.tone === "unknown" ? `Only ${d.known} of ${d.of} checks known yet` : `${d.known} of ${d.of} checks known`}>{d.score}{d.tone === "unknown" ? "?" : ""}</span>}</td>
               </tr>

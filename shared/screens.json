@@ -1,5 +1,5 @@
 {
-  "$comment": "Every screen from docs/mockups, in sidebar order. `/` opens the home screen chosen in Appearance. `look` is the look it was designed in (used by the 'Per screen' look); `milestone` is when it gets real content (docs/PLAN.md §9).",
+  "$comment": "Every screen, in sidebar order. `/` opens the home screen chosen in Appearance. `look` is the look a screen was designed in, used by the 'Per screen' look. The five `places` are the short sidebar; the rest go under More.",
   "groups": [
     "Watch",
     "Protect",
@@ -13,8 +13,6 @@
       "icon": "◎",
       "group": "Watch",
       "look": "ops",
-      "milestone": "M4",
-      "mockup": "01-command-center",
       "summary": "Current state: indicator contacts, exploited CVEs on devices, new devices, network checks, gaps."
     },
     {
@@ -24,8 +22,6 @@
       "icon": "▦",
       "group": "Watch",
       "look": "ops",
-      "milestone": "M4",
-      "mockup": "02-fleet",
       "summary": "Devices from Pi-hole's network table, ARP and sweeps, merged by MAC."
     },
     {
@@ -35,8 +31,6 @@
       "icon": "⌕",
       "group": "Watch",
       "look": "ops",
-      "milestone": "M4",
-      "mockup": "03-targeted-check",
       "summary": "Check an address, MAC, hostname, network or domain."
     },
     {
@@ -46,8 +40,6 @@
       "icon": "◍",
       "group": "Watch",
       "look": "pihole",
-      "milestone": "M2",
-      "mockup": "04-pihole-sentinel",
       "summary": "DNS source: connection, indicator hunt, coverage, denylist pushes, live watch."
     },
     {
@@ -57,8 +49,6 @@
       "icon": "⚠",
       "group": "Watch",
       "look": "ops",
-      "milestone": "M5",
-      "mockup": "05-vuln-intel",
       "summary": "CVEs from NVD and CISA KEV; vendor exploitation reports; matches against device software."
     },
     {
@@ -68,8 +58,6 @@
       "icon": "◇",
       "group": "Watch",
       "look": "ops",
-      "milestone": "Later",
-      "mockup": null,
       "summary": "Other TheySpy instances read through their read-only API."
     },
     {
@@ -79,8 +67,6 @@
       "icon": "▭",
       "group": "Watch",
       "look": "light",
-      "milestone": "M6",
-      "mockup": "06-this-device",
       "summary": "Checks run from this browser: browser and OS CVEs, GPC, ad blocking, DNS path."
     },
     {
@@ -90,8 +76,6 @@
       "icon": "◐",
       "group": "Protect",
       "look": "light",
-      "milestone": "M8",
-      "mockup": "07-exposure",
       "summary": "Per-device and network checks with evidence and fix; hardening kits."
     },
     {
@@ -101,8 +85,6 @@
       "icon": "⌖",
       "group": "Protect",
       "look": "evidence",
-      "milestone": "M1",
-      "mockup": null,
       "summary": "zero-breach's indicator set: provenance, verification, updates, exports."
     },
     {
@@ -112,8 +94,6 @@
       "icon": "▚",
       "group": "Protect",
       "look": "ops",
-      "milestone": "M3",
-      "mockup": "12-baselines",
       "summary": "Blocking levels per device or network, previewed against DNS history."
     },
     {
@@ -123,8 +103,6 @@
       "icon": "☰",
       "group": "Protect",
       "look": "ops",
-      "milestone": "M3",
-      "mockup": "11-blocklists",
       "summary": "DNS blocklists by category: discovery, versions, update gates, subscription addresses."
     },
     {
@@ -134,8 +112,6 @@
       "icon": "▤",
       "group": "Protect",
       "look": "evidence",
-      "milestone": "M7",
-      "mockup": "08-evidence-locker",
       "summary": "Findings from the agent, MVT and network logs; TLS fingerprints; checks that could not run."
     },
     {
@@ -145,20 +121,7 @@
       "icon": "¶",
       "group": "Protect",
       "look": "paper",
-      "milestone": "M9",
-      "mockup": "09-weekly-briefing",
       "summary": "Daily or weekly digest; alerts; API tokens."
-    },
-    {
-      "id": "boxpilot",
-      "path": "/boxpilot",
-      "label": "BoxPilot",
-      "icon": "▣",
-      "group": "System",
-      "look": "glass",
-      "milestone": "M10",
-      "mockup": "10-in-boxpilot",
-      "summary": "Managed by BoxPilot: summary endpoint, approvals, backups."
     },
     {
       "id": "activity",
@@ -167,8 +130,6 @@
       "icon": "≡",
       "group": "System",
       "look": "ops",
-      "milestone": "M0",
-      "mockup": null,
       "summary": "Jobs and the audit log."
     },
     {
@@ -178,9 +139,14 @@
       "icon": "✎",
       "group": "System",
       "look": "ops",
-      "milestone": "M0",
-      "mockup": "13-appearance",
       "summary": "Look, name, logo, accent, home screen, density."
     }
+  ],
+  "places": [
+    "overview",
+    "fleet",
+    "pihole",
+    "intel",
+    "evidence"
   ]
 }

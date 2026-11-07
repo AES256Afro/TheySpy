@@ -19,7 +19,8 @@ import { BriefingScreen } from "./screens/Briefing.tsx";
 import { EvidenceScreen } from "./screens/Evidence.tsx";
 import { ExposureScreen } from "./screens/Exposure.tsx";
 import { SitesScreen } from "./screens/Sites.tsx";
-import { PlaceholderScreen } from "./screens/Placeholder.tsx";
+import { OverviewScreen } from "./screens/Overview.tsx";
+import { DeviceScreen } from "./screens/Device.tsx";
 
 type AppearanceResponse = { appearance: Appearance };
 
@@ -38,7 +39,9 @@ export function App() {
   }, []);
 
   const appearance = useMemo(() => (preview ? mergeAppearance({ ...server, ...preview }, {}) : mergeAppearance(server, local)), [server, local, preview]);
-  const screen: Screen = (path === "/" ? screenById(appearance.home) : screenForPath(path)) ?? screens[0];
+  // A device page lives under Fleet: /fleet/devices/<id>.
+  const deviceId = /^\/fleet\/devices\/(\d{1,15})\/?$/.exec(path)?.[1] ?? null;
+  const screen: Screen = (deviceId !== null ? screenById("fleet") : path === "/" ? screenById(appearance.home) : screenForPath(path)) ?? screens[0];
 
   useEffect(() => {
     applyLook(document.documentElement, resolveLook(appearance.look, signedIn ? screen.look : "ops"), appearance);
@@ -61,9 +64,9 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar appearance={appearance} current={screen} onSignedOut={() => setSignedIn(false)} />
+      <Sidebar appearance={appearance} current={screen} short={appearance.sidebar === "short"} onSignedOut={() => setSignedIn(false)} />
       <main id="main">
-        {screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <PlaceholderScreen screen={screen} appearance={appearance} />}
+        {deviceId !== null ? <DeviceScreen id={Number(deviceId)} /> : screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <OverviewScreen layout={appearance.layout} />}
       </main>
     </div>
   );
