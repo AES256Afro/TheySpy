@@ -98,3 +98,21 @@ describe("sweep 3 (M14)", () => {
     expect(vulns.lines[1]).toBe("In software you run: CVE-2026-12345 on laptop.local, nas.lan.");
   });
 });
+
+describe("M34, feature 6: an alert lands on the device", () => {
+  it("links a new-device alert and a one-device lookup alert to the device page, and the rest to their screens", async () => {
+    const now = testClock("2026-11-07T12:00:00.000Z");
+    const { fleet, audit, alerts, settings } = testServices({ now, ntfyEnv: { url: "https://ntfy.example", topic: "t" } });
+    settings.set("lists_base_url", "https://home.example:8797");
+    fleet.observe([{ ip: "192.168.8.1", mac: "94:83:c4:e5:70:cc", seenAt: now().toISOString() }], "pihole"); // the inventory
+    fleet.observe([{ ip: "192.168.8.88", mac: "3c:a9:f4:00:00:21", vendor: "Espressif Inc.", seenAt: now().toISOString() }], "sweep");
+    await new Promise((r) => setTimeout(r, 0));
+    const device = fleet.list().find((d) => d.ip === "192.168.8.88");
+    expect(alerts.recent().find((a) => a.kind === "new_device")).toMatchObject({ link: `https://home.example:8797/fleet/devices/${device.id}` });
+    audit.record("system", "pihole.indicator_lookups", null, { lookups: 2, indicators: ["c2.example"], clients: ["192.168.8.88"], allowed: 1 });
+    audit.record("system", "pihole.indicator_lookups", null, { lookups: 2, indicators: ["c2.example"], clients: ["192.168.8.88", "192.168.8.1"], allowed: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+    const lookups = alerts.recent().filter((a) => a.kind === "indicator_lookup").map((a) => a.link).sort();
+    expect(lookups).toEqual([`https://home.example:8797/fleet/devices/${device.id}`, "https://home.example:8797/pihole"]);
+  });
+});

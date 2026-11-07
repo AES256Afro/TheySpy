@@ -23,6 +23,13 @@ export function usePath(): string {
   return path;
 }
 
+/** Whether a key pressed with this element focused is typing, so a shortcut must leave it alone. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.tagName !== "string") return false;
+  return ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable === true;
+}
+
 export function Link({ href, onClick, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
   const handle = (e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e);

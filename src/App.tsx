@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, whenSessionEnds } from "./api.ts";
 import { applyLook, mergeAppearance, readLocalAppearance, resolveLook, writeLocalAppearance, type Appearance } from "./looks/looks.ts";
-import { usePath } from "./router.tsx";
+import { isTypingTarget, navigate, usePath } from "./router.tsx";
 import { screenById, screenForPath, screens, type Screen } from "./screens.ts";
 import { Sidebar } from "./Sidebar.tsx";
 import { SignIn } from "./SignIn.tsx";
@@ -44,6 +44,13 @@ export function App() {
   const deviceId = /^\/fleet\/devices\/(\d{1,15})\/?$/.exec(path)?.[1] ?? null;
   const screen: Screen = (deviceId !== null ? screenById("fleet") : path === "/" ? screenById(appearance.home) : screenForPath(path)) ?? screens[0];
 
+  // "/" from anywhere opens the check box (feature 5), unless something is being typed.
+  useEffect(() => {
+    if (!signedIn) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) { e.preventDefault(); navigate("/check"); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [signedIn]);
   useEffect(() => {
     applyLook(document.documentElement, resolveLook(appearance.look, signedIn ? screen.look : "ops"), appearance);
     document.title = signedIn ? `${appearance.name} · ${screen.label}` : appearance.name;
