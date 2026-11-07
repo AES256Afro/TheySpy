@@ -384,6 +384,14 @@ export const migrations = [
   // M14: an alert carries what it was raised from (the CVE matches and their devices) as data, so
   // the briefing renders it instead of recovering names from the alert's prose.
   `ALTER TABLE alerts ADD COLUMN detail TEXT;`,
+  // M16: which CVEs name which product, so "exploited bugs in software on my devices" is an indexed
+  // lookup and not a LIKE over every CVE's JSON per device per service.
+  `CREATE TABLE cve_products (
+     product TEXT NOT NULL,
+     cve_id TEXT NOT NULL REFERENCES cves (cve_id) ON DELETE CASCADE,
+     PRIMARY KEY (product, cve_id)
+   );
+   INSERT OR IGNORE INTO cve_products (product, cve_id) SELECT j.value, c.cve_id FROM cves c, json_each(c.products) j;`,
 ];
 
 /**

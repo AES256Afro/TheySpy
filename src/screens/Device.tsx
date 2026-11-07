@@ -42,8 +42,8 @@ export function DeviceScreen({ id }: { id: number }) {
     setDevice(null); setFactors(null); setFindings(null); setCves(null); setServices(null); setActivity(null); setHits(null);
     api<{ hits: Hit[] }>("GET", `/api/fleet/devices/${id}/hits`).then((r) => setHits(r.hits), () => setHits([]));
     api<{ device: Device }>("GET", `/api/fleet/devices/${id}`).then((r) => setDevice(r.device), (e: Error) => setError(e.message));
-    api<{ devices: { id: number; factors: Factor[] }[] }>("GET", "/api/exposure").then((r) => setFactors(r.devices.find((d) => d.id === id)?.factors ?? []), () => setFactors([]));
-    api<{ findings: Finding[] }>("GET", "/api/evidence").then((r) => setFindings(r.findings.filter((f) => f.deviceId === id)), () => setFindings([]));
+    api<{ factors: Factor[] }>("GET", `/api/fleet/devices/${id}/exposure`).then((r) => setFactors(r.factors), () => setFactors([]));
+    api<{ findings: Finding[] }>("GET", `/api/fleet/devices/${id}/findings`).then((r) => setFindings(r.findings), () => setFindings([]));
     api<{ cves: Cve[]; open: number; exploited: number }>("GET", `/api/fleet/devices/${id}/cves`).then(setCves, () => setCves({ cves: [], open: 0, exploited: 0 }));
     api<{ services: Service[] }>("GET", `/api/fleet/devices/${id}/services`).then((r) => setServices(r.services), () => setServices([]));
     api<Activity>("GET", `/api/fleet/devices/${id}/activity`).then(setActivity, () => setActivity(null));

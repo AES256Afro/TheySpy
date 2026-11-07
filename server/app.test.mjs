@@ -484,4 +484,17 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     expect(overview.body.devices[0]).toMatchObject({ name: "laptop", notBlocked: 1 });
     expect((await request("GET", "/api/fleet/devices/999/hits")).status).toBe(404);
   });
+  it("M16: one device's exposure and findings come from their own endpoints", async () => {
+    const { request, fleet } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    fleet.observe([{ ip: "192.168.1.30", mac: "f0:18:98:00:00:aa", hostname: "laptop", seenAt: "2026-11-01T10:00:00.000Z" }], "pihole", { inventory: true });
+    const [device] = fleet.list();
+    const exposure = await request("GET", `/api/fleet/devices/${device.id}/exposure`);
+    expect(exposure.status).toBe(200);
+    expect(exposure.body).toMatchObject({ id: device.id, name: "laptop" });
+    expect(exposure.body.factors.map((f) => f.id)).toContain("clean");
+    expect((await request("GET", `/api/fleet/devices/${device.id}/findings`)).body).toEqual({ findings: [] });
+    expect((await request("GET", "/api/fleet/devices/999/exposure")).status).toBe(404);
+    expect((await request("GET", "/api/fleet/devices/999/findings")).status).toBe(404);
+  });
 });

@@ -104,6 +104,7 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
   const q = {
     start: db.prepare("INSERT INTO checks (query, kind, profile, started_at, actor) VALUES (?, 'website', 'web', ?, ?)"),
     finish: db.prepare("UPDATE checks SET finished_at = ?, result = ? WHERE id = ?"),
+    fail: db.prepare("UPDATE checks SET finished_at = ?, result = ? WHERE id = ? AND finished_at IS NULL"),
   };
 
   /** The token a site's owner publishes to prove control: stable per host, secret to everyone else. */
@@ -187,9 +188,9 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
       let origin;
       try { origin = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).origin; } catch { throw Object.assign(new Error(`"${url}" is not a website address`), { status: 400 }); }
       const access = await authorize(origin);
+      const started = now();
+      const id = Number(q.start.run(origin, started.toISOString(), actor).lastInsertRowid);
       try {
-        const started = now();
-        const id = Number(q.start.run(origin, started.toISOString(), actor).lastInsertRowid);
         log(`Checking ${origin} (${access.how}).`);
 
         const home = await get(origin, "/", access.dispatcher);
@@ -240,6 +241,10 @@ export function createWebScanner({ db, software: lookup, audit, verificationKey,
         audit.record(actor, "web.checked", origin, { id, findings: findings.length, access: access.how });
         log(`${findings.length} finding${findings.length === 1 ? "" : "s"}${findings.some((f) => f.severity === "critical") ? ", critical ones first" : ""}.`);
         return { id, query: origin, profile: "web", ...result };
+      } catch (error) {
+        // A check that could not run is a failed check, not one still running (B17, and here B23).
+        q.fail.run(now().toISOString(), JSON.stringify({ kind: "failed", error: error.message, status: Number(error.status) || null }), id);
+        throw error;
       } finally {
         void access.dispatcher.close();
       }

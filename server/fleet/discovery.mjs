@@ -26,7 +26,8 @@ export function fromPiholeNetwork(devices) {
       // time made each sync write an "address changed" event between them.
       const seen = Number(a.lastSeen ?? 0) || Number(d.lastQuery ?? 0);
       if (!a.ip || !seen || a.ip.startsWith("127.") || a.ip === "::1") continue;
-      out.push({ ip: String(a.ip), mac, hostname: a.name || null, vendor: d.macVendor || null, seenAt: new Date(seen * 1000).toISOString() });
+      const first = Number(d.firstSeen ?? 0);
+      out.push({ ip: String(a.ip), mac, hostname: a.name || null, vendor: d.macVendor || null, seenAt: new Date(seen * 1000).toISOString(), firstSeenAt: first ? new Date(first * 1000).toISOString() : null });
     }
   }
   return out;

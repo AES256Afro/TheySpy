@@ -25,12 +25,15 @@ export function networkOf(ip, gateway, mac = null) {
 }
 
 /** @type {[RegExp, string, string][]} */
+// Checked in order: the specific word before the generic one (a "nest-cam" is a camera before it
+// is a Nest; a "garage-switch" is a switch, not a games console).
 const kinds = [
+  [/camera|\bcam\b|doorbell|wyze|arlo|\bring\b/i, "camera", "Camera"],
   [/iphone/i, "phone", "iPhone"], [/ipad/i, "tablet", "iPad"], [/watch/i, "watch", "Apple Watch"], [/macbook|imac|\bmac\b|mac-?mini|mac\./i, "computer", "Mac"],
   [/android|pixel|galaxy|sm-[a-z]\d/i, "phone", "Android phone"], [/(^|[^a-z])tv|roku|chromecast|firetv|fire-tv|shield|appletv|bravia|webos/i, "tv", "TV or streamer"],
   [/printer|epson|brother|canon|hp[-_ ]?(laser|office|envy)/i, "printer", "Printer"], [/nas|mycloud|synology|diskstation|qnap|wd ?cloud/i, "storage", "Network storage"],
-  [/console|gl-inet|router|openwrt|unifi|eero|orbi|deco/i, "router", "Router"], [/xbox|playstation|ps[45]|switch/i, "console", "Games console"],
-  [/echo|alexa|homepod|nest|google-home/i, "speaker", "Smart speaker"], [/camera|cam\b|ring|wyze|arlo/i, "camera", "Camera"],
+  [/\bswitch\b/i, "router", "Network switch"], [/gl-inet|router|openwrt|unifi|eero|orbi|deco/i, "router", "Router"], [/xbox|playstation|\bps[45]\b|nintendo/i, "console", "Games console"],
+  [/echo|alexa|homepod|nest|google-home/i, "speaker", "Smart speaker"],
 ];
 /** @type {[RegExp, string][]} */
 const vendorKinds = [

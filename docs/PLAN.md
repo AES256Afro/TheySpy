@@ -584,6 +584,40 @@ carries information, no quotations, no slogans.
   title paragraph exceeds 160 characters or contains a quotation mark; `npm run check` green,
   1.11.0 tagged, the manifest bumped and pinned.
 
+### M16 — Fourth sweep's findings (S)
+**Status (7 Nov 2026): done** (1.12.0). Every item shipped with a test that fails without its fix. One addition the plan did not foresee: a holding now starts when the *source* first saw the device (Pi-hole's network table carries `firstSeen`), so on a fresh install the weeks of history Pi-hole already has are credited to the devices that made them rather than to nobody. **Originally:** Sweep 4 ([docs/AUDITS.md](AUDITS.md)) read the website check, the CVE store
+and lookups, port services, the kind guesses, OUI, NetAlertX, Protec, backup, summary, the read
+model, jobs, the looks, and M14's and M15's own code. Security is clean for the second sweep
+running. Two bugs, seven pieces of hygiene; all reproduced but the one marked by construction.
+
+What leads is the other half of M14's B13: evidence is keyed on every address a device has held,
+but not on *when*, so a device inherits the lookups of whoever had its address before it. The fix
+is the time-bounded attribution the data already supports.
+
+- **B22 — who held the address at the time.** `fleet.holderOf(ip, at)`: the device whose
+  `device_addresses` row for that address spans `at` (first_seen − slack … last_seen + slack, with
+  the current holder open-ended), else null. Exposure's per-device factors, the Overview's rows and
+  questions, `/devices/:id/hits` and the device page all attribute a hit by its `at` through it.
+  `sentinel.hits()` keeps its grouping; attribution happens on the events, not the groups, so a
+  group split across two holders is split. Exit test: the January tablet's lookup stays the
+  tablet's after the laptop takes the address in November; the laptop reads `pass`; a hit made by
+  the laptop at the same address is the laptop's.
+- **B23 — the website check finishes what it starts.** `web.scan()` writes `finished_at` and an
+  error result on any throw after its insert, the same way `targeted.run()` does, and `recent()`
+  reports it `failed: true`. The test drives the website path.
+- **C21 — the exploited scan is a lookup.** A `cve_products (product, cve_id)` table filled by
+  `upsertNvd`/`applyKev`, indexed on `product`; `readmodel.exploited()` reads it; `overview.compose()`
+  passes its result into `exposure.overview()` rather than computing it twice. Exit: the 30 × 5
+  case under 50 ms.
+- **C22 — per-device endpoints.** `GET /api/fleet/devices/:id/exposure` (that device's factors)
+  and `/findings`; the device page uses them.
+- **C23–C27 — hygiene.** Hoist `Q` out of `Verdict`; let `drain()` catch and audit its own
+  failure; order the kind guesses specific-first with word boundaries (`switch` stays a switch,
+  `nest-cam` a camera); `Object.hasOwn` in `protec.mjs`; a line for every audit action the home
+  screen shows, or none.
+- **Exit:** a test per item, each failing before its fix. `npm run check` green, 1.12.0 tagged,
+  the manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
