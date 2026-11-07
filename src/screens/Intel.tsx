@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, lastLogLine, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Cve = {
   cveId: string; published: string | null; description: string | null; cvss: number | null; severity: string | null; vector: string | null; cwes: string[]; products: string[];
@@ -53,7 +53,7 @@ export function IntelScreen() {
     try {
       const { job } = await api<{ job: Job }>("POST", "/api/cves/update");
       const done = await waitForJob(job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       await load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });

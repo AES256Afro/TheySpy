@@ -16,6 +16,15 @@
       "summary": "Current state: indicator contacts, exploited CVEs on devices, new devices, network checks, gaps."
     },
     {
+      "id": "checks",
+      "path": "/checks",
+      "label": "Checks",
+      "icon": "✓",
+      "group": "Watch",
+      "look": "ops",
+      "summary": "The ten checks per device and for the network: failing, not yet checked or passing, with what closes each."
+    },
+    {
       "id": "fleet",
       "path": "/fleet",
       "label": "Fleet",

@@ -20,6 +20,7 @@ import { EvidenceScreen } from "./screens/Evidence.tsx";
 import { ExposureScreen } from "./screens/Exposure.tsx";
 import { SitesScreen } from "./screens/Sites.tsx";
 import { OverviewScreen } from "./screens/Overview.tsx";
+import { ChecksScreen } from "./screens/Checks.tsx";
 import { DeviceScreen } from "./screens/Device.tsx";
 
 type AppearanceResponse = { appearance: Appearance };
@@ -66,7 +67,7 @@ export function App() {
     <div className="app">
       <Sidebar appearance={appearance} current={screen} short={appearance.sidebar === "short"} onSignedOut={() => setSignedIn(false)} />
       <main id="main">
-        {deviceId !== null ? <DeviceScreen id={Number(deviceId)} /> : screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <OverviewScreen layout={appearance.layout} />}
+        {deviceId !== null ? <DeviceScreen id={Number(deviceId)} /> : screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "checks" ? <ChecksScreen /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <OverviewScreen layout={appearance.layout} />}
       </main>
     </div>
   );
