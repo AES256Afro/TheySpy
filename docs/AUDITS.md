@@ -284,3 +284,4 @@ running the test before the fix, or with the wiring removed):
 | C18 | `suggestions()` normalises every device's names once, before the pair loop. |
 | C19 | A Client Hints version must match `/^[\d.]{1,30}$/`, as `confirmedVersion` must; otherwise the user agent is read instead. |
 | C20 | An exposure factor the server did not report renders as `?` ("This check was not reported"), not as "does not apply". |
+| B21 | **Found by the Stage 2 sweep** ([docs/UI-AUDIT.md](UI-AUDIT.md), U2), fixed here: on a fresh install `GET /api/blocklists/baselines` answered 500, because `scopes()` asked Pi-hole for its clients before checking that anything was connected, and the Baselines screen showed only "Something went wrong on the server." It now answers 200 with the network scope, no devices and `pihole: false`; the screen's own "connect Pi-hole first" notice then shows. |
