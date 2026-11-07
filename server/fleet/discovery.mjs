@@ -3,7 +3,6 @@ import { promises as dnsPromises } from "node:dns";
 import { readFile } from "node:fs/promises";
 import net from "node:net";
 import { promisify } from "node:util";
-import net from "node:net";
 import { hostsOf, inCidr, normaliseMac, parseCidr, slash24 } from "./addresses.mjs";
 
 // Discovery (docs/PLAN.md M4): what feeds the device registry.
