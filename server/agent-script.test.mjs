@@ -109,3 +109,33 @@ describe("the agent script", () => {
     expect(left).toEqual([]);
   });
 });
+
+describe("the agent's own schedule (M41)", () => {
+  it.skipIf(!python)("plans a crontab line, a launchd plist or a Task Scheduler task for the interval asked", () => {
+    const out = inAgent([
+      'print(json.dumps(m.schedule_plan("Linux", "/opt/theyspy-agent.py", "/usr/bin/python3", 24)))',
+      'print(json.dumps(m.schedule_plan("Linux", "/opt/theyspy-agent.py", "/usr/bin/python3", 6, quick=True)))',
+      'print(json.dumps(m.schedule_plan("Windows", "C:\\\\Tools\\\\theyspy-agent.py", "py", 12)))',
+      'print(json.dumps(m.schedule_plan("Windows", "C:\\\\Tools\\\\theyspy-agent.py", "py", 48)))',
+      'd = m.schedule_plan("Darwin", "/Users/me/theyspy-agent.py", "/usr/bin/python3", 24)',
+      'import plistlib; p = plistlib.loads(d["content"].encode())',
+      'print(json.dumps({"kind": d["kind"], "path": d["path"].split("/")[-1], "interval": p["StartInterval"], "args": p["ProgramArguments"], "load": d["load"][:2]}))',
+      'print(json.dumps([m.parse_every([]), m.parse_every(["--every", "12h"]), m.parse_every(["--every", "2d"])]))',
+      'try:\n    m.parse_every(["--every", "9d"])\nexcept SystemExit as e:\n    print(e)',
+    ].join("\n"));
+    const [daily, sixHourly, win12, win48, mac, every, refused] = out.split("\n");
+    expect(JSON.parse(daily)).toEqual({ kind: "cron", line: "0 9 * * * /usr/bin/python3 /opt/theyspy-agent.py run # com.theyspy.agent", marker: "com.theyspy.agent" });
+    expect(JSON.parse(sixHourly).line).toBe("0 */6 * * * /usr/bin/python3 /opt/theyspy-agent.py run --quick # com.theyspy.agent");
+    expect(JSON.parse(win12).create).toEqual(["schtasks", "/Create", "/F", "/TN", "TheySpyAgent", "/TR", "py C:\\Tools\\theyspy-agent.py run", "/SC", "HOURLY", "/MO", "12"]);
+    expect(JSON.parse(win48).create.slice(-5)).toEqual(["/SC", "DAILY", "/MO", "2", "/ST", "09:00"].slice(-5));
+    expect(JSON.parse(mac)).toEqual({ kind: "launchd", path: "com.theyspy.agent.plist", interval: 86400, args: ["/usr/bin/python3", "/Users/me/theyspy-agent.py", "run"], load: ["launchctl", "load"] });
+    expect(JSON.parse(every)).toEqual([24, 12, 48]);
+    expect(refused).toBe("--every must be between 1h and 7d");
+  });
+
+  it("offers install and uninstall, and the report carries the interval", () => {
+    expect(source).toMatch(/if argv and argv\[0\] == "install":/);
+    expect(source).toMatch(/if argv and argv\[0\] == "uninstall":/);
+    expect(source).toContain('"schedule": {"everyHours": cfg.get("everyHours")} if cfg.get("everyHours") else None');
+  });
+});

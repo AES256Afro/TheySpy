@@ -121,3 +121,25 @@ describe("M20 B30: the MVT import is one transaction", () => {
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'findings_contact'").get()).toBeTruthy();
   });
 });
+
+describe("the agent's own schedule (M41)", () => {
+  it("keeps the interval a report declares, within reason, and judges an overdue report by it", () => {
+    const { agents, agentId, now, exposure, fleet } = enrolled();
+    const report = (schedule) => agents.ingest({ id: agentId, device_id: null }, { hostname: "lab-vm", macs: ["02:00:00:aa:bb:cc"], schedule, scan: { exitCode: 0, report: { tool: { version: "0.1.8" }, modules: {}, verdict: { status: "NO_INDICATORS", hits_total: 0, gaps: [] } } } }, now().toISOString(), "192.168.8.77");
+    report({ everyHours: 12 });
+    expect(agents.list()[0].reportEveryHours).toBe(12);
+    const device = fleet.list().find((d) => d.ip === "192.168.8.77");
+    const scan = () => exposure.forDevice(device.id).factors.find((f) => f.id === "scan");
+    expect(scan()).toMatchObject({ state: "pass", evidence: expect.stringContaining("it reports every 12 h") });
+    // Twice the interval is a day here: after 25 hours it is overdue, where the old week-long window said fine.
+    now.advance(25 * 3_600_000);
+    expect(scan()).toMatchObject({ state: "fail", evidence: expect.stringContaining("it was to report every 12 h") });
+    // A report without a schedule, or with a silly one, clears it; then a week is the window.
+    report({ everyHours: 5000 });
+    expect(agents.list()[0].reportEveryHours).toBeNull();
+    now.advance(3 * 86_400_000);
+    expect(scan()).toMatchObject({ state: "pass" });
+    report(undefined);
+    expect(agents.list()[0].reportEveryHours).toBeNull();
+  });
+});

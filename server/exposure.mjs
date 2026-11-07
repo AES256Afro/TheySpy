@@ -48,6 +48,8 @@ export function inStarlink(ip, feedText) {
  */
 export function createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit, fetchImpl = fetch, now = () => new Date() }) {
   const fresh = (iso, days) => Boolean(iso) && now().getTime() - Date.parse(iso) <= days * day;
+  /** Days before an agent's report counts as overdue: twice its own interval, a day at least; a week when it set none. */
+  const scanWindowDays = (agent) => (agent?.reportEveryHours ? Math.max(1, (2 * agent.reportEveryHours) / 24) : 7);
 
   /**
    * The seven per-device checks, from what TheySpy has seen of the device. A hit is this device's
@@ -95,9 +97,10 @@ export function createExposure({ fleet, sentinel, agents, read, deviceCves, sett
           : hits.length ? { state: "partial", evidence: "It asked for indicator addresses; Pi-hole blocked every one." }
           : sentinel.effective().mode ? { state: "pass", evidence: "No lookups of indicator addresses in Pi-hole’s history." } : { state: "unknown", evidence: "Pi-hole is not connected." }),
         fix: "See Pi-hole Sentinel and the Evidence locker; for a phone, run MVT and consider expert help." },
-      { id: "scan", label: "Device scanned in the last 7 days",
-        ...(agent?.lastReportAt && fresh(agent.lastReportAt, 7) ? { state: agent.verdict?.gaps ? "partial" : "pass", evidence: `The agent reported ${new Date(agent.lastReportAt).toLocaleDateString()}${agent.verdict?.gaps ? ` with ${agent.verdict.gaps} gap(s)` : ""}.` }
-          : agent?.lastReportAt ? { state: "fail", evidence: `The last agent report is from ${new Date(agent.lastReportAt).toLocaleDateString()}.` }
+      // An agent that installed its own schedule (M41) is overdue after twice its interval (a day at least); one that did not, after a week.
+      { id: "scan", label: "Device scanned on schedule",
+        ...(agent?.lastReportAt && fresh(agent.lastReportAt, scanWindowDays(agent)) ? { state: agent.verdict?.gaps ? "partial" : "pass", evidence: `The agent reported ${new Date(agent.lastReportAt).toLocaleDateString()}${agent.verdict?.gaps ? ` with ${agent.verdict.gaps} gap(s)` : ""}${agent.reportEveryHours ? `; it reports every ${agent.reportEveryHours} h` : ""}.` }
+          : agent?.lastReportAt ? { state: "fail", evidence: `The last agent report is from ${new Date(agent.lastReportAt).toLocaleDateString()}${agent.reportEveryHours ? `, and it was to report every ${agent.reportEveryHours} h` : ", and a week is the most to go without one"}.` }
           : isComputer ? { state: "fail", evidence: "No agent on this computer." }
           : { state: "na", evidence: "Phones are checked with MVT; other devices cannot run the agent." }),
         fix: "Install the agent (Evidence locker → Add a computer) and schedule it daily." },
