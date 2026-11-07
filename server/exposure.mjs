@@ -48,18 +48,25 @@ export function inStarlink(ip, feedText) {
 export function createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit, fetchImpl = fetch, now = () => new Date() }) {
   const fresh = (iso, days) => Boolean(iso) && now().getTime() - Date.parse(iso) <= days * day;
 
-  /** The seven per-device checks, from what TheySpy has seen of the device. */
-  function deviceFactors(d, exploited) {
+  /**
+   * The seven per-device checks, from what TheySpy has seen of the device. Evidence is matched on
+   * every address the device has held, not its current one: a hit Pi-hole recorded under last
+   * month's lease is still this device's, and a lease change must not turn a fail into a pass.
+   * @param {any} d @param {any[]} exploited @param {any[]} allHits read once per overview, not per device
+   */
+  function deviceFactors(d, exploited, allHits) {
     const profile = agents.profile(d.id);
     const seen = profile.observed ?? null;
     const agent = agents.agentFor(d.id);
     const contacts = agents.contactsFor(d.id);
-    const hits = sentinel.hits().filter((h) => h.clientIp === d.ip);
+    const addresses = new Set(fleet.addressesOf(d.id));
+    if (d.ip) addresses.add(d.ip);
+    const hits = allHits.filter((h) => addresses.has(h.clientIp));
     const isComputer = Boolean(agent) || ["computer", "laptop", "desktop"].includes(d.kind ?? "") || /computer|mac\b/i.test(d.guess?.label ?? "");
     const isPhone = ["phone", "tablet", "watch"].includes(d.kind ?? d.guess?.kind ?? "") || /iphone|ipad|android|phone/i.test(`${d.guess?.label ?? ""} ${profile.os ?? ""}`);
     const piholeRecent = fresh(d.sources?.pihole, 1);
     const inventory = deviceCves.inventory(d.id);
-    const mine = exploited.filter((e) => e.deviceIp === d.ip);
+    const mine = exploited.filter((e) => e.deviceId === d.id);
     return [
       { id: "dns", label: "DNS through Pi-hole",
         ...(seen?.dnsThroughPihole === false ? { state: "fail", evidence: `This device’s own check (${new Date(seen.at).toLocaleDateString()}): its lookups skip Pi-hole.` }
@@ -102,8 +109,9 @@ export function createExposure({ fleet, sentinel, agents, read, deviceCves, sett
     /** Every device's checklist and score, and the network's pillars. */
     overview() {
       const exploited = read.exploitedOnDevices();
+      const allHits = sentinel.hits();
       const devices = fleet.list().filter((d) => d.network?.kind !== "docker" && d.network?.kind !== "router").map((d) => {
-        const factors = deviceFactors(d, exploited);
+        const factors = deviceFactors(d, exploited, allHits);
         return { id: d.id, name: d.name, ip: d.ip, kind: d.kind ?? d.guess?.label ?? null, factors, ...scoreOf(factors) };
       });
       const coverage = sentinel.lastCoverage();

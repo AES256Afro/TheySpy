@@ -94,7 +94,8 @@ export function thisDeviceRoutes({ fleet, sentinel, software, remember = () => {
       }
     }
     const gpc = req.get("sec-gpc") === "1" || body.gpc === true;
-    const device = fleet.list().find((d) => d.ip === (dns.from ?? req.ip)) ?? null;
+    const deviceId = fleet.deviceByAddress().get(dns.from ?? req.ip) ?? null;
+    const device = deviceId === null ? null : fleet.get(deviceId);
     if (device) remember(device.id, { gpc, adBlocked: body.adBlocked === true, dnsThroughPihole: dns.checked ? Boolean(dns.throughPihole) : null, browser: browser ? `${browser.name} ${browser.version}` : null, browserExact: Boolean(browser?.exact), exploited: cves ? cves.filter((c) => c.kev).length : null, at: now().toISOString() });
     res.json({
       browser, os, gpc, adBlocked: body.adBlocked === true, dns, clientIp: req.ip,

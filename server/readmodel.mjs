@@ -33,7 +33,7 @@ export function createReadModel({ fleet, sentinel, cves, deviceCves, digest, now
             if (!hit) continue; // NVD's ranges say this version is not affected
             out.push({ cveId: row.cveId, name: row.kev?.name ?? row.description?.slice(0, 120) ?? null, kevAdded: row.kev?.added ?? null, due: row.kev?.due ?? null, ransomware: row.kev?.ransomware ?? false,
               reportedBy: row.zeroDaySources.map((s) => s.source),
-              device: device.name, deviceIp: device.ip, software: `${item.product} ${item.version ?? "(version hidden)"}`, confidence: hit.confidence, fixed: hit.fixed ?? null });
+              device: device.name, deviceId: device.id, deviceIp: device.ip, software: `${item.product} ${item.version ?? "(version hidden)"}`, confidence: hit.confidence, fixed: hit.fixed ?? null });
           }
         }
       }
