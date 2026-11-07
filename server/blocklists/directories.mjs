@@ -70,7 +70,8 @@ export async function resolveFilterListsUrl(fetchImpl, id, timeoutMs = 30_000) {
  */
 export function listName(url) {
   const { hostname, pathname } = new URL(url);
-  const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent).map((p) => p.replace(/\.txt$/i, ""));
+  const decode = (p) => { try { return decodeURIComponent(p); } catch { return p; } }; // a malformed %-sequence is shown as it is, not thrown
+  const parts = pathname.split("/").filter(Boolean).map(decode).map((p) => p.replace(/\.txt$/i, ""));
   const generic = (p) => /^(hosts?|domains|list|master|main|raw|blacklists?)$/i.test(p);
   if (hostname === "raw.githubusercontent.com" && parts.length >= 3) {
     const file = parts[parts.length - 1];

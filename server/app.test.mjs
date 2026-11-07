@@ -497,4 +497,15 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     expect((await request("GET", "/api/fleet/devices/999/exposure")).status).toBe(404);
     expect((await request("GET", "/api/fleet/devices/999/findings")).status).toBe(404);
   });
+
+  it("M17 B25: a Pi-hole Sentinel row is named after the device that held its address when it was last seen", async () => {
+    const { request, fleet, db } = await start({ services: { piholeEnv: { url: "http://pihole.lan", password: "x", write: false } } });
+    await request("POST", "/api/login", { password: "correct horse" });
+    fleet.observe([{ ip: "192.168.1.30", mac: "aa:aa:aa:00:00:01", hostname: "old-tablet", seenAt: "2026-01-10T10:00:00.000Z" }], "pihole", { inventory: true });
+    db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', 1, '2026-01-12T10:00:00.000Z', 'adfection-c2.example', 'adfection-c2.example', 'query', '192.168.1.30', NULL, 'FORWARDED', 0, 'hunt', '2026-01-12T10:05:00.000Z')").run();
+    fleet.observe([{ ip: "192.168.1.30", mac: "bb:bb:bb:00:00:02", hostname: "new-laptop", seenAt: "2026-11-07T11:00:00.000Z" }], "pihole");
+    const { body } = await request("GET", "/api/pihole/hits");
+    expect(body.hits).toHaveLength(1);
+    expect(body.hits[0].device).toBe("old-tablet");
+  });
 });

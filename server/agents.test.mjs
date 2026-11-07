@@ -94,3 +94,16 @@ describe("agents and evidence", () => {
     expect(agents.findings().filter((f) => f.kind === "gap").map((f) => f.detail)).toEqual(["only one"]);
   });
 });
+
+describe("M17 C30", () => {
+  it("bounds the MVT module name taken from the uploaded file's name", () => {
+    const { fleet, agents, db } = testServices();
+    fleet.observe([{ ip: "192.168.1.42", mac: "a4:c1:38:00:00:19", hostname: "pixel", seenAt: new Date().toISOString() }], "pihole", { inventory: true });
+    const [d] = fleet.list();
+    const name = `${"x".repeat(500)}_detected.json`;
+    agents.importMvt(d.id, [{ name, content: JSON.stringify([{ matched_indicator: { value: "c2.example" } }]) }], "owner");
+    const row = db.prepare("SELECT location, source_ref FROM findings").get();
+    expect(row.location.length).toBeLessThanOrEqual(80);
+    expect(row.source_ref.length).toBeLessThanOrEqual(84);
+  });
+});

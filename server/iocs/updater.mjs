@@ -42,9 +42,11 @@ export function createIocUpdater({ fetchImpl = fetch, timeoutMs = 30_000 } = {})
     }
     if (response.status === 404) return null;
     if (!response.ok) throw new UpdateError(`${parsed.hostname} answered ${response.status} for ${parsed.pathname}`);
-    const body = await readCappedBytes(response, { what: parsed.hostname });
-    if (body.length > maxBytes) throw new UpdateError(`${parsed.pathname} is larger than ${maxBytes} bytes`);
-    return body;
+    try {
+      return await readCappedBytes(response, { what: parsed.hostname, maxBytes });
+    } catch (error) {
+      throw new UpdateError(`${parsed.pathname}: ${error.message}`, { cause: error });
+    }
   }
   const raw = (ref, path) => `https://raw.githubusercontent.com/${repository}/${ref}/${path}`;
   const required = async (url, what) => {
