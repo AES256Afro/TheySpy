@@ -407,6 +407,8 @@ export const migrations = [
      queries TEXT NOT NULL,
      fetched_at TEXT NOT NULL
    );`,
+  // M41: how often an agent said it would report, so an overdue report is judged by its own schedule.
+  `ALTER TABLE agents ADD COLUMN report_every_hours INTEGER;`,
 ];
 
 /**

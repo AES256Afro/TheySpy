@@ -63,6 +63,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
     agent: db.prepare("SELECT * FROM agents WHERE id = ?"),
     agents: db.prepare("SELECT a.*, d.label, d.hostname, d.ip FROM agents a LEFT JOIN devices d ON d.id = a.device_id ORDER BY a.id DESC"),
     reported: db.prepare("UPDATE agents SET last_report_at = ?, last_verdict = ?, device_id = COALESCE(?, device_id) WHERE id = ?"),
+    schedule: db.prepare("UPDATE agents SET report_every_hours = ? WHERE id = ?"),
     revoke: db.prepare("UPDATE agents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL"),
     addReport: db.prepare("INSERT INTO agent_reports (agent_id, at, verdict, report) VALUES (?, ?, ?, ?)"),
     dropGaps: db.prepare("DELETE FROM findings WHERE source_ref = ? AND kind = 'gap'"),
@@ -226,6 +227,9 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
 
       const verdict = { status: zb?.verdict?.status ?? "NOT_RUN", hits: zb?.verdict?.hits_total ?? 0, gaps: gaps.length, exitCode: scan.exitCode ?? null, scanner: zb?.tool?.version ?? null, at };
       q.reported.run(at, JSON.stringify(verdict), deviceId, agent.id);
+      // The schedule the agent installed for itself (M41): hours between reports, 1 to 168, or none.
+      const every = Number(report.schedule?.everyHours);
+      q.schedule.run(Number.isInteger(every) && every >= 1 && every <= 168 ? every : null, agent.id);
       q.addReport.run(agent.id, at, verdict.status, JSON.stringify(report).slice(0, 500_000));
       audit.record("system", "agent.reported", String(agent.id), { verdict: verdict.status, hits: verdict.hits, gaps: verdict.gaps });
       if (added.length) audit.record("system", "agent.indicator_found", String(agent.id), { device: fleet.get(deviceId)?.name ?? report.hostname ?? null, indicators: [...new Set(added)].slice(0, 20) });
@@ -234,7 +238,7 @@ export function createAgents({ db, fleet, iocStore, audit, secretBox, now = () =
 
     list: () => q.agents.all().map((raw) => {
       const r = /** @type {any} */ (raw);
-      return { id: r.id, name: r.name, platform: r.platform, deviceId: r.device_id, device: r.label ?? r.hostname ?? r.ip ?? null, enrolledAt: r.enrolled_at, lastReportAt: r.last_report_at, verdict: r.last_verdict ? JSON.parse(r.last_verdict) : null, revoked: Boolean(r.revoked_at) };
+      return { id: r.id, name: r.name, platform: r.platform, deviceId: r.device_id, device: r.label ?? r.hostname ?? r.ip ?? null, enrolledAt: r.enrolled_at, lastReportAt: r.last_report_at, reportEveryHours: r.report_every_hours === null || r.report_every_hours === undefined ? null : Number(r.report_every_hours), verdict: r.last_verdict ? JSON.parse(r.last_verdict) : null, revoked: Boolean(r.revoked_at) };
     }),
     revoke(id, actor) {
       if (!Number(q.revoke.run(now().toISOString(), id).changes)) throw Object.assign(new Error("No such agent"), { status: 404 });

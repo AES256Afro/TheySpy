@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "rea
 import { api } from "../api.ts";
 
 type Finding = { id: number; deviceId: number | null; device: string | null; source: "agent" | "mvt" | "zeek" | "suricata"; kind: "contacted" | "gap"; indicator: string | null; tier: string | null; confidence: string | null; location: string | null; detail: string | null; at: string; status: "open" | "dismissed"; note: string | null };
-type Agent = { id: number; name: string; platform: string | null; device: string | null; enrolledAt: string; lastReportAt: string | null; verdict: { status: string; hits: number; gaps: number; scanner: string | null } | null; revoked: boolean };
+type Agent = { id: number; name: string; platform: string | null; device: string | null; enrolledAt: string; lastReportAt: string | null; reportEveryHours: number | null; verdict: { status: string; hits: number; gaps: number; scanner: string | null } | null; revoked: boolean };
 type Data = { findings: Finding[]; agents: Agent[]; scanner: { verified: boolean; version?: string; sha256?: string; error?: string } };
 type Device = { id: number; name: string; ip: string | null };
 type Fingerprint = { client: string; device: string | null; ja4: string; firstSeen: string; lastSeen: string; count: number; sni: string | null; source: string; isNew: boolean };
@@ -130,12 +130,13 @@ export function EvidenceScreen() {
                 <code className="small">curl -fsSLo theyspy-agent.py {origin}/agent/theyspy-agent.py</code>
                 <code className="small">python3 theyspy-agent.py enroll {origin} {enroll.token}</code>
                 <code className="small">python3 theyspy-agent.py run</code>
-                <span className="small">Schedule the last line daily (cron, launchd or Task Scheduler). On Windows use <code>py</code> instead of <code>python3</code>.</span>
+                <code className="small">python3 theyspy-agent.py install</code>
+                <span className="small">The last line schedules a daily run for you (cron, launchd or Task Scheduler; <code>--every 12h</code> changes the interval, <code>uninstall</code> removes it), and TheySpy then counts a report overdue by that interval. On Windows use <code>py</code> instead of <code>python3</code>.</span>
               </div>
             )}
             <div className="list small">{data.agents.map((a) => (
               <div key={a.id} style={{ opacity: a.revoked ? 0.5 : 1 }}>
-                <span className="grow"><b>{a.device ?? a.name}</b> <span className="muted">{a.platform ?? ""}</span><br /><span className="muted">last report {when(a.lastReportAt)}</span></span>
+                <span className="grow"><b>{a.device ?? a.name}</b> <span className="muted">{a.platform ?? ""}</span><br /><span className="muted">last report {when(a.lastReportAt)}{a.reportEveryHours ? ` · every ${a.reportEveryHours} h` : " · not scheduled from the agent"}</span></span>
                 {a.verdict && <span className={`badge ${Object.hasOwn(verdictBadge, a.verdict.status) ? verdictBadge[a.verdict.status] : "b-info"}`}>{Object.hasOwn(verdictWord, a.verdict.status) ? verdictWord[a.verdict.status] : a.verdict.status}</span>}
                 {!a.revoked && <button className="btn small danger" type="button" onClick={() => act(() => api("DELETE", `/api/evidence/agents/${a.id}`), "Revoked.")}>Revoke</button>}
               </div>
