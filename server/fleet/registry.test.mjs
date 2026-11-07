@@ -158,3 +158,15 @@ describe("M16", () => {
     expect(fleet.get(d.id).firstSeen).toBe(at("2026-09-01T08:00:00Z"));
   });
 });
+
+describe("M31 B42: an edit that is too long is refused with the limit, not cut in silence", () => {
+  it("names the limit for a label, a tag count and a tag's length, and keeps what fits", () => {
+    const { fleet } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    fleet.observe([{ ip: "192.168.1.60", mac: "a4:c1:38:00:00:60", hostname: "printer", seenAt: "2026-11-07T11:00:00.000Z" }], "pihole", { inventory: true });
+    const [d] = fleet.list();
+    expect(() => fleet.edit(d.id, { label: "x".repeat(81) }, "owner")).toThrow(/label is at most 80 characters/);
+    expect(() => fleet.edit(d.id, { tags: Array.from({ length: 13 }, (_, i) => `t${i}`) }, "owner")).toThrow(/at most 12 tags \(13 given\)/);
+    expect(() => fleet.edit(d.id, { tags: ["ok", "y".repeat(31)] }, "owner")).toThrow(/a tag is at most 30 characters/);
+    expect(fleet.edit(d.id, { label: "x".repeat(80), tags: Array.from({ length: 12 }, (_, i) => `T${i}`) }, "owner")).toMatchObject({ label: "x".repeat(80), tags: Array.from({ length: 12 }, (_, i) => `t${i}`) });
+  });
+});

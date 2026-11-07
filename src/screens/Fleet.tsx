@@ -346,12 +346,12 @@ function DeviceCard({ device, others, onMerge, onSave, onClose, onForget }: { de
       </div>
       <Activity deviceId={device.id} />
       <div className="compact-fields">
-      <div className="field"><label htmlFor="d-label">Name</label><input id="d-label" className="input" value={form.label} placeholder={device.hostname ?? ""} onChange={(e) => setForm({ ...form, label: e.target.value })} /></div>
-      <div className="field"><label htmlFor="d-owner">Owner</label><input id="d-owner" className="input" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} /></div>
+      <div className="field"><label htmlFor="d-label">Name</label><input id="d-label" className="input" maxLength={80} value={form.label} placeholder={device.hostname ?? ""} onChange={(e) => setForm({ ...form, label: e.target.value })} /></div>
+      <div className="field"><label htmlFor="d-owner">Owner</label><input id="d-owner" className="input" maxLength={80} value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-kind">Kind</label>
         <select id="d-kind" className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}><option value="">—</option>{kinds.map((k) => <option key={k} value={k}>{k}</option>)}</select></div>
-      <div className="field"><label htmlFor="d-tags">Tags</label><input id="d-tags" className="input" value={form.tags} placeholder="iot, kids" onChange={(e) => setForm({ ...form, tags: e.target.value })} /></div>
-      <div className="field"><label htmlFor="d-notes">Notes</label><textarea id="d-notes" className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+      <div className="field"><label htmlFor="d-tags">Tags</label><input id="d-tags" className="input" value={form.tags} placeholder="iot, kids" onChange={(e) => setForm({ ...form, tags: e.target.value })} /><span className="hint">Up to 12, 30 characters each.</span></div>
+      <div className="field"><label htmlFor="d-notes">Notes</label><textarea id="d-notes" className="input" rows={2} maxLength={2000} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
       </div>
       <div className="row">
         <button className="btn primary" type="button" onClick={() => onSave({ label: form.label, owner: form.owner, kind: form.kind, notes: form.notes, tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) })}>Save</button>
