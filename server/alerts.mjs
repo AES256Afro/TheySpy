@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { productVersion } from "./shared.mjs";
 
 // Alerts (docs/PLAN.md M9): the few things worth telling the owner about without being asked, sent
@@ -30,6 +31,7 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
     pending: db.prepare("SELECT * FROM alerts WHERE delivered_at IS NULL AND at >= ? ORDER BY at"),
     delivered: db.prepare("UPDATE alerts SET delivered_at = ?, error = NULL, attempts = attempts + 1 WHERE key = ?"),
     failed: db.prepare("UPDATE alerts SET error = ?, attempts = attempts + 1 WHERE key = ?"),
+    reached: db.prepare("UPDATE alerts SET deliveries = ? WHERE key = ?"),
     since: db.prepare("SELECT * FROM alerts WHERE at >= ? ORDER BY at"),
   };
 
@@ -42,6 +44,18 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
     const topic = env.topic ?? stored.topic ?? "";
     return url && topic ? { url, topic, token } : null;
   }
+
+  /** The webhook, when the owner set one: a URL, and a secret that signs each body (alerts_webhook). */
+  function webhook() {
+    const stored = settings.get("alerts_webhook") ?? {};
+    if (!stored.url) return null;
+    let secret = null;
+    if (stored.secretSealed) { try { secret = secretBox.open(stored.secretSealed); } catch { secret = null; } }
+    return { url: stored.url, secret };
+  }
+
+  /** Every channel that is set up, by name. */
+  const channels = () => /** @type {[string, any][]} */ ([["ntfy", target()], ["webhook", webhook()]]).filter(([, t]) => t);
 
   const who = (ip) => (names()[ip]?.name && names()[ip].name !== ip ? `${names()[ip].name} (${ip})` : ip);
   const link = (path) => (settings.get("lists_base_url") ? `${settings.get("lists_base_url")}${path}` : null);
@@ -93,27 +107,54 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
     }
   }
 
+  async function sendNtfy(t, row) {
+    const response = await fetchImpl(`${t.url}/${encodeURIComponent(t.topic)}`, {
+      method: "POST",
+      headers: {
+        "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: Object.hasOwn(priorities, row.priority) ? priorities[row.priority] : "3",
+        Tags: Object.hasOwn(tags, row.kind) ? tags[row.kind] : "bell",
+        ...(row.link ? { Click: row.link } : {}), ...(t.token ? { Authorization: `Bearer ${t.token}` } : {}),
+      },
+      body: row.message,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`ntfy answered ${response.status}`);
+  }
+
+  /**
+   * The alert as JSON, POSTed once. With a secret set, X-TheySpy-Signature carries the HMAC-SHA256
+   * of the exact body, hex, as "sha256=…", so the receiver can refuse anything else.
+   */
+  async function sendWebhook(t, row) {
+    const body = JSON.stringify({ event: "alert", key: row.key, at: row.at, kind: row.kind, priority: row.priority, title: row.title, message: row.message, link: row.link ?? null, detail: row.detail ? JSON.parse(row.detail) : null });
+    const response = await fetchImpl(t.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json", "user-agent": `TheySpy/${productVersion}`, "x-theyspy-event": "alert",
+        ...(t.secret ? { "x-theyspy-signature": `sha256=${createHmac("sha256", t.secret).update(body).digest("hex")}` } : {}),
+      },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`the webhook answered ${response.status}`);
+  }
+
+  const senders = { ntfy: sendNtfy, webhook: sendWebhook };
+
+  /** Sends to every channel the alert has not reached yet; delivered once every channel has it. */
   async function deliver(row) {
-    const t = target();
-    if (!t) return false;
-    try {
-      const response = await fetchImpl(`${t.url}/${encodeURIComponent(t.topic)}`, {
-        method: "POST",
-        headers: {
-          "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: Object.hasOwn(priorities, row.priority) ? priorities[row.priority] : "3",
-          Tags: Object.hasOwn(tags, row.kind) ? tags[row.kind] : "bell",
-          ...(row.link ? { Click: row.link } : {}), ...(t.token ? { Authorization: `Bearer ${t.token}` } : {}),
-        },
-        body: row.message,
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) throw new Error(`ntfy answered ${response.status}`);
-      q.delivered.run(now().toISOString(), row.key);
-      return true;
-    } catch (error) {
-      q.failed.run(error.message, row.key);
-      return false;
+    const configured = channels();
+    if (configured.length === 0) return false;
+    const reached = row.deliveries ? JSON.parse(row.deliveries) : {};
+    const errors = [];
+    for (const [name, t] of configured) {
+      if (reached[name]) continue;
+      try { await senders[name](t, row); reached[name] = now().toISOString(); } catch (error) { errors.push(configured.length > 1 ? `${name}: ${error.message}` : error.message); }
     }
+    q.reached.run(JSON.stringify(reached), row.key);
+    if (errors.length === 0) { q.delivered.run(now().toISOString(), row.key); return true; }
+    q.failed.run(errors.join("; "), row.key);
+    return false;
   }
 
   const alerts = {
@@ -141,6 +182,28 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
       const stored = settings.get("alerts_ntfy") ?? {};
       return { url: env.url ?? stored.url ?? "", topic: env.topic ?? stored.topic ?? "", hasToken: Boolean(env.token ?? stored.tokenSealed), fromEnv: { url: Boolean(env.url), topic: Boolean(env.topic), token: Boolean(env.token) }, ready: Boolean(target()) };
     },
+    /** The webhook as the screen shows it: the address, whether a secret is set, and whether it is ready. */
+    webhookConfig() {
+      const stored = settings.get("alerts_webhook") ?? {};
+      return { url: stored.url ?? "", hasSecret: Boolean(stored.secretSealed), ready: Boolean(webhook()) };
+    },
+    /** @param {{ url?: string, secret?: string }} input @param {string} actor */
+    configureWebhook(input, actor) {
+      const next = { ...(settings.get("alerts_webhook") ?? {}) };
+      if (input.url !== undefined) {
+        if (input.url === "") delete next.url;
+        else {
+          let u;
+          try { u = new URL(String(input.url)); } catch { u = null; }
+          if (!u || !["http:", "https:"].includes(u.protocol) || u.username || u.password) throw Object.assign(new Error("The webhook address must be an http(s) URL without a user name or password, e.g. https://hooks.example/theyspy"), { status: 400 });
+          next.url = u.href;
+        }
+      }
+      if (input.secret !== undefined) next.secretSealed = input.secret ? secretBox.seal(String(input.secret).slice(0, 500)) : undefined;
+      settings.set("alerts_webhook", next);
+      audit.record(actor, "alerts.webhook_configured", null, { url: next.url ?? null, secret: input.secret === undefined ? undefined : "(changed)" });
+      return alerts.webhookConfig();
+    },
     /** @param {{ url?: string, topic?: string, token?: string }} input @param {string} actor */
     configure(input, actor) {
       const next = { ...(settings.get("alerts_ntfy") ?? {}) };
@@ -167,8 +230,8 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
       const key = `test:${now().toISOString()}`;
       await alerts.raise({ key, kind: "test", priority: "low", title: "TheySpy test notification", message: "If you can read this, TheySpy's alerts reach you." });
       const row = /** @type {any} */ (q.get.get(key));
-      if (!row.delivered_at) throw Object.assign(new Error(row.error ?? "Set the ntfy address and topic first"), { status: 502 });
-      return { delivered: true };
+      if (!row.delivered_at) throw Object.assign(new Error(row.error ?? "Set up ntfy or a webhook first"), { status: 502 });
+      return { delivered: true, channels: Object.keys(JSON.parse(row.deliveries || "{}")) };
     },
   };
 

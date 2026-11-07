@@ -213,9 +213,11 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   });
 
   // Briefing: the digest, recent alerts, where alerts go, and API/MCP tokens.
-  app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(intQuery(req.query.days, { name: "days", fallback: 7 }) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), tokens: tokens.list() }));
+  app.get("/api/briefing", requireOwner, (req, res) => res.json({ digest: digest.compose(intQuery(req.query.days, { name: "days", fallback: 7 }) === 1 ? 1 : 7), alerts: alerts.recent(40), ntfy: alerts.config(), webhook: alerts.webhookConfig(), tokens: tokens.list() }));
   app.put("/api/briefing/ntfy", requireOwner, (req, res) => res.json({ ntfy: alerts.configure(req.body ?? {}, "owner") }));
   app.post("/api/briefing/ntfy/test", requireOwner, async (_req, res) => res.json(await alerts.test()));
+  app.put("/api/briefing/webhook", requireOwner, (req, res) => res.json({ webhook: alerts.configureWebhook(req.body ?? {}, "owner") }));
+  app.post("/api/briefing/webhook/test", requireOwner, async (_req, res) => res.json(await alerts.test()));
   app.post("/api/briefing/send", requireOwner, async (_req, res) => {
     const d = digest.compose(7);
     await alerts.raise({ key: `digest-now:${new Date().toISOString()}`, kind: "digest", priority: "low", title: `TheySpy briefing ${d.week}`, message: d.sections.map((s) => `${s.title}: ${s.lines.join(" ")}`).join("\n\n") });

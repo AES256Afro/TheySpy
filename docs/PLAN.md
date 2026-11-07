@@ -762,7 +762,10 @@ free; and a Database card on Activity that says how big the file is, which table
 when it was last trimmed. The mirror is bounded (NVD's size) and is said to be.
 
 ### M36 — On a phone, and a second channel (S)
-A web manifest and icons so This device sits on a phone's home screen. A webhook alongside ntfy:
+**Status (7 Nov 2026): done** (1.32.0). The icons are drawn by `scripts/make-icons.mjs` from the
+favicon's badge and checked against it; the webhook's signature is over the exact body, and an alert
+is delivered when every channel has it, with a retry going only to the channel that has not.
+**Originally:** A web manifest and icons so This device sits on a phone's home screen. A webhook alongside ntfy:
 a URL the owner gives, each alert and the weekly briefing POSTed as JSON with an HMAC signature
 in a header, so a Discord, Slack or Home Assistant relay can take it; delivery and retries as ntfy
 has them.
