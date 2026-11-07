@@ -213,7 +213,10 @@ export function BlocklistsScreen() {
             <header><h2>Never block</h2></header>
             <p className="small muted">Names no list may take away, on top of TheySpy’s own (connectivity checks, certificates, time and updates). An update that newly blocks a name this network looks up most is held for review instead. One per line.</p>
             <textarea className="input mono" rows={5} value={pins} onChange={(e) => setPins(e.target.value)} aria-label="Never-block names" />
-            <div><button className="btn" type="button" onClick={() => act(() => api("PUT", "/api/blocklists/pins", { pins: pins.split(/\s+/).filter(Boolean) }), "Saved.")}>Save</button></div>
+            <div><button className="btn" type="button" onClick={() => act(async () => {
+              const r = await api<{ pins: string[]; ignored: string[] }>("PUT", "/api/blocklists/pins", { pins: pins.split(/\s+/).filter(Boolean) });
+              if (r.ignored.length) throw new Error(`Saved ${r.pins.length} name${r.pins.length === 1 ? "" : "s"}; ignored ${r.ignored.length} that ${r.ignored.length === 1 ? "is" : "are"} not a domain name: ${r.ignored.join(", ")}`);
+            }, "Saved.")}>Save</button></div>
           </section>
         </div>
       </div>
