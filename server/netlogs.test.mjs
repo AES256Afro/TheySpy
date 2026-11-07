@@ -78,3 +78,20 @@ describe("importing network logs", () => {
     expect(s.netlogs.fingerprints().every((f) => !f.isNew)).toBe(true);
   });
 });
+
+describe("M17 B25: a log's lookup is credited to the device that held the address at the time", () => {
+  it("gives a January lookup to the old holder and today's to the new one", async () => {
+    const { testServices, testClock } = await import("./test-helpers.mjs");
+    const at = (iso) => new Date(iso).toISOString();
+    const { fleet, netlogs, iocStore, db } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    const [ind] = iocStore.activeSet().indicators.filter((i) => i.type === "domain");
+    fleet.observe([{ ip: "192.168.1.30", mac: "aa:aa:aa:00:00:01", hostname: "old-tablet", seenAt: at("2026-01-10T10:00:00Z") }], "pihole", { inventory: true });
+    fleet.observe([{ ip: "192.168.1.30", mac: "bb:bb:bb:00:00:02", hostname: "new-laptop", seenAt: at("2026-11-07T11:00:00Z") }], "pihole");
+    const line = (iso) => `{"ts":${Date.parse(iso) / 1000},"id.orig_h":"192.168.1.30","query":"${ind.value}"}`;
+    netlogs.importLogs([{ name: "dns.log", content: `${line("2026-01-12T10:00:00Z")}\n${line("2026-11-07T11:30:00Z")}\n` }], "owner");
+    const who = (deviceId) => fleet.get(deviceId)?.hostname;
+    const rows = db.prepare("SELECT device_id, detail FROM findings ORDER BY detail").all().map((r) => [who(r.device_id), r.detail.includes("2026-01") ? "january" : "today"]);
+    expect(rows).toEqual(expect.arrayContaining([["old-tablet", "january"], ["new-laptop", "today"]]));
+    expect(rows).toHaveLength(2);
+  });
+});

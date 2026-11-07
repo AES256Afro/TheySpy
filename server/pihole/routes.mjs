@@ -1,5 +1,6 @@
 import { intParam } from "../params.mjs";
 import express from "express";
+import { holderAt } from "../fleet/attribution.mjs";
 import { citation } from "../iocs/exports.mjs";
 import { defang } from "../iocs/parse.mjs";
 
@@ -10,9 +11,10 @@ import { defang } from "../iocs/parse.mjs";
  *   sentinel: ReturnType<typeof import("./sentinel.mjs").createSentinel>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  *   settings: ReturnType<typeof import("../db.mjs").createSettingsStore>,
+ *   fleet: ReturnType<typeof import("../fleet/registry.mjs").createFleet>,
  * }} deps
  */
-export function piholeRoutes({ sentinel, jobs, settings }) {
+export function piholeRoutes({ sentinel, jobs, settings, fleet }) {
   const router = express.Router();
 
   router.get("/", (_req, res) => {
@@ -34,7 +36,10 @@ export function piholeRoutes({ sentinel, jobs, settings }) {
   });
 
   router.get("/hits", (_req, res) => {
-    res.json({ hits: sentinel.hits().map((h) => ({ ...h, indicator: defang(h.indicator), domain: defang(h.domain), citation: h.source ? citation(h.source) : null })) });
+    // Each row is named after the device that held its address when it was last seen (M16's attribution), not the address's current holder.
+    const holders = fleet.addressHolders();
+    const names = new Map(fleet.list().map((d) => [d.id, d.name]));
+    res.json({ hits: sentinel.hits().map((h) => ({ ...h, device: names.get(holderAt(holders, h.clientIp, h.lastSeen)) ?? null, indicator: defang(h.indicator), domain: defang(h.domain), citation: h.source ? citation(h.source) : null })) });
   });
 
   router.put("/settings", (req, res) => res.json({ config: sentinel.configure(req.body ?? {}, "owner") }));

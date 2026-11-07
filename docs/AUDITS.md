@@ -6,20 +6,22 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 4 | 0 | in the loop |
-| Bugs (correctness) | 4 | 0 | in the loop |
-| Security | 4 | **2** | in the loop |
+| Code (structure, hygiene, dead weight) | 5 | 0 | in the loop |
+| Bugs (correctness) | 5 | 0 | in the loop |
+| Security | 5 | **3** | **out of the loop** (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
-sweep 4's are planned as M16. **Security is clean for the second sweep running** (streak 2 of 3).
-Code and bugs both found things, so both stay at 0.
+sweep 4's in 1.12.0 (M16); sweep 5's are planned as M17. **Security has gone three sweeps without a
+finding and leaves the loop.** It is swept again only if a later change opens new surface (a new
+unauthenticated route, a new outbound connector, a new parser of third-party input). Code and bugs
+both found things in sweep 5 and stay at 0.
 
-Sweep 5 reads: `pihole/client.mjs` and the three other DNS connectors (`pihole/connectors.mjs`),
-`iocs/store.mjs`, `iocs/updater.mjs`, `blocklists/directories.mjs`, `blocklists/baselines.mjs`
-(the parts sweep 2 skipped), `sites.mjs`, `integrations.mjs` (the MCP surface), `agents.mjs`'s
-import paths (MVT, inventory), `netlogs.mjs`'s parsers, and `src/screens/Pihole.tsx`,
-`Baselines.tsx`, `Blocklists.tsx`, `Check.tsx` in full. It should re-read `overview.mjs` and
-`exposure.mjs` once M16's time-bounded attribution lands.
+Sweep 6 reads what is left: `blocklists/library.mjs`'s fetch and quarantine paths in full,
+`blocklists/taxonomy.mjs`, `pihole/match.mjs`, `pihole/sources.mjs`, `agents.mjs`'s enrol and report
+paths (as code, not security), `auth.mjs`'s session lifecycle, `config.mjs`, `index.mjs`'s
+schedulers, `src/names.ts`, `src/api.ts`'s `useStopped`, and the remaining screens (`Indicators`,
+`Evidence`, `Intel`, `Briefing`, `Activity`, `Appearance`, `Sites`, `ThisDevice`) in full; and it
+re-reads `netlogs.mjs` and `sites.mjs` once M17 lands.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -362,3 +364,65 @@ All of sweep 4 is fixed in **1.12.0**, each with a test that fails without its f
 | C25 | Guesses are specific-first with word boundaries: `garage-switch` is a network switch, `nest-cam` a camera, `console` nothing. |
 | C26 | `Object.hasOwn` in `protec.mjs`. |
 | C27 | Every audit action the home screen shows has a line; the rest are not shown. |
+
+## Sweep 5 — 7 Nov 2026, at 1.12.0
+
+Read in full: `integrations.mjs` (the token store, `/api/v1` and `/mcp`), `sites.mjs`,
+`iocs/updater.mjs`, `iocs/store.mjs`, `pihole/client.mjs`, `pihole/connectors.mjs`,
+`blocklists/directories.mjs`, `blocklists/baselines.mjs`, `agents.mjs`'s MVT import and profile
+paths, `netlogs.mjs`, and `src/screens/Pihole.tsx`, `Baselines.tsx`, `Blocklists.tsx`, `Check.tsx`.
+Swept: every place another machine's data enters (five DNS servers, three list directories, GitHub,
+other TheySpy sites, NetAlertX, Protec, MVT files, network logs), and whether M16's time-bounded
+attribution reached everywhere evidence is keyed on an address.
+
+**Baseline:** `npm run check` green at 289 tests. The MCP server charges every call in a batch,
+blocks an address after thirty wrong tokens, and stores tokens as hashes. `sites.mjs` clips,
+bounds and defangs every field another site sends. The indicator updater fetches from two pinned
+hosts over HTTPS only, follows no redirects, verifies the release manifest's Ed25519 signature
+against the bundled key and the file's hash against the manifest. `baselines.apply()` undoes a
+part-applied change in Pi-hole. `pihole/client.mjs` returns every session it opens.
+
+**Every finding below was reproduced against the real modules.**
+
+### Security
+
+Nothing, for the third sweep running. Every inbound token is hashed and rate-limited; every outbound
+request goes to an origin the owner typed or a host pinned in code; every third-party body is
+capped, parsed defensively and bounded before it is stored or shown. **Security leaves the loop.**
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B25 | **The network-log import credits a lookup to whichever device holds the address *first in the list*, whatever the time.** `deviceOf()` builds a map from `fleet.list()` by current `ip`; two devices that have held the same address both sit at it, and the later one in the list (the older device) overwrites. Reproduced both ways: a January lookup from 192.168.1.30 lands on the old tablet (right, by luck), and a lookup made today by the new laptop at .30 *also* lands on the old tablet. M16's `holderAt()` is the fix and is one import away. The same map names TLS fingerprints, and the JA4 baseline is per address, so a new device inherits the previous holder's "known" fingerprints. Pi-hole Sentinel's table names each row after the address's *current* holder (`names[h.clientIp]`), the same class on the screen. | `netlogs.mjs`, `src/screens/Pihole.tsx`, `pihole/routes.mjs` | **medium** |
+| B24 | A site with more than twenty (device, indicator) pairs that got past its blocking raises `sites.indicator_lookups` on every 15-minute refresh. The snapshot keeps `gotThrough.slice(0, 20)` and the next refresh's "new since last time" is computed against those twenty, so the twenty-first onward are new every time. Reproduced: 25 pairs, three refreshes, three audit entries. The ntfy alert's key deduplicates, so the owner's phone is spared; the audit log, the Overview's last-24-hours and the briefing's alert count are not. | `sites.mjs` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C28 | `listName()` calls `decodeURIComponent` on each path segment; a malformed percent-sequence in one Firebog URL throws `URIError` out of `readFirebog()`, and that directory's whole read is lost for the run. Reproduced. |
+| C29 | `iocs/updater.get()` reads a body up to the shared 32 MB cap and only then refuses one over its own 5 MB limit; `readCappedBytes` takes `maxBytes`. |
+| C30 | `importMvt` takes the module name from the uploaded file's name without a length bound; it becomes `source_ref` and `location`. Everything else in that path is bounded. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- Technitium's API takes its token as a query parameter; that is Technitium's design, and the
+  request goes only to the origin the owner typed.
+- `baselines.observe()` skips a query whose synthesised id is below the mark *and* whose time is at
+  or before it; for the three connectors the ids are hashes, so the first condition is noise and the
+  effective rule is "same second as the last counted query". A shadow count can miss a lookup in
+  that second. Negligible, and the Pi-hole path has monotonic ids.
+- `syncNvd` and the updater keep their earlier non-findings.
+- `cves/lookup` queues NVD requests one at a time with the pause NVD asks for; the device page
+  waits on it when nothing is cached. Honest, bounded, unchanged.
+
+### What shipped (sweep 5) — 1.13.0, M17
+
+| # | Fix |
+| --- | --- |
+| B25 | `netlogs.importLogs()` credits each event to `holderAt(addressHolders, client, at)`; fingerprints are named by the holder at their last sighting; `/api/pihole/hits` carries `device` (the holder at the row's last sighting) and the Sentinel table shows it, saying "held the address at the time". The JA4 baseline itself is still per address: that is a schema change, left for a later milestone and said here. |
+| B24 | A site's snapshot keeps the keys of every got-through pair (bounded at 500) beside the twenty rows it shows, and "new since last reading" is computed against the keys. |
+| C28 | `listName()` keeps a segment it cannot decode as it is. |
+| C29 | The updater passes its 5 MB limit to `readCappedBytes`, so an oversized body is refused as it arrives. |
+| C30 | `importMvt` bounds the module name at 80 characters. |
