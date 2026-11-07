@@ -55,3 +55,24 @@ describe("NetAlertX", () => {
     expect(s.netalertx.config()).toMatchObject({ url: "http://192.168.1.5:20212", hasToken: true, write: true });
   });
 });
+
+describe("M24 B34: a pull records when NetAlertX saw each device, not when TheySpy asked", () => {
+  it("keeps an absent device offline at its old time and does not move a present device's address", async () => {
+    const { testClock, testServices } = await import("../test-helpers.mjs");
+    const now = testClock("2026-11-07T12:00:00Z");
+    const netalertxFetch = async () => Response.json({ success: true, devices: [
+      { devMac: "aa:bb:cc:00:00:11", devName: "Old printer", devLastIP: "192.168.1.60", devPresentLastScan: 0, devLastConnection: "2026-09-01 08:30:00", devFirstConnection: "2026-01-05 10:00:00" },
+      { devMac: "aa:bb:cc:00:00:12", devName: "Laptop", devLastIP: "192.168.1.61", devPresentLastScan: 1, devLastConnection: "2026-11-07 11:59:00" },
+      { devMac: "aa:bb:cc:00:00:13", devName: "Never connected", devLastIP: "192.168.1.62", devPresentLastScan: 0, devLastConnection: "" },
+    ] });
+    const { fleet, netalertx } = testServices({ now, netalertxFetch });
+    netalertx.configure({ url: "http://nax.example:20212", token: "t" }, "owner");
+    await netalertx.pull("owner");
+    const by = (m) => fleet.list().find((d) => d.mac === m);
+    const printer = by("aa:bb:cc:00:00:11");
+    expect(printer).toMatchObject({ online: false, lastSeen: expect.stringMatching(/^2026-09-01T/), firstSeen: expect.stringMatching(/^2026-01-05T/) });
+    expect(by("aa:bb:cc:00:00:12")).toMatchObject({ online: true });
+    expect(by("aa:bb:cc:00:00:13")).toBeUndefined();
+    expect(netalertx.config().lastSync.devices).toBe(3);
+  });
+});
