@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Provenance = { track: "bundled" | "release" | "main"; release?: string; signedBy?: string; signedAt?: string; sha256?: string; note: string };
 type Version = { id: number; status: "pending" | "active" | "superseded" | "rejected"; sha256: string; asof: string | null; count: number; provenance: Provenance; fetchedAt: string; decidedAt: string | null; decidedBy: string | null; changes?: { added: number; removed: number; changed: number } };
@@ -75,7 +75,7 @@ export function IndicatorsScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       await load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });

@@ -87,3 +87,12 @@ describe("the browser's API calls", () => {
     }
   });
 });
+
+describe("jobOutcome (M33, U7)", () => {
+  it("says the last line, and where the log is when the job failed", async () => {
+    const { jobOutcome } = await import("./api.ts");
+    const job = { id: 12, kind: "x", title: "x", status: "failed" as const, actor: "owner", created_at: "", started_at: null, finished_at: null, log: "2026-11-07T12:00:00.000Z Sweeping.\n2026-11-07T12:00:01.000Z Failed: no route to 10.9.0.0/24\n" };
+    expect(jobOutcome(job)).toEqual({ tone: "bad", text: "Failed: no route to 10.9.0.0/24 · the whole log is on Activity (job 12)" });
+    expect(jobOutcome({ ...job, status: "succeeded" })).toEqual({ tone: "good", text: "Failed: no route to 10.9.0.0/24" });
+  });
+});
