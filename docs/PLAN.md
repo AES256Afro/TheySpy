@@ -803,7 +803,12 @@ side) is kept with it from the source's query log, capped, so the device page ca
 asked just before and after, without storing the log.
 
 ### M40 — TLS of its own (M)
-A self-signed certificate made on first start (its fingerprint shown on Activity so a phone can
+**Status (7 Nov 2026): done** (1.36.0). Node signs but does not write certificates and the image
+carries no openssl, so `server/tls.mjs` writes the X.509 itself (v3, ECDSA P-256, SHA-256, the
+host's names and addresses in subjectAltName, ten years), kept in `data/tls/` from the first start
+that has none; HTTPS on `TS_TLS_PORT` (8798) beside HTTP; a session set over it is Secure by
+itself; the plain-HTTP note on Activity points at it with the fingerprint, and an HTTPS card shows
+the fingerprint so a phone can check it. **Originally:** A self-signed certificate made on first start (its fingerprint shown on Activity so a phone can
 pin it), HTTPS on a second port, and the plain-HTTP note on Activity replaced by the way to the
 secure one. ACME when a public name is set is left for later: BoxPilot already does that in front.
 
