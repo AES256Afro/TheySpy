@@ -80,7 +80,7 @@ export function DeviceScreen({ id }: { id: number }) {
           <div>
             <h3>Indicator lookups · DNS history · every address this device has held</h3>
             {hits === null ? <p className="small muted">Loading…</p> : hits.length === 0 ? <p className="small muted">None recorded.</p> : (
-              <div className="list small">{hits.map((h) => <div key={`${h.indicator}-${h.clientIp}-${h.via}`}><span className={`badge ${h.blocked < h.lookups ? "b-crit" : "b-med"}`}>{h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"}</span><span className="grow"><span className="mono">{h.domain}</span>{h.domain !== h.indicator ? <span className="muted"> · indicator {h.indicator}</span> : null}{h.tier ? <span className="muted"> · {h.tier}</span> : null}<div className="muted">{h.lookups} lookup{h.lookups === 1 ? "" : "s"} from {h.clientIp} · {when(h.firstSeen)} – {when(h.lastSeen)}</div></span></div>)}</div>
+              <div className="list small">{hits.map((h) => <div key={`${h.domain}-${h.clientIp}-${h.via}`}><span className={`badge ${h.blocked < h.lookups ? "b-crit" : "b-med"}`}>{h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"}</span><span className="grow"><span className="mono">{h.domain}</span>{h.domain !== h.indicator ? <span className="muted"> · indicator {h.indicator}</span> : null}{h.tier ? <span className="muted"> · {h.tier}</span> : null}<div className="muted">{h.lookups} lookup{h.lookups === 1 ? "" : "s"} from {h.clientIp} · {when(h.firstSeen)} – {when(h.lastSeen)}</div></span></div>)}</div>
             )}
           </div>
           <h3>Findings · agent, MVT, network logs</h3>
