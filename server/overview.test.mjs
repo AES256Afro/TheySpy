@@ -52,3 +52,12 @@ describe("M16 C27", () => {
     expect(lines.every((e) => !/^[a-z]+\.[a-z_]+( |$)/.test(e.text))).toBe(true);
   });
 });
+
+describe("M32 R7", () => {
+  it("describes a blocklist update run by its summary, not as one unnamed list", () => {
+    const { overview, audit } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    audit.record("system", "blocklists.updated", null, { at: "2026-11-07T11:00:00.000Z", lists: 7, first: 0, updated: 2, unchanged: 4, quarantined: 1, failed: 0 });
+    const line = overview.compose().events.find((e) => e.action === "blocklists.updated");
+    expect(line).toMatchObject({ tone: "warn", text: "Blocklists checked: 7 lists, 2 updated, 1 held for review" });
+  });
+});

@@ -1,6 +1,6 @@
 {
   "name": "theyspy",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "private": true,
   "description": "Self-hosted defender against ad-delivered spyware: Pi-hole hunting, network fleet, CVE and zero-day matching.",
   "license": "Apache-2.0",
@@ -22,6 +22,7 @@
     "check": "npm run build && npm run check:types && npm run test && npm run lint && npm run check:looks && npm run check:boxpilot && npm run check:release"
   },
   "dependencies": {
+    "compression": "^1.8.2",
     "express": "5.2.1",
     "undici": "8.12.3"
   },

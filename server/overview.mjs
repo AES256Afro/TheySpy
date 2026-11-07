@@ -36,7 +36,13 @@ export function createOverview({ fleet, sentinel, read, exposure, agents, audit,
       case "pihole.unreachable": return { at, action, tone: "bad", text: `Pi-hole unreachable: ${d.error ?? ""}`, link: "/pihole" };
       case "blocklists.update_quarantined": return { at, action, tone: "warn", text: `Blocklist update held: ${d.name ?? target}`, link: "/blocklists" };
       case "sites.indicator_lookups": return { at, action, tone: "bad", text: `${d.site}: a device reached an indicator address`, link: "/sites" };
-      case "blocklists.updated": return { at, action, tone: "none", text: `Blocklist updated: ${d.name ?? target ?? ""}${d.entries ? ` · ${Number(d.entries).toLocaleString("en")} entries` : ""}`.trim(), link: "/blocklists" };
+      case "blocklists.updated": {
+        // The update's audit entry is the run's summary (lists, updated, held, failed), not one list;
+        // an entry that names a list (an older shape) is still read as one.
+        if (d.name) return { at, action, tone: "none", text: `Blocklist updated: ${d.name}${d.entries ? ` · ${Number(d.entries).toLocaleString("en")} entries` : ""}`, link: "/blocklists" };
+        const parts = [d.updated ? `${d.updated} updated` : null, d.first ? `${d.first} fetched for the first time` : null, d.quarantined ? `${d.quarantined} held for review` : null, d.failed ? `${d.failed} failed` : null].filter(Boolean);
+        return { at, action, tone: d.failed || d.quarantined ? "warn" : "none", text: `Blocklists checked: ${d.lists ?? 0} lists${parts.length ? `, ${parts.join(", ")}` : ", nothing changed"}`, link: "/blocklists" };
+      }
       case "blocklists.update_applied": case "blocklists.enabled": case "blocklists.disabled": return { at, action, tone: "none", text: `${action.split(".")[1].replace("_", " ")}: ${d.name ?? target ?? ""}`.trim(), link: "/blocklists" };
       case "iocs.applied": case "iocs.loaded": case "iocs.seeded": return { at, action, tone: "none", text: `Indicator set ${action.split(".")[1]}${d.version ? ` ${d.version}` : ""}${d.count ? ` · ${d.count} indicators` : ""}`, link: "/indicators" };
       case "iocs.update_available": return { at, action, tone: "warn", text: `Indicator update available${d.version ? `: ${d.version}` : ""}`, link: "/indicators" };
