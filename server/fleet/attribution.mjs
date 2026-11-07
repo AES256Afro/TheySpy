@@ -38,7 +38,7 @@ export function holderAt(holders, ip, at, { slackMs = holderSlackMs } = {}) {
 /**
  * Groups hit events by the device that held each one's address at the time, like `sentinel.hits()`
  * groups them by address: one group per device × indicator × domain × via.
- * @param {{ at: string, indicator: string, domain: string, via: string, clientIp: string, clientName?: string | null, blocked: number, status?: string | null, tier?: string | null, confidence?: string | null, source?: string | null }[]} events
+ * @param {{ at: string, indicator: string, domain: string, via: string, clientIp: string, clientName?: string | null, blocked: number, status?: string | null, tier?: string | null, confidence?: string | null, source?: string, context?: any[] | null | null }[]} events
  * @param {Holders} holders
  * @returns {Map<number | null, { indicator: string, domain: string, via: string, clientIp: string, clientName: string | null, firstSeen: string, lastSeen: string, lookups: number, blocked: number, lastStatus: string | null, tier: string | null, confidence: string | null, source: string | null }[]>}
  */
