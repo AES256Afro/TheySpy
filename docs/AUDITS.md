@@ -7,7 +7,7 @@ swept again unless something changes that area.
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
 | Code (structure, hygiene, dead weight) | 15 | 3 | out of the loop (left after sweep 15) |
-| Bugs (correctness) | 19 | 2 | in the loop |
+| Bugs (correctness) | 20 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
@@ -15,14 +15,15 @@ sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18);
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
 sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
 sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25); sweep 15's in 1.22.0 (M26);
-sweep 16's in 1.23.0 (M27); sweep 17's in 1.24.0 (M28); sweeps 18 and 19 found nothing. Security left the loop after sweep 5
-and code after sweep 15 (clean in sweeps 13, 14 and 15). Bugs is the one category left; it has been
-clean in sweeps 10, 18 and 19, and leaves the loop if sweep 20 is clean too.
+sweep 16's in 1.23.0 (M27); sweep 17's in 1.24.0 (M28); sweeps 18 and 19 found nothing; sweep 20's in 1.25.0 (M29). Security
+left the loop after sweep 5 and code after sweep 15 (clean in sweeps 13, 14 and 15). Bugs is the
+one category left; it was clean in sweeps 10, 18 and 19 and found one thing in sweep 20.
 
-Sweep 20, the last the loop needs if it is clean, is the app itself: TheySpy started on the seeded
-database and driven in a real browser, every screen and every control that needs no Pi-hole,
-NetAlertX or Protec, with the console and the network panel watched for an error, a request that
-fails, or a screen that does not settle.
+Sweep 21 stays in the real browser and works every control that needs no Pi-hole, NetAlertX or
+Protec: the Overview's three layouts and the short sidebar, every filter, search and tab, the
+Appearance changes for this browser and for everyone, a site, a pin, a custom baseline and an
+MVT import, each with a good input and a bad one, with the console, the network panel and the
+server log watched.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -941,3 +942,32 @@ None.
 - Every screen has a loading state, an error banner and an empty state, and reaches each of them
   from its API calls alone; the fresh-install Device page shows the 404's message, which is what
   a stale link deserves.
+
+## Sweep 20 — 7 Nov 2026, at 1.24.0
+
+The app itself: TheySpy 1.24.0 started on the seeded database and every screen opened in a real
+browser (the Overview, Fleet, a device page, Pi-hole Sentinel, the Blocklist library, Baselines,
+the targeted check, CVEs, This device, Briefing, the Evidence locker, Ad exposure, Sites,
+Activity, Indicators, Appearance), the console, the network panel and the server log watched. Every
+API call answered 200; no screen showed an "Invalid Date", a `NaN` or an `undefined`; the server
+logged no error. The console had one thing, 44 times.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B40 | **A font is refused by the page's own CSP on every page.** Vite inlines assets under 4 KB as `data:` URLs, and one font subset (JetBrains Mono's Cyrillic-extended, 2.7 KB) is under it; the CSP is `default-src 'self'` with no `font-src`, so the browser refuses it and logs an error on every page, 44 times across the sweep. The glyphs in that range fall back to another face; everything else is unaffected. Reproduced in the built stylesheet (`url(data:font/woff2;base64,…)`). | `vite.config.ts` | low |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- Two "failed to load" console lines on This device are the probes doing their job: the one-time
+  DNS name is meant not to resolve, and the ad script is meant to be blocked.
+- One 500 appeared in the console from the server process that was running before it was
+  restarted onto this build, and did not recur: the restarted server logged no error across every
+  screen.
+
+### What shipped (sweep 20) — 1.25.0, M29
+
+| # | Fix |
+| --- | --- |
+| B40 | `assetsInlineLimit: 0`: every asset is a file the CSP allows. A test reads the built stylesheet for `url(data:` (skipped when there is no `dist/`, which `npm run check` builds first) and the config for the limit. |
