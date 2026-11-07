@@ -22,8 +22,8 @@ const chromiumBrands = [
 export function identifyBrowser({ userAgent = "", uaData = null }) {
   let browser = null;
   for (const [brand, vendor, product, label] of chromiumBrands) {
-    const hit = uaData?.fullVersionList?.find((b) => b.brand === brand);
-    if (hit) { browser = { name: label, vendor, product, version: hit.version, exact: true, source: "Client Hints" }; break; }
+    const hit = uaData?.fullVersionList?.find((b) => b.brand === brand && /^[\d.]{1,30}$/.test(String(b.version ?? "")));
+    if (hit) { browser = { name: label, vendor, product, version: String(hit.version), exact: true, source: "Client Hints" }; break; }
   }
   if (!browser) {
     const ua = userAgent;

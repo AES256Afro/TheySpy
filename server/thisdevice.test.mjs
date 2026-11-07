@@ -17,3 +17,12 @@ describe("This device: reading the browser", () => {
     expect(identifyBrowser({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", uaData: { platform: "Windows", platformVersion: "15.0.0", fullVersionList: [{ brand: "Microsoft Edge", version: "141.0.3537.71" }] } })).toMatchObject({ browser: { name: "Edge", product: "edge_chromium" }, os: "Windows 11" });
   });
 });
+
+describe("sweep 3 hygiene (M14)", () => {
+  it("C19: a Client Hints version is checked like a confirmed one", async () => {
+    const { identifyBrowser } = await import("./thisdevice.mjs");
+    expect(identifyBrowser({ uaData: { fullVersionList: [{ brand: "Google Chrome", version: "141.0.7390.54" }] } }).browser).toMatchObject({ name: "Chrome", version: "141.0.7390.54", exact: true });
+    const junk = identifyBrowser({ userAgent: "Mozilla/5.0 Chrome/141.0.0.0 Safari/537.36", uaData: { fullVersionList: [{ brand: "Google Chrome", version: "141.0; DROP TABLE" }] } }).browser;
+    expect(junk).toMatchObject({ source: "user agent", version: "141.0.0.0", exact: false });
+  });
+});
