@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, whenSessionEnds } from "./api.ts";
+import { api, householdScreens, setRole, whenSessionEnds, type Role } from "./api.ts";
 import { applyLook, mergeAppearance, readLocalAppearance, resolveLook, writeLocalAppearance, type Appearance } from "./looks/looks.ts";
 import { isTypingTarget, navigate, usePath } from "./router.tsx";
 import { screenById, screenForPath, screens, type Screen } from "./screens.ts";
@@ -28,14 +28,16 @@ type AppearanceResponse = { appearance: Appearance };
 export function App() {
   const path = usePath();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [who, setWho] = useState<Role | null>(null);
+  const signIn = (role: Role | null) => { setRole(role); setWho(role); setSignedIn(Boolean(role)); };
   const [server, setServer] = useState<Partial<Appearance>>({});
   const [local, setLocalState] = useState<Partial<Appearance>>(() => readLocalAppearance());
   const [preview, setPreview] = useState<Partial<Appearance> | null>(null);
 
   useEffect(() => {
     // Any 401 after sign-in means the session has gone, whichever screen asked.
-    whenSessionEnds(() => setSignedIn(false));
-    api<{ signedIn: boolean }>("GET", "/api/session").then((s) => setSignedIn(s.signedIn), () => setSignedIn(false));
+    whenSessionEnds(() => signIn(null));
+    api<{ signedIn: boolean; role: Role | null }>("GET", "/api/session").then((s) => signIn(s.signedIn ? s.role ?? "owner" : null), () => signIn(null));
     api<AppearanceResponse>("GET", "/api/appearance").then((r) => setServer(r.appearance), () => {});
   }, []);
 
@@ -62,7 +64,10 @@ export function App() {
   }, []);
 
   if (signedIn === null) return null;
-  if (!signedIn) return <SignIn appearance={appearance} onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return <SignIn appearance={appearance} onSignedIn={(role) => signIn(role)} />;
+  // The household (M37) sees its screens; any other path says so instead of showing a screen that would 403.
+  const household = who === "household";
+  const allowed = !household || householdScreens.includes(screen.id);
 
   const controls: AppearanceControls = {
     appearance, server, local, setLocal, setPreview,
@@ -72,9 +77,9 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar appearance={appearance} current={screen} short={appearance.sidebar === "short"} onSignedOut={() => setSignedIn(false)} />
+      <Sidebar appearance={appearance} current={screen} short={appearance.sidebar === "short"} role={who ?? "owner"} onSignedOut={() => signIn(null)} />
       <main id="main">
-        {deviceId !== null ? <DeviceScreen id={Number(deviceId)} /> : screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "checks" ? <ChecksScreen /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <OverviewScreen layout={appearance.layout} />}
+        {!allowed ? <div className="stack"><h1>{screen.label}</h1><p className="muted">The household password opens the Overview, Checks, Fleet and This device. This screen is the owner's.</p></div> : deviceId !== null ? <DeviceScreen id={Number(deviceId)} /> : screen.id === "appearance" ? <AppearanceScreen {...controls} /> : screen.id === "checks" ? <ChecksScreen /> : screen.id === "activity" ? <ActivityScreen /> : screen.id === "indicators" ? <IndicatorsScreen /> : screen.id === "pihole" ? <PiholeScreen /> : screen.id === "blocklists" ? <BlocklistsScreen /> : screen.id === "baselines" ? <BaselinesScreen /> : screen.id === "fleet" ? <FleetScreen /> : screen.id === "search" ? <CheckScreen /> : screen.id === "intel" ? <IntelScreen /> : screen.id === "device" ? <ThisDeviceScreen /> : screen.id === "briefing" ? <BriefingScreen /> : screen.id === "evidence" ? <EvidenceScreen /> : screen.id === "exposure" ? <ExposureScreen /> : screen.id === "sites" ? <SitesScreen /> : <OverviewScreen layout={appearance.layout} />}
       </main>
     </div>
   );

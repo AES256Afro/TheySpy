@@ -112,13 +112,20 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
     next();
   });
 
-  const signedIn = (req) => auth.verify(readCookie(req.headers.cookie, sessionCookie));
-  const requireOwner = (req, res, next) => (signedIn(req) ? next() : res.status(401).json({ error: "Sign in first" }));
+  const roleOf = (req) => auth.role(readCookie(req.headers.cookie, sessionCookie));
+  const signedIn = (req) => Boolean(roleOf(req));
+  // The household password (M37) opens the Overview, Checks, Fleet and the device pages, and This
+  // device: reads there, and the check This device runs on itself. Everything else is the owner's,
+  // and a household session is told so (403), not told to sign in (401).
+  const refuse = (req, res) => (roleOf(req) === "household" ? res.status(403).json({ error: "The household password can look at this installation, not change it" }) : res.status(401).json({ error: "Sign in first" }));
+  const requireOwner = (req, res, next) => (roleOf(req) === "owner" ? next() : refuse(req, res));
+  const requireAnyone = (req, res, next) => (signedIn(req) ? next() : refuse(req, res));
+  const householdReads = (req, res, next) => (roleOf(req) === "owner" || (roleOf(req) === "household" && req.method === "GET") ? next() : refuse(req, res));
 
   const cookie = (value, maxAgeSeconds) =>
     `${sessionCookie}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${config.cookieSecure ? "; Secure" : ""}`;
 
-  app.get("/api/session", (req, res) => res.json({ signedIn: signedIn(req), version: productVersion }));
+  app.get("/api/session", (req, res) => res.json({ signedIn: signedIn(req), role: roleOf(req), version: productVersion }));
 
   app.post("/api/login", (req, res) => {
     const result = auth.login(req.body?.password, { ip: req.ip ?? "unknown", userAgent: req.get("user-agent") });
@@ -130,7 +137,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
       return res.status(401).json({ error: "That password is not right." });
     }
     res.set("Set-Cookie", cookie(result.token, Math.floor((result.expiresAt.getTime() - Date.now()) / 1000)));
-    res.json({ signedIn: true });
+    res.json({ signedIn: true, role: result.role });
   });
 
   app.post("/api/logout", (req, res) => {
@@ -195,15 +202,15 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.use("/api/iocs", requireOwner, iocRoutes({ store: iocStore, jobs, settings, audit }));
   app.use("/api/pihole", requireOwner, piholeRoutes({ sentinel, jobs, settings, fleet }));
   app.use("/api/blocklists", requireOwner, blocklistRoutes({ library, jobs, settings, sentinel, baselines }));
-  app.use("/api/fleet", requireOwner, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx, exposure, agents, settings }));
+  app.use("/api/fleet", householdReads, fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx, exposure, agents, settings }));
   app.use("/api/cves", requireOwner, cveRoutes({ cves, jobs, advisories }));
-  app.use("/api/this-device", requireOwner, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
+  app.use("/api/this-device", requireAnyone, thisDeviceRoutes({ fleet, sentinel, software, remember: (id, observed) => agents.observe(id, observed) }));
 
   app.use("/api/evidence", requireOwner, evidenceRoutes({ agents, netlogs }));
 
   // Ad exposure: the checklist per device and for the network, the egress check, the kits.
-  app.get("/api/overview", requireOwner, (_req, res) => res.json(overview.compose()));
-  app.get("/api/exposure", requireOwner, (_req, res) => res.json(exposure.overview()));
+  app.get("/api/overview", requireAnyone, (_req, res) => res.json(overview.compose()));
+  app.get("/api/exposure", requireAnyone, (_req, res) => res.json(exposure.overview()));
   app.post("/api/exposure/egress", requireOwner, async (_req, res) => res.json(await exposure.checkEgress("owner")));
   app.get("/api/exposure/kits/:id", requireOwner, (req, res) => {
     const name = /** @type {keyof typeof kits} */ (req.params.id);
@@ -241,6 +248,10 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.put("/api/protec", requireOwner, (req, res) => res.json(protec.configure(req.body ?? {}, "owner")));
   app.post("/api/protec/sync", requireOwner, async (_req, res) => { const r = await protec.sync("owner"); settings.delete("protec_last_error"); res.json(r); });
   app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), intParam(req.body?.deviceId, "deviceId"), "owner"); res.json({ linked: true }); });
+  // The household password (M37): set, replaced or cleared by the owner; the screen only learns whether one is set.
+  app.get("/api/household", requireOwner, (_req, res) => res.json({ set: auth.householdSet() }));
+  app.put("/api/household", requireOwner, (req, res) => res.json(auth.setHouseholdPassword(req.body?.password, "owner")));
+  app.delete("/api/household", requireOwner, (_req, res) => res.json(auth.setHouseholdPassword(null, "owner")));
   // How big the database is, what fills it, and how long each kind of record is kept (retention.mjs).
   app.get("/api/retention", requireOwner, (_req, res) => res.json({ policy: retention.policy(), labels: retention.policyLabels, limits: retention.policyLimits, size: retention.size() }));
   app.put("/api/retention", requireOwner, (req, res) => res.json({ policy: retention.configure(req.body ?? {}, "owner") }));

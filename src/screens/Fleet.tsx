@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, jobOutcome, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, role, useStopped, waitForJob, type Job } from "../api.ts";
 import { Link } from "../router.tsx";
 
 type Device = {
@@ -234,8 +234,8 @@ export function FleetScreen() {
                 <button className="btn small" type="button" disabled={Boolean(busy)} onClick={() => run("vendors", () => api("POST", "/api/fleet/vendors"))}>{busy === "vendors" ? "Loading…" : "Update"}</button></div>
             </div>
           </section>
-          <NetAlertXCard onChanged={() => void load()} />
-          <ProtecCard devices={overview.devices} onChanged={() => void load()} />
+          {role() !== "household" && <NetAlertXCard onChanged={() => void load()} />}
+          {role() !== "household" && <ProtecCard devices={overview.devices} onChanged={() => void load()} />}
         </div>
       </div>
     </div>

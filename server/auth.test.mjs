@@ -61,3 +61,36 @@ describe("owner sign-in", () => {
     expect(second.login(first.generatedPassword, client).ok).toBe(true);
   });
 });
+
+describe("the household password (M37)", () => {
+  it("signs the household in read-only, is set and cleared by the owner, and clearing ends its sessions", () => {
+    const now = testClock();
+    const { auth, audit, settings } = testServices({ now });
+    expect(auth.householdSet()).toBe(false);
+    expect(auth.login("family-looks", { ip: "10.0.0.2" })).toEqual({ ok: false });
+    expect(() => auth.setHouseholdPassword("short", "owner")).toThrow("at least 8 characters");
+    expect(() => auth.setHouseholdPassword("correct horse", "owner")).toThrow("must differ from the owner's");
+    expect(auth.setHouseholdPassword("family-looks", "owner")).toEqual({ set: true });
+    expect(auth.householdSet()).toBe(true);
+    expect(JSON.stringify(settings.get("household_password"))).not.toContain("family-looks");
+    expect(audit.list(1)[0]).toMatchObject({ actor: "owner", action: "household.password_set" });
+
+    const theirs = auth.login("family-looks", { ip: "10.0.0.2" });
+    expect(theirs).toMatchObject({ ok: true, role: "household" });
+    expect(audit.list(1)[0]).toMatchObject({ actor: "household", action: "household.signed_in", target: "10.0.0.2" });
+    const ours = auth.login("correct horse", { ip: "10.0.0.3" });
+    expect(ours).toMatchObject({ ok: true, role: "owner" });
+    const token = theirs.ok ? theirs.token : "";
+    expect(auth.role(token)).toBe("household");
+    expect(auth.verify(token)).toBe(true);
+    expect(auth.role(ours.ok ? ours.token : "")).toBe("owner");
+
+    auth.logout(token);
+    expect(audit.list(1)[0]).toMatchObject({ actor: "household", action: "household.signed_out" });
+    const again = auth.login("family-looks", { ip: "10.0.0.2" });
+    expect(auth.setHouseholdPassword(null, "owner")).toEqual({ set: false });
+    expect(auth.role(again.ok ? again.token : "")).toBeNull(); // cleared: their session is gone
+    expect(auth.role(ours.ok ? ours.token : "")).toBe("owner"); // the owner's is not
+    expect(auth.login("family-looks", { ip: "10.0.0.2" })).toEqual({ ok: false });
+  });
+});

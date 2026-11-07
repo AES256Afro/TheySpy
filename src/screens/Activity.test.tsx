@@ -22,6 +22,8 @@ describe("the Activity screen's Database card (M35)", () => {
       if (url === "/api/jobs") return json({ jobs: [] });
       if (url === "/api/audit") return json({ entries: [] });
       if (url === "/api/security") return json({ notes: [] });
+      if (url === "/api/household" && init?.method === "PUT") return json({ set: true });
+      if (url === "/api/household") return json({ set: false });
       if (url === "/api/retention" && init?.method === "PUT") return json({ policy: { ...retention.policy, audit: 30 } });
       if (url === "/api/retention") return json(retention);
       return json({});
@@ -38,6 +40,28 @@ describe("the Activity screen's Database card (M35)", () => {
     fireEvent.click(screen.getByText("Save"));
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(calls.find((c) => c.method === "PUT")).toEqual({ method: "PUT", url: "/api/retention", body: { audit: 30 } });
+  });
+
+  it("sets the household password from its card (M37)", async () => {
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ method: init?.method ?? "GET", url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url === "/api/household") return json({ set: calls.some((c) => c.method === "PUT") });
+      if (url === "/api/retention") return json(retention);
+      return json({ jobs: [], entries: [], notes: [] });
+    }) as typeof fetch;
+    const screen = render(<ActivityScreen />);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(screen.container.textContent).toContain("no household password");
+    const set = screen.getByText("Set") as HTMLButtonElement;
+    expect(set.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Household password"), { target: { value: "family-looks" } });
+    expect(set.disabled).toBe(false);
+    fireEvent.click(set);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(calls.find((c) => c.method === "PUT")).toEqual({ method: "PUT", url: "/api/household", body: { password: "family-looks" } });
+    expect(screen.container.textContent).toContain("a household password is set");
+    expect(screen.getByText("Clear")).toBeTruthy();
   });
 
   it("formats sizes the way a person reads them", () => {

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { api } from "./api.ts";
+import { api, householdScreens, type Role } from "./api.ts";
 import type { Appearance } from "./looks/looks.ts";
 import { Link } from "./router.tsx";
 import { screenById, screenGroups, screenPlaces, screens, type Screen } from "./screens.ts";
@@ -17,7 +17,9 @@ export function Brand({ appearance, href }: { appearance: Appearance; href?: str
   return href ? <Link className="brand" href={href}>{body}</Link> : <div className="brand">{body}</div>;
 }
 
-export function Sidebar({ appearance, current, short = false, onSignedOut }: { appearance: Appearance; current: Screen; short?: boolean; onSignedOut: () => void }) {
+export function Sidebar({ appearance, current, short = false, role = "owner", onSignedOut }: { appearance: Appearance; current: Screen; short?: boolean; role?: Role; onSignedOut: () => void }) {
+  // The household (M37) sees only what it can open.
+  const visible = role === "household" ? screens.filter((s) => householdScreens.includes(s.id)) : screens;
   const signOut = async () => {
     await api("POST", "/api/logout").catch(() => {});
     onSignedOut();
@@ -28,8 +30,8 @@ export function Sidebar({ appearance, current, short = false, onSignedOut }: { a
       {screen.label}
     </Link>
   );
-  const places = screenPlaces.map(screenById).filter((s): s is Screen => Boolean(s));
-  const rest = screens.filter((s) => !screenPlaces.includes(s.id));
+  const places = screenPlaces.map(screenById).filter((s): s is Screen => Boolean(s) && visible.includes(s as Screen));
+  const rest = visible.filter((s) => !screenPlaces.includes(s.id));
   return (
     <nav className="side" aria-label="Screens">
       <Brand appearance={appearance} href="/" />
@@ -41,14 +43,14 @@ export function Sidebar({ appearance, current, short = false, onSignedOut }: { a
             {rest.map(link)}
           </details>
         </>
-      ) : screenGroups.map((group) => (
+      ) : screenGroups.filter((group) => visible.some((s) => s.group === group)).map((group) => (
         <Fragment key={group}>
           <div className="sep">{group}</div>
-          {screens.filter((screen) => screen.group === group).map(link)}
+          {visible.filter((screen) => screen.group === group).map(link)}
         </Fragment>
       ))}
       <div className="foot">
-        <span>Version {__THEYSPY_VERSION__}</span>
+        <span>Version {__THEYSPY_VERSION__}{role === "household" ? " · looking only" : ""}</span>
         <button className="btn small" type="button" onClick={signOut}>Sign out</button>
       </div>
     </nav>

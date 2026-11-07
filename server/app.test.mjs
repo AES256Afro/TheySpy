@@ -586,3 +586,26 @@ describe("M35 retention", () => {
     expect(jobs.get(job.body.job.id)).toMatchObject({ status: "succeeded", result: { removed: { audit: 0 }, compacted: false } });
   });
 });
+
+describe("M37 household", () => {
+  it("lets a household session read the Overview, Fleet and This device, and refuses everything else by name", async () => {
+    const { request, auth } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    expect((await request("GET", "/api/household")).body).toEqual({ set: false });
+    expect((await request("PUT", "/api/household", { password: "family-looks" })).body).toEqual({ set: true });
+    await request("POST", "/api/logout");
+
+    const signedIn = await request("POST", "/api/login", { password: "family-looks" });
+    expect(signedIn.body).toEqual({ signedIn: true, role: "household" });
+    expect((await request("GET", "/api/session")).body).toMatchObject({ signedIn: true, role: "household" });
+    expect((await request("GET", "/api/overview")).status).toBe(200);
+    expect((await request("GET", "/api/exposure")).status).toBe(200);
+    expect((await request("GET", "/api/fleet")).status).toBe(200);
+    expect((await request("POST", "/api/this-device/start")).status).toBe(200);
+    for (const [method, url] of [["POST", "/api/fleet/sync"], ["GET", "/api/retention"], ["GET", "/api/audit"], ["GET", "/api/briefing"], ["PUT", "/api/household"], ["GET", "/api/pihole"], ["POST", "/api/jobs"]]) {
+      const r = await request(method, url, method === "GET" ? undefined : {});
+      expect([url, r.status, r.body.error]).toEqual([url, 403, "The household password can look at this installation, not change it"]);
+    }
+    expect(auth.householdSet()).toBe(true);
+  });
+});
