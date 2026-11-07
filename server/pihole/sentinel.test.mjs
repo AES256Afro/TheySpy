@@ -204,3 +204,30 @@ describe("Pi-hole database source", () => {
     expect(sentinel.pushes()[0]).toMatchObject({ status: "rolled_back" });
   });
 });
+
+describe("M19 C33: one poll at a time", () => {
+  it("does nothing on a tick that finds the last poll still reading Pi-hole", async () => {
+    const { fakePihole, testServices } = await import("../test-helpers.mjs");
+    const pihole = fakePihole({ queries: [] });
+    let calls = 0;
+    let hold = null;
+    const fetchImpl = async (...args) => { calls += 1; if (hold) await hold; return pihole.fetchImpl(...args); };
+    const { sentinel } = testServices({ piholeFetch: fetchImpl, piholeEnv: { url: "http://pihole.lan", password: "x", write: false } });
+    await sentinel.watch.poll();
+    const perPoll = calls; // what one poll costs Pi-hole
+    expect(perPoll).toBeGreaterThan(0);
+    calls = 0;
+    let release;
+    hold = new Promise((r) => { release = r; });
+    const first = sentinel.watch.poll();
+    const second = sentinel.watch.poll(); // the timer's next tick, while the first still waits on Pi-hole
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    await Promise.all([first, second]);
+    expect(calls).toBe(perPoll); // the second tick added nothing
+    hold = null;
+    calls = 0;
+    await sentinel.watch.poll();
+    expect(calls).toBe(perPoll); // and a later tick polls again
+  });
+});

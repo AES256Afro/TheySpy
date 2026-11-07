@@ -84,7 +84,7 @@ export function iocRoutes({ store, jobs, settings, audit }) {
 
   router.get("/export/:format", (req, res) => {
     const format = req.params.format;
-    const entry = exportFormats[format];
+    const entry = Object.hasOwn(exportFormats, format) ? exportFormats[format] : null; // a URL names it: not through the prototype
     const set = store.activeSet();
     if (!entry) return res.status(404).json({ error: "Unknown export format" });
     if (!set) return res.status(409).json({ error: "No indicator set is active yet" });

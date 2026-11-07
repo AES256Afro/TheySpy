@@ -117,8 +117,15 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
   const watchState = { running: false, lastPollAt: null, lastError: null, newHits: 0 };
   let timer = null;
   let lastPoll = null;
+  let polling = false;
   const observers = new Set();
+  /** One poll at a time: the timer keeps firing every 30 s whether or not the last one finished (M19, C33). */
   async function poll() {
+    if (polling) return;
+    polling = true;
+    try { await pollOnce(); } finally { polling = false; }
+  }
+  async function pollOnce() {
     const c = effective();
     if (!c.mode || !c.watch) return;
     const started = now().getTime() / 1000;

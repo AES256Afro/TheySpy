@@ -6,20 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 6 | 0 | in the loop |
-| Bugs (correctness) | 6 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 8 | 0 | in the loop |
+| Bugs (correctness) | 8 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
-sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18). Security left the
-loop after sweep 5. Code and bugs both found things again in sweep 6 and stay at 0.
+sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
+in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped). Security left the loop after
+sweep 5. Bugs came back clean in sweep 7 and then found one thing in sweep 8 (back to 0); code found
+something in both.
 
-Sweep 7 has read every module and screen at least once. It goes round again from the top, reading
-for what the fixes since sweep 1 have changed: `app.mjs`, `agents.mjs`, `pihole/sentinel.mjs`,
-`blocklists/library.mjs`, `fleet/registry.mjs`, `exposure.mjs`, `overview.mjs`, `netlogs.mjs`,
-and the screens that were rewritten (`Overview`, `Device`, `Fleet`, `Pihole`). It should also
-measure rather than read: the Overview, Fleet, Exposure and Blocklists endpoints on a seeded
-database of realistic size, since the two sweeps that measured something found the largest things.
+Sweep 9 continues the second pass: `agent-routes.mjs`, `netalertx.mjs` and `protec.mjs` after M16,
+`thisdevice.mjs`, `alerts.mjs` and `digest.mjs` after M14, `iocs/exports.mjs`, `blocklists/taxonomy.mjs`,
+`fleet/addresses.mjs`, `params.mjs`, `shared.mjs`, `scripts/` (the checks the build runs), and the
+Appearance and Sites screens; then measures the import paths (MVT, network logs) on large inputs.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -473,3 +473,91 @@ table rather than loading it.
 | B28 | `server/quietly.mjs`: one run at a time, the failure recorded, cleared on the next success; `GET /api/fleet` carries `errors` and the Fleet screen shows each as a banner. |
 | C31 | `matchNames()` remembers up to 2,000 answers until the lists change. |
 | C32 | This device points at the Ad exposure check. A source test refuses "coming in a later version" and milestone words on any screen. |
+
+## Sweep 7 — 7 Nov 2026, at 1.14.0
+
+The first sweep of the second pass: every module had been read once, so this one read what the
+fixes since sweep 1 had changed — `pihole/sentinel.mjs`, `app.mjs`, `agents.mjs`'s enrol and
+report paths, `overview.mjs`, the M16–M17 attribution code and the rewritten screens — and
+**measured** instead of reading where the two sweeps that measured had found the largest things.
+
+**Measured** on a seeded in-memory database of realistic size (60 devices each with two addresses
+over time and five recognised services, 40,000 CVEs with products, 3,000 indicator hits across 20
+devices, 900,000 enabled list names): `overview.compose()` 37 ms; `exposure.overview()` 28 ms;
+`GET /api/fleet`'s list and merge suggestions 2 ms; `read.indicatorLookups(30)` 3 ms; the
+time-bounded attribution of every hit 5 ms; the library's cold `counts()` 985 ms (precomputed
+five seconds after start, by design) and a cold `matchNames()` 165 ms (then remembered, M18). The
+first fetch of 900,000 names took 916 ms. Nothing of C21's order remains on the screens' paths.
+
+**Baseline:** `npm run check` green at 298 tests. `agents.verify()` is unchanged and sound (HMAC
+over the exact bytes, a ten-minute window, a constant-time compare, replays refused for reports).
+The error handler, the CSRF rule and the cookie are as sweep 1 found them.
+
+### Bugs
+
+Nothing. The attribution code behaves as M16 and M17 say, on every path that was re-read.
+Bugs' streak is 1.
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C33 | The live watch's timer fires `poll()` every 30 s with nothing to stop a new poll starting while the last one is still reading Pi-hole. A Pi-hole that takes a minute to answer (a hunt on a Raspberry Pi, a full long-term database) gets a second poll at 30 s, a third at 60 s, each re-reading the same overlap and each delivering the same queries to the shadow-mode observers (which deduplicate, at a cost). By construction: `setInterval(() => { void poll(); })` and no flag. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `app.set("trust proxy", "loopback")` means sign-in failures behind a reverse proxy on *another*
+  host are counted against the proxy's address, so five wrong passwords from anyone lock everyone
+  out for fifteen minutes. BoxPilot's proxy is on the same host (loopback), which is the deployment
+  this is built for; a remote proxy is not supported and the setting says so.
+- `backup.snapshot()` runs `VACUUM INTO` synchronously; on the 17 MB seeded database that is
+  tens of milliseconds, on a year-old install perhaps a second, once per download.
+- `overview.compose()` attributes the hits twice (all time for the checklist, seven days for the
+  questions); at 5 ms each that is not worth a shared pass.
+
+### What shipped (sweep 7) — 1.15.0, M19
+
+| # | Fix |
+| --- | --- |
+| C33 | `poll()` runs one at a time; a tick that finds the last poll still reading does nothing. A test holds Pi-hole's answer and fires two polls. |
+
+## Sweep 8 — 7 Nov 2026, at 1.14.0
+
+Read in full: `egress.mjs`, `pacing.mjs`, `ratelimit.mjs`, `secrets.mjs`, `cves/feeds.mjs`,
+`cves/routes.mjs`, `iocs/routes.mjs`, `blocklists/routes.mjs` (after M18), `db.mjs`'s migrations as
+a set, `scripts/e2e-restore.sh`, and `agent/theyspy-agent.py`. Measured the endpoints M16 and M17
+added, on the seeded database from sweep 7: `exposure.forDevice()` 7 ms, `/devices/:id/hits` 6 ms,
+`/api/pihole/hits` 2 ms, `/devices/:id/findings` under a millisecond, a warm `matchNames()` 0 ms.
+
+**Baseline:** the allowlist, the pacing, the rate limiter and the secret box are as sweeps 1 and 2
+left them. The restore check does what BoxPilot does (stop, archive, wipe, unpack, start) and
+checks the write-ahead log was closed. The agent script pins the scanner's hash, refuses plain
+HTTP, keeps everything inside its `try`, and signs the exact bytes it sends.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B29 | `GET /api/iocs/export/constructor` answers 500. The route reads `exportFormats[format]` with the format from the URL, so `constructor` finds `Object`'s constructor, passes the "known format" test, and `renderExport` throws. Reproduced. The last of B1's class that a URL can reach; owner-only, and a 500 where a 404 belongs. | `iocs/routes.mjs` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C34 | `PUT /api/blocklists/baselines/exceptions` stores `site` after lower-casing it and nothing else: no length bound, no check that it is a name. `canonical()` from `blocklists/parse.mjs` is the one rule for that. |
+| C36 | `ioc_hit_events` is indexed by `(indicator, client_ip)` only; the week's lookups (`hitsSince`), the attribution's window (`hitEvents`) and the briefing read it by `at`. On the seeded 3,000 rows that is 5 ms; a year of a chatty indicator is a scan and a sort per Overview poll. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `pacing.mjs` keeps up to `perHour` timestamps per host (5,500 for NVD). Bounded by design.
+- `parseEpss` gunzips the day's file in memory (about 10 MB). Once a day.
+- The agent reads `THEYSPY_CA_FILE` for a private CA. Fine: it only adds a trust root.
+
+### What shipped (sweeps 7 and 8) — 1.15.0, M19
+
+| # | Fix |
+| --- | --- |
+| C33 | `poll()` runs one at a time; a tick that finds the last poll still reading does nothing. A test holds Pi-hole's answer and fires two polls. |
+| B29 | The export route reads its formats with `Object.hasOwn`; `constructor` and `__proto__` are 404. |
+| C34 | A baseline exception must be a canonical domain name (`canonical()`), or the route answers 400. |
+| C36 | `ioc_hit_events_at`, an index on `at`. |
