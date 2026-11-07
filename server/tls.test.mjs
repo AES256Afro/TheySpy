@@ -13,13 +13,13 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 describe("TLS of its own (M40)", () => {
   it("writes a certificate Node accepts: self-signed, ten years, with the names and addresses given", () => {
     const now = () => new Date("2026-11-07T12:00:00.000Z");
-    const made = selfSignedCertificate({ names: ["theyspy", "BigBox", "bigbox.tail6233fa.ts.net"], addresses: ["127.0.0.1", "192.168.8.5", "fd7a:115c:a1e0::1"], now });
+    const made = selfSignedCertificate({ names: ["theyspy", "BigBox", "bigbox.tail0000aa.ts.net"], addresses: ["127.0.0.1", "192.168.8.5", "fd7a:115c:a1e0::1"], now });
     const x = new X509Certificate(made.cert);
     expect(x.subject).toBe("CN=TheySpy");
     expect(x.issuer).toBe("CN=TheySpy");
     expect(x.verify(x.publicKey)).toBe(true);
     expect(x.verify(createPublicKey(made.key))).toBe(true);
-    expect(x.subjectAltName).toBe("DNS:theyspy, DNS:bigbox, DNS:bigbox.tail6233fa.ts.net, IP Address:127.0.0.1, IP Address:192.168.8.5, IP Address:FD7A:115C:A1E0:0:0:0:0:1");
+    expect(x.subjectAltName).toBe("DNS:theyspy, DNS:bigbox, DNS:bigbox.tail0000aa.ts.net, IP Address:127.0.0.1, IP Address:192.168.8.5, IP Address:FD7A:115C:A1E0:0:0:0:0:1");
     expect(x.checkHost("bigbox")).toBe("bigbox");
     expect(x.checkIP("192.168.8.5")).toBe("192.168.8.5");
     expect(x.ca).toBe(false);
