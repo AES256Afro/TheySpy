@@ -10,7 +10,9 @@ export default defineConfig({
   define: { __THEYSPY_VERSION__: JSON.stringify(version) },
   // `npm run dev` serves the UI on 5173 and hands the API to `npm run dev:server`.
   server: { port: 5173, proxy: { "/api": `http://127.0.0.1:${serverPort}`, "/healthz": `http://127.0.0.1:${serverPort}` } },
-  build: { outDir: "dist", sourcemap: false },
+  // Nothing inlined as a data: URL: the CSP is default-src 'self' with no font-src, so an inlined
+  // font subset (JetBrains Mono's Cyrillic-extended, under 4 KB) was refused on every page (B40).
+  build: { outDir: "dist", sourcemap: false, assetsInlineLimit: 0 },
   test: {
     globals: true,
     environment: "node",
