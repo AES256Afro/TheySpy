@@ -99,7 +99,7 @@ export function IndicatorsScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Indicators</h1><p className="muted small">zero-breach’s AdFection / Candiru set · as-of {active?.asof ?? "undated"} · {counts.total} indicators. A hit means investigate, never “you are compromised”.</p></div>
+        <div><h1>Indicators</h1><p className="muted small">zero-breach’s AdFection / Candiru set · as-of {active?.asof ?? "undated"} · {counts.total} indicators.</p></div>
         <div className="grow" />
         <button className="btn primary" type="button" onClick={check} disabled={Boolean(busy)}>{busy === "check" ? "Checking…" : "Check for updates"}</button>
       </div>

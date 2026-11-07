@@ -43,7 +43,7 @@ export function ActivityScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Activity</h1><p className="muted small">Every job and every change, with who did it and when.</p></div>
+        <div><h1>Activity</h1><p className="muted small">Jobs and the audit log.</p></div>
         <div className="grow" />
         <a className="btn" href="/api/backup" title="A checked copy of TheySpy's database, taken while it runs. Restore by stopping TheySpy and putting it in place of data/theyspy.db; stored passwords need the same TS_SESSION_SECRET.">Download a backup</a>
         <button className="btn primary" type="button" onClick={runTestJob} disabled={busy}>Run a test job</button>
