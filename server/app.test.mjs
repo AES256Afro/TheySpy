@@ -562,3 +562,27 @@ describe("M32 O1", () => {
     expect(plain.headers.get("content-encoding")).toBeNull();
   });
 });
+
+describe("M35 retention", () => {
+  it("reports the database's size and policy, saves whole days, and names a refused field", async () => {
+    const { request, settings, jobs } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const before = await request("GET", "/api/retention");
+    expect(before.status).toBe(200);
+    expect(before.body.policy).toMatchObject({ hits: 365, audit: 90 });
+    expect(before.body.size.bytes).toBeGreaterThan(0);
+    expect(before.body.size.tables.map((t) => t.name)).toContain("cves");
+    const saved = await request("PUT", "/api/retention", { audit: 30 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.policy.audit).toBe(30);
+    expect(settings.get("retention")).toMatchObject({ audit: 30, hits: 365 });
+    const refused = await request("PUT", "/api/retention", { jobs: 2 });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toBe("Finished jobs: between 7 and 3650 days");
+    // The trim is a job anyone signed in can start, and it says what it did.
+    const job = await request("POST", "/api/jobs", { kind: "retention.trim" });
+    expect(job.status).toBe(202);
+    await jobs.idle();
+    expect(jobs.get(job.body.job.id)).toMatchObject({ status: "succeeded", result: { removed: { audit: 0 }, compacted: false } });
+  });
+});

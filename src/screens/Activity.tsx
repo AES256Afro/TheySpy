@@ -1,10 +1,68 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type AuditEntry, type Job } from "../api.ts";
+import { api, type AuditEntry, type Job, type Retention, type RetentionPolicy } from "../api.ts";
 
 const statusBadge: Record<Job["status"], string> = { queued: "b-info", running: "b-info", succeeded: "b-ok", failed: "b-crit", interrupted: "b-high" };
 
 function when(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : "—";
+}
+
+/** Bytes as a person reads them: "204 MB", "12.5 MB", "640 KB". */
+export function sizeText(bytes: number | null): string {
+  if (bytes === null) return "—";
+  if (bytes >= 100 * 1048576) return `${Math.round(bytes / 1048576)} MB`;
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/** Which tables are the mirrors and libraries (bounded by their sources), as against what grows with use. */
+const bounded: Record<string, string> = { cves: "the CVE mirror (every CVE NVD lists, kept because an old router has old CVEs)", blocklist_versions: "the blocklist library (the last two versions of each list)", oui: "the MAC vendor registry", cves_published: "the CVE mirror's index", cves_epss: "exploit-likelihood scores", cves_kev: "known-exploited entries" };
+
+const policyOrder: (keyof RetentionPolicy)[] = ["hits", "audit", "jobs", "checks", "events", "reports"];
+
+function DatabaseCard({ retention, onChange }: { retention: Retention | null; onChange: () => Promise<void> }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [failed, setFailed] = useState("");
+  const [saved, setSaved] = useState(false);
+  if (!retention) return null;
+  const { size, policy, labels, limits } = retention;
+  const heaviest = size.tables.filter((t) => t.bytes !== null).slice(0, 6);
+  const edited = Object.keys(draft).length > 0;
+  const save = async () => {
+    setFailed(""); setSaved(false);
+    try {
+      await api("PUT", "/api/retention", Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, Number(v)])));
+      setDraft({}); setSaved(true);
+      await onChange();
+    } catch (e) { setFailed(e instanceof Error ? e.message : String(e)); }
+  };
+  const trimNow = async () => {
+    setFailed("");
+    try { await api("POST", "/api/jobs", { kind: "retention.trim" }); await onChange(); } catch (e) { setFailed(e instanceof Error ? e.message : String(e)); }
+  };
+  return (
+    <section className="card" aria-labelledby="database-heading">
+      <header><h2 id="database-heading">Database</h2><span className="muted small">{sizeText(size.bytes)} on disk{size.free > 0 ? `, ${sizeText(size.free)} of it free inside the file` : ""}</span></header>
+      <p className="small">
+        {heaviest.length > 0 && <>Heaviest: {heaviest.map((t, i) => <span key={t.name}>{i > 0 ? ", " : ""}<span className="mono">{t.name}</span> {sizeText(t.bytes)}{bounded[t.name] ? ` (${bounded[t.name]})` : ""}</span>)}. </>}
+        The mirrors and the library are bounded by their sources; what grows with use is trimmed once a day to the days below.
+        {size.lastTrim ? ` Last trimmed ${when(size.lastTrim.at)}: ${Object.values(size.lastTrim.removed).reduce((a, b) => a + b, 0)} record(s) removed${size.lastTrim.compacted ? ", and the file compacted" : ""}.` : " Not trimmed yet."}
+      </p>
+      <div className="table-wrap"><table>
+        <thead><tr><th>Kept</th><th>Days</th></tr></thead>
+        <tbody>{policyOrder.map((key) => (
+          <tr key={key}><td><label htmlFor={`retention-${key}`}>{labels[key]}</label></td>
+            <td><input id={`retention-${key}`} className="input" type="number" min={limits.min} max={limits.max} step={1} style={{ width: "7em" }} value={draft[key] ?? String(policy[key])} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></td></tr>
+        ))}</tbody>
+      </table></div>
+      <div className="row">
+        <button className="btn primary" type="button" onClick={save} disabled={!edited}>Save</button>
+        <button className="btn" type="button" onClick={trimNow} title="Runs the daily trim now, as a job">Trim now</button>
+        {saved && <span className="muted small">Saved.</span>}
+        {failed && <span className="small" role="alert">{failed}</span>}
+      </div>
+    </section>
+  );
 }
 
 type SecurityNote = { id: string; title: string; detail: string; fix: string };
@@ -13,14 +71,16 @@ export function ActivityScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [notes, setNotes] = useState<SecurityNote[]>([]);
+  const [retention, setRetention] = useState<Retention | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [j, a, s] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit"), api<{ notes: SecurityNote[] }>("GET", "/api/security")]);
+      const [j, a, s, r] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit"), api<{ notes: SecurityNote[] }>("GET", "/api/security"), api<Retention>("GET", "/api/retention")]);
       setJobs(j.jobs);
       setAudit(a.entries);
       setNotes(s.notes);
+      setRetention(r);
       setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -56,6 +116,7 @@ export function ActivityScreen() {
           <p className="small">{note.fix}</p>
         </div>
       ))}
+      <DatabaseCard retention={retention} onChange={load} />
       <section className="card">
         <header><h2>Jobs</h2><span className="muted small">newest first</span></header>
         {jobs.length === 0 ? <p className="muted small">No jobs yet. “Run a test job” checks that the runner works.</p> : (
