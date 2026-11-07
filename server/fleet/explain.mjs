@@ -51,7 +51,7 @@ export function guessKind({ names = [], vendor = null, mac = null }) {
   return null;
 }
 
-/** "Mac.tail6233fa.ts.net" → "Mac"; "nas.lan" → "nas". */
+/** "Mac.tail0000aa.ts.net" → "Mac"; "nas.lan" → "nas". */
 export const shortName = (name) => (name ? String(name).replace(/\.$/, "").split(".")[0] : name);
 
 // NetAlertX's names are usually typed by the owner there too, so they come right after Pi-hole's labels.

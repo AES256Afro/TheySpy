@@ -297,9 +297,9 @@ describe("HTTP API", () => {
 
     await request("PUT", "/api/pihole/settings", { mode: "api", url: "http://192.168.8.2", password: "app-password-1", write: true });
     await request("PUT", "/api/pihole/settings", { windowDays: 30 });
-    await request("PUT", "/api/pihole/settings", { url: "http://100.67.166.48" });
+    await request("PUT", "/api/pihole/settings", { url: "http://100.64.0.48" });
     await request("PUT", "/api/pihole/settings", { watch: false });
-    expect(sentinel.effective()).toMatchObject({ mode: "api", url: "http://100.67.166.48", password: "app-password-1", write: true, watch: false, windowDays: 30 });
+    expect(sentinel.effective()).toMatchObject({ mode: "api", url: "http://100.64.0.48", password: "app-password-1", write: true, watch: false, windowDays: 30 });
 
     await request("PUT", "/api/briefing/ntfy", { url: "https://ntfy.example", topic: "theyspy", token: "tk_secret" });
     await request("PUT", "/api/briefing/ntfy", { url: "https://ntfy.example:8443", topic: "theyspy" }); // the form leaves an empty token out

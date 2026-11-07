@@ -66,25 +66,25 @@ describe("device registry", () => {
         { ip: "192.168.8.218", mac: "f0:18:98:00:00:21", seenAt },
         { ip: "192.168.8.99", mac: "6a:00:00:00:00:99", seenAt },
       ], "pihole");
-      t.fleet.observe([{ ip: "100.67.166.48", seenAt }, { ip: "100.78.167.117", seenAt }, { ip: "100.116.232.42", seenAt }], "pihole");
+      t.fleet.observe([{ ip: "100.64.0.48", seenAt }, { ip: "100.64.0.117", seenAt }, { ip: "100.64.0.42", seenAt }], "pihole");
       const id = (ip) => t.fleet.list().find((d) => d.ip === ip).id;
       t.fleet.setNames(id("192.168.8.10"), { pihole: "BigBox", piholeClient: "listed" });
       t.fleet.setNames(id("192.168.8.186"), { pihole: "iPad", piholeClient: "listed" });
       t.fleet.setNames(id("192.168.8.218"), { pihole: "iPhone", piholeClient: "listed" });
-      t.fleet.setNames(id("192.168.8.99"), { tailscale: "iphone.tail6233fa.ts.net" });
-      t.fleet.setNames(id("100.67.166.48"), { tailscale: "bigbox.tail6233fa.ts.net" });
-      t.fleet.setNames(id("100.78.167.117"), { tailscale: "ipad173.tail6233fa.ts.net" });
-      t.fleet.setNames(id("100.116.232.42"), { tailscale: "iphone182.tail6233fa.ts.net" });
+      t.fleet.setNames(id("192.168.8.99"), { tailscale: "iphone.tail0000aa.ts.net" });
+      t.fleet.setNames(id("100.64.0.48"), { tailscale: "bigbox.tail0000aa.ts.net" });
+      t.fleet.setNames(id("100.64.0.117"), { tailscale: "ipad173.tail0000aa.ts.net" });
+      t.fleet.setNames(id("100.64.0.42"), { tailscale: "iphone182.tail0000aa.ts.net" });
       return { ...t, id };
     }
 
     it("merges a Tailscale address into the home device its name proves, and keeps the home address first", () => {
       const { fleet, audit } = homeAndTailnet();
       const { merged } = fleet.consolidate();
-      expect(merged).toEqual([{ from: "100.67.166.48", into: "192.168.8.10", name: "bigbox" }]);
+      expect(merged).toEqual([{ from: "100.64.0.48", into: "192.168.8.10", name: "bigbox" }]);
       const bigbox = fleet.list().find((d) => d.names.pihole === "BigBox");
-      expect(bigbox).toMatchObject({ ip: "192.168.8.10", homeIp: "192.168.8.10", tailscaleIp: "100.67.166.48", names: { tailscale: "bigbox.tail6233fa.ts.net", pihole: "BigBox" } });
-      expect(fleet.get(bigbox.id)).toMatchObject({ homeIp: "192.168.8.10", tailscaleIp: "100.67.166.48" });
+      expect(bigbox).toMatchObject({ ip: "192.168.8.10", homeIp: "192.168.8.10", tailscaleIp: "100.64.0.48", names: { tailscale: "bigbox.tail0000aa.ts.net", pihole: "BigBox" } });
+      expect(fleet.get(bigbox.id)).toMatchObject({ homeIp: "192.168.8.10", tailscaleIp: "100.64.0.48" });
       expect(fleet.list()).toHaveLength(6);
       expect(audit.list(50).some((e) => e.action === "fleet.devices_merged")).toBe(true);
       // Nothing left that the names prove: a second run merges nothing.
@@ -95,15 +95,15 @@ describe("device registry", () => {
       const { fleet, id } = homeAndTailnet();
       fleet.consolidate();
       const pairs = fleet.suggestions().map((s) => [s.from.ip, s.into.ip].sort().join(" + "));
-      expect(pairs).toContain("100.78.167.117 + 192.168.8.186");
-      expect(pairs).toContain("100.116.232.42 + 192.168.8.218");
+      expect(pairs).toContain("100.64.0.117 + 192.168.8.186");
+      expect(pairs).toContain("100.64.0.42 + 192.168.8.218");
       // Two real (non-private) MACs are two devices, never suggested.
       expect(pairs.some((p) => p.includes("192.168.8.10"))).toBe(false);
-      const ipad = fleet.suggestions().find((s) => s.from.ip === "100.78.167.117");
+      const ipad = fleet.suggestions().find((s) => s.from.ip === "100.64.0.117");
       expect(ipad.into.ip).toBe("192.168.8.186");
-      expect(fleet.mergeDevices(ipad.from.id, ipad.into.id, "owner")).toMatchObject({ homeIp: "192.168.8.186", tailscaleIp: "100.78.167.117" });
-      fleet.notSame(id("100.116.232.42"), id("192.168.8.218"), "owner");
-      expect(fleet.suggestions().some((s) => [s.from.ip, s.into.ip].includes("192.168.8.218") && [s.from.ip, s.into.ip].includes("100.116.232.42"))).toBe(false);
+      expect(fleet.mergeDevices(ipad.from.id, ipad.into.id, "owner")).toMatchObject({ homeIp: "192.168.8.186", tailscaleIp: "100.64.0.117" });
+      fleet.notSame(id("100.64.0.42"), id("192.168.8.218"), "owner");
+      expect(fleet.suggestions().some((s) => [s.from.ip, s.into.ip].includes("192.168.8.218") && [s.from.ip, s.into.ip].includes("100.64.0.42"))).toBe(false);
       expect(() => fleet.mergeDevices(ipad.into.id, ipad.into.id, "owner")).toThrow(/two different/);
     });
 
@@ -114,7 +114,7 @@ describe("device registry", () => {
       const { trusted } = fleet.consolidate();
       expect(trusted).toBeGreaterThan(0);
       expect(fleet.get(id("192.168.8.10")).trusted).toBe(true);
-      expect(fleet.get(id("100.116.232.42")).trusted).toBe(true);
+      expect(fleet.get(id("100.64.0.42")).trusted).toBe(true);
       expect(fleet.get(iphone).trusted).toBe(false);
     });
   });
