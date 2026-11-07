@@ -55,7 +55,7 @@ const blocklistHosts = () => {
 };
 createEgress({
   mode: config.egress, audit,
-  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), hostOf(settings.get("protec")?.url ?? ""), ...blocklistHosts()],
+  extraHosts: () => [hostOf(sentinel.effective().url ?? ""), hostOf(config.ntfy.url ?? settings.get("alerts_ntfy")?.url ?? ""), hostOf(settings.get("alerts_webhook")?.url ?? ""), hostOf(settings.get("netalertx")?.url ?? ""), ...(settings.get("sites") ?? []).map((site) => hostOf(site.url)), hostOf(settings.get("protec")?.url ?? ""), ...blocklistHosts()],
 }).install();
 // Every outside service gets paced (pacing.mjs): a gap between requests, an hourly budget, and a
 // hold when one says to slow down. Installed before any service is made, as they take `fetch` then.

@@ -116,3 +116,58 @@ describe("M34, feature 6: an alert lands on the device", () => {
     expect(lookups).toEqual([`https://home.example:8797/fleet/devices/${device.id}`, "https://home.example:8797/pihole"]);
   });
 });
+
+describe("the webhook channel (M36)", () => {
+  function hooks() {
+    const sent = { ntfy: [], webhook: [] };
+    let failNtfy = false;
+    const fetchImpl = async (url, init) => {
+      if (String(url).startsWith("https://hooks.example/")) { sent.webhook.push({ headers: init.headers, body: String(init.body) }); return new Response("", { status: 200 }); }
+      sent.ntfy.push({ url: String(url) });
+      return new Response("", { status: failNtfy ? 503 : 200 });
+    };
+    return { sent, fetchImpl, breakNtfy() { failNtfy = true; }, mendNtfy() { failNtfy = false; } };
+  }
+
+  it("POSTs each alert as signed JSON, and a retry sends only to the channel that has not had it", async () => {
+    const { createHmac } = await import("node:crypto");
+    const box = hooks();
+    const now = testClock("2026-11-07T12:00:00.000Z");
+    const { alerts, audit, settings } = testServices({ now, ntfyFetch: box.fetchImpl, ntfyEnv: { url: "https://ntfy.example", topic: "t" } });
+    expect(alerts.configureWebhook({ url: "https://hooks.example/theyspy", secret: "hush" }, "owner")).toEqual({ url: "https://hooks.example/theyspy", hasSecret: true, ready: true });
+    expect(audit.list(1)[0]).toMatchObject({ action: "alerts.webhook_configured", detail: { url: "https://hooks.example/theyspy", secret: "(changed)" } });
+    expect(JSON.stringify(settings.get("alerts_webhook"))).not.toContain("hush");
+
+    box.breakNtfy();
+    expect(await alerts.raise({ key: "k1", kind: "new_device", title: "New device on your network", message: "Something at 192.168.8.88", link: "https://ts.example/fleet", detail: { ip: "192.168.8.88" } })).toBe(true);
+    expect(box.sent.webhook).toHaveLength(1);
+    const [{ headers, body }] = box.sent.webhook;
+    expect(JSON.parse(body)).toEqual({ event: "alert", key: "k1", at: "2026-11-07T12:00:00.000Z", kind: "new_device", priority: "default", title: "New device on your network", message: "Something at 192.168.8.88", link: "https://ts.example/fleet", detail: { ip: "192.168.8.88" } });
+    expect(headers["x-theyspy-event"]).toBe("alert");
+    expect(headers["x-theyspy-signature"]).toBe(`sha256=${createHmac("sha256", "hush").update(body).digest("hex")}`);
+    // ntfy failed, so the alert is not delivered yet, and the error names the channel.
+    expect(alerts.recent()).toMatchObject([{ key: "k1", delivered: false, error: "ntfy: ntfy answered 503" }]);
+
+    box.mendNtfy();
+    expect(await alerts.retry()).toBe(1);
+    expect(alerts.recent()).toMatchObject([{ key: "k1", delivered: true, error: null }]);
+    expect(box.sent.ntfy).toHaveLength(2); // the failed try and the retry
+    expect(box.sent.webhook).toHaveLength(1); // not sent twice
+  });
+
+  it("works as the only channel, refuses a bad address, and the test says which channels it reached", async () => {
+    const box = hooks();
+    const now = testClock("2026-11-07T12:00:00.000Z");
+    const { alerts } = testServices({ now, ntfyFetch: box.fetchImpl });
+    expect(alerts.config().ready).toBe(false);
+    await expect(alerts.test()).rejects.toThrow("Set up ntfy or a webhook first");
+    now.advance(1000); // a test notification's key is its time
+    expect(() => alerts.configureWebhook({ url: "ftp://hooks.example/x" }, "owner")).toThrow("The webhook address must be an http(s) URL");
+    expect(() => alerts.configureWebhook({ url: "https://user:pw@hooks.example/x" }, "owner")).toThrow("The webhook address must be an http(s) URL");
+    alerts.configureWebhook({ url: "https://hooks.example/only" }, "owner");
+    expect(alerts.webhookConfig()).toEqual({ url: "https://hooks.example/only", hasSecret: false, ready: true });
+    expect(await alerts.test()).toEqual({ delivered: true, channels: ["webhook"] });
+    expect(box.sent.webhook[0].headers["x-theyspy-signature"]).toBeUndefined();
+    expect(box.sent.ntfy).toHaveLength(0);
+  });
+});

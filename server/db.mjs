@@ -396,6 +396,8 @@ export const migrations = [
   `CREATE INDEX ioc_hit_events_at ON ioc_hit_events (at);`,
   // M20: the imports ask "is this contact already recorded?" per item; the only index was by device and time.
   `CREATE INDEX findings_contact ON findings (device_id, source, indicator);`,
+  // M36: which channels an alert has reached (ntfy, webhook), so a retry sends only to the rest.
+  `ALTER TABLE alerts ADD COLUMN deliveries TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 /**
