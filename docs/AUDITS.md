@@ -6,20 +6,21 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 10 | 0 | in the loop |
-| Bugs (correctness) | 10 | 1 | in the loop |
+| Code (structure, hygiene, dead weight) | 11 | 0 | in the loop |
+| Bugs (correctness) | 11 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
-sweep 10's in 1.17.0 (M21). Security left the loop after sweep 5. Bugs found one thing in each of
-sweeps 8 and 9 and nothing in sweep 10; code found something in every sweep so far.
+sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22). Security left the loop after sweep 5. Bugs
+found one thing in each of sweeps 8, 9 and 11 and nothing in sweep 10; code found something in every
+sweep so far.
 
-Sweep 11 begins the third pass, by what changed since the second: `agents.mjs` after M20, `quietly.mjs`
-and its callers after M18, `fleet/attribution.mjs` and `netlogs.mjs` after M16, `overview.mjs` and
-`exposure.mjs` after M17, the Overview, Device and Fleet screens after M15; then the first pass's
-tests for what they no longer cover (a fix whose test asserts the old shape).
+Sweep 12 continues the third pass: `blocklists/library.mjs`, `pihole/sentinel.mjs` and
+`pihole/routes.mjs` after M19, `sites.mjs` and `web/scan.mjs` after M18, `readmodel.mjs` and
+`cves/store.mjs` after M19 (C21's product index), and the Pi-hole, This device and Evidence screens;
+it measures the Overview endpoint on the seeded database again now that `findings` has M20's index.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -646,3 +647,41 @@ None.
 | # | Fix |
 | --- | --- |
 | C38 | The stripper leaves a `//` that follows `:` alone; a test with a colour after a URL on one line. |
+
+## Sweep 11 — 7 Nov 2026, at 1.17.0
+
+The third pass begins with what the second pass changed: `agents.mjs` after M20, `quietly.mjs` and
+its two callers after M18, `fleet/attribution.mjs` and `netlogs.mjs` after M16, `overview.mjs` and
+`exposure.mjs` after M17, and the Overview, Device and Fleet screens after M15.
+
+**Baseline:** the MVT import reads as M20 intended (parse all, one transaction, one ask per new
+pair); attribution is unchanged since M16 and its test still describes it; the two quiet runners
+record and clear their errors; the Overview's day of events is the last 300 audit rows, and the
+scheduled work that would fill them (fleet reads, CVE feeds) runs outside the log, so a day holds
+about a dozen job rows. The five Python-only agent tests are `skipIf(!python)`, not skipped.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B31 | **The Console layout's inspector contradicts its own table.** The Overview sends the five worst not-blocked lookups for the Verdict; the Console inspector looked only there, so a sixth device whose row says "1 open" got "none not blocked" in the inspector. | `Overview.tsx` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C39 | Lookup groups are per indicator × domain × via × address, but the React keys on the Verdict, the Console inspector and the Device page's hits list left the domain out: two subdomains of one indicator from one address share a key (React warns and may reuse the wrong row on refresh). |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `exposure.forDevice()` reads every hit and every exploited CVE to score one device: under 10 ms
+  on the seeded database (sweep 8), and the page asks once.
+- `overview.compose()` attributes the hits twice (all time for the checklist, the week for the
+  questions): 37 ms in all (sweep 8).
+
+### What shipped (sweep 11) — 1.18.0, M22
+
+| # | Fix |
+| --- | --- |
+| B31 | The inspector falls back to the row's own count ("1 not blocked (see device page)"); a test renders the Console with a sixth device. |
+| C39 | Keys carry the domain and the route; a test renders two subdomains of one indicator and asserts React does not complain. |
