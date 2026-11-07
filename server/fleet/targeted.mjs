@@ -1,5 +1,4 @@
 import { promises as dnsPromises } from "node:dns";
-import net from "node:net";
 import { canonicalIp, inCidr, normaliseMac, parseCidr } from "./addresses.mjs";
 import { attributeHits, holderAt } from "./attribution.mjs";
 import { checkPorts, profiles } from "./services.mjs";
