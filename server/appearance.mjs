@@ -1,16 +1,22 @@
 import { looksFile, lookIds, screenIds } from "./shared.mjs";
 
-/** @typedef {{ look: string, name: string, tagline: string, glyph: string, accent: string, home: string, density: string }} Appearance */
+/** @typedef {{ look: string, name: string, tagline: string, glyph: string, accent: string, home: string, density: string, layout: string, sidebar: string }} Appearance */
+
+/** The home screen's layouts and the sidebar's, chosen by the owner (M15). */
+export const layouts = Object.freeze(["verdict", "ledger", "console"]);
+export const sidebars = Object.freeze(["full", "short"]);
 
 /** @type {Readonly<Appearance>} */
 export const appearanceDefaults = Object.freeze({
-  look: "auto",
+  look: "ops",
   name: "TheySpy",
   tagline: "",
   glyph: "◉",
   accent: "",
   home: "overview",
   density: "comfortable",
+  layout: "verdict",
+  sidebar: "full",
 });
 
 const limits = { name: 28, tagline: 40, glyph: 4 };
@@ -34,6 +40,8 @@ export function validateAppearance(input) {
       case "look": if (!lookIds.includes(text)) errors.push(`look must be one of ${lookIds.join(", ")}`); else value.look = text; break;
       case "home": if (!screenIds.includes(text)) errors.push(`home must be one of ${screenIds.join(", ")}`); else value.home = text; break;
       case "density": if (text !== "comfortable" && text !== "compact") errors.push("density must be comfortable or compact"); else value.density = text; break;
+      case "layout": if (!layouts.includes(text)) errors.push(`layout must be one of ${layouts.join(", ")}`); else value.layout = text; break;
+      case "sidebar": if (!sidebars.includes(text)) errors.push(`sidebar must be one of ${sidebars.join(", ")}`); else value.sidebar = text; break;
       case "accent": if (text && !/^#[0-9a-f]{6}$/i.test(text)) errors.push("accent must be empty or a colour like #39c6ff"); else value.accent = text.toLowerCase(); break;
       case "glyph":
         if (!text || [...text].length > limits.glyph) errors.push(`glyph must be 1 to ${limits.glyph} characters`);
@@ -64,6 +72,8 @@ export function effectiveAppearance({ env, stored }) {
 export const appearanceOptions = Object.freeze({
   looks: lookIds,
   screens: screenIds,
+  layouts,
+  sidebars,
   glyphs: looksFile.glyphs,
   accentPresets: looksFile.accentPresets,
 });

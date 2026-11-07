@@ -10,7 +10,7 @@ describe("appearance", () => {
   });
 
   it("ignores invalid environment values instead of failing to start", () => {
-    expect(effectiveAppearance({ env: { look: "neon" }, stored: undefined }).look).toBe("auto");
+    expect(effectiveAppearance({ env: { look: "neon" }, stored: undefined }).look).toBe("ops");
   });
 
   it("validates each field", () => {

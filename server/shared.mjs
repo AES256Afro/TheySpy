@@ -7,7 +7,7 @@ function readShared(name) {
 
 /** @type {{ looks: { id: string, name: string }[], glyphs: string[], accentPresets: string[] }} */
 export const looksFile = readShared("looks.json");
-/** @type {{ screens: { id: string, path: string, label: string, milestone: string }[] }} */
+/** @type {{ screens: { id: string, path: string, label: string }[] }} */
 export const screensFile = readShared("screens.json");
 
 export const lookIds = Object.freeze(["auto", ...looksFile.looks.map((look) => look.id)]);

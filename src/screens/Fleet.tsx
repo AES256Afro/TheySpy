@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
+import { Link } from "../router.tsx";
 
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
@@ -324,7 +325,7 @@ function DeviceCard({ device, others, onMerge, onSave, onClose, onForget }: { de
   const [form, setForm] = useState({ label: device.label ?? "", owner: device.owner ?? "", kind: device.kind ?? "", tags: device.tags.join(", "), notes: device.notes ?? "" });
   return (
     <section className="card stack">
-      <header><h2>{device.name}</h2><button className="btn small" type="button" onClick={onClose}>Close</button></header>
+      <header><h2>{device.name}</h2><span className="row"><Link className="btn small" href={`/fleet/devices/${device.id}`}>Device page</Link><button className="btn small" type="button" onClick={onClose}>Close</button></span></header>
       <p className="small muted">Called “{device.name}” from {device.nameFrom}.{device.guess ? ` Probably: ${device.guess.label} (from ${device.guess.from}).` : ""}</p>
       {device.network && <div className="banner"><span className="small"><b>{device.network.label}.</b> {device.network.detail}</span></div>}
       <div className="list small">
