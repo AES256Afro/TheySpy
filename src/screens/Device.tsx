@@ -15,6 +15,7 @@ type Finding = { id: number; deviceId: number | null; source: string; kind: stri
 type Cve = { cveId: string; name?: string | null; kev?: boolean; score?: number | null; software: string[]; decision: { status: string; contradicted: boolean } | null };
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; risk: string | null; lastSeen: string };
 type Activity = { connected: boolean; total: number; blockedTotal?: number; top: { domain: string; queries: number }[]; blocked: { domain: string; blocked: number; lists: string[] }[] };
+type Hit = { indicator: string; domain: string; via: string; clientIp: string; firstSeen: string; lastSeen: string; lookups: number; blocked: number; lastStatus: string | null; tier: string | null };
 
 const tabs = ["evidence", "exposure", "cves", "dns", "ports", "history"] as const;
 type Tab = (typeof tabs)[number];
@@ -35,9 +36,11 @@ export function DeviceScreen({ id }: { id: number }) {
   const [cves, setCves] = useState<{ cves: Cve[]; open: number; exploited: number } | null>(null);
   const [services, setServices] = useState<Service[] | null>(null);
   const [activity, setActivity] = useState<Activity | null>(null);
+  const [hits, setHits] = useState<Hit[] | null>(null);
 
   useEffect(() => {
-    setDevice(null); setFactors(null); setFindings(null); setCves(null); setServices(null); setActivity(null);
+    setDevice(null); setFactors(null); setFindings(null); setCves(null); setServices(null); setActivity(null); setHits(null);
+    api<{ hits: Hit[] }>("GET", `/api/fleet/devices/${id}/hits`).then((r) => setHits(r.hits), () => setHits([]));
     api<{ device: Device }>("GET", `/api/fleet/devices/${id}`).then((r) => setDevice(r.device), (e: Error) => setError(e.message));
     api<{ devices: { id: number; factors: Factor[] }[] }>("GET", "/api/exposure").then((r) => setFactors(r.devices.find((d) => d.id === id)?.factors ?? []), () => setFactors([]));
     api<{ findings: Finding[] }>("GET", "/api/evidence").then((r) => setFindings(r.findings.filter((f) => f.deviceId === id)), () => setFindings([]));
@@ -50,15 +53,16 @@ export function DeviceScreen({ id }: { id: number }) {
   if (!device) return <div className="stack"><h1>Device</h1><p className="muted small">Loading…</p></div>;
   const d = device;
   const contacts = (findings ?? []).filter((f) => f.kind === "contacted" && f.status === "open");
+  const unblocked = (hits ?? []).filter((h) => h.blocked < h.lookups);
   const failing = (factors ?? []).filter((f) => f.state === "fail").length;
-  const count: Record<Tab, number | null> = { evidence: findings ? contacts.length : null, exposure: factors ? failing : null, cves: cves ? cves.open : null, dns: activity?.total ?? null, ports: services?.length ?? null, history: d.events.length };
+  const count: Record<Tab, number | null> = { evidence: findings && hits ? contacts.length + unblocked.length : null, exposure: factors ? failing : null, cves: cves ? cves.open : null, dns: activity?.total ?? null, ports: services?.length ?? null, history: d.events.length };
 
   return (
     <div className="stack">
       <div className="top">
         <div>
           <div className="small muted"><Link href="/fleet">Fleet</Link> / device {d.id}</div>
-          <h1>{d.name}{contacts.length > 0 && <span className="badge b-crit" style={{ marginLeft: 10, verticalAlign: "middle" }}>indicator contact</span>}{d.isNew && <span className="badge b-high" style={{ marginLeft: 10, verticalAlign: "middle" }}>new</span>}</h1>
+          <h1>{d.name}{(contacts.length > 0 || unblocked.length > 0) && <span className="badge b-crit" style={{ marginLeft: 10, verticalAlign: "middle" }}>indicator contact</span>}{d.isNew && <span className="badge b-high" style={{ marginLeft: 10, verticalAlign: "middle" }}>new</span>}</h1>
         </div>
         <div className="grow" />
         {d.ip && <Link className="btn" href={`/check?q=${encodeURIComponent(d.ip)}`}>Check</Link>}
@@ -73,7 +77,14 @@ export function DeviceScreen({ id }: { id: number }) {
 
       {tab === "evidence" && (
         <section className="card stack">
-          {findings === null ? <p className="small muted">Loading…</p> : findings.length === 0 ? <p className="small muted">No findings recorded for this device. Sources: the agent, MVT imports, network logs, Pi-hole history (shown under DNS activity).</p> : (
+          <div>
+            <h3>Indicator lookups · DNS history · every address this device has held</h3>
+            {hits === null ? <p className="small muted">Loading…</p> : hits.length === 0 ? <p className="small muted">None recorded.</p> : (
+              <div className="list small">{hits.map((h) => <div key={`${h.indicator}-${h.clientIp}-${h.via}`}><span className={`badge ${h.blocked < h.lookups ? "b-crit" : "b-med"}`}>{h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"}</span><span className="grow"><span className="mono">{h.domain}</span>{h.domain !== h.indicator ? <span className="muted"> · indicator {h.indicator}</span> : null}{h.tier ? <span className="muted"> · {h.tier}</span> : null}<div className="muted">{h.lookups} lookup{h.lookups === 1 ? "" : "s"} from {h.clientIp} · {when(h.firstSeen)} – {when(h.lastSeen)}</div></span></div>)}</div>
+            )}
+          </div>
+          <h3>Findings · agent, MVT, network logs</h3>
+          {findings === null ? <p className="small muted">Loading…</p> : findings.length === 0 ? <p className="small muted">None recorded.</p> : (
             <div className="list small">{findings.map((f) => <div key={f.id} style={{ alignItems: "flex-start" }}><span className={`badge ${f.kind === "contacted" ? "b-crit" : "b-info"}`}>{f.kind}</span><span className="grow"><span className="mono">{f.indicator ?? "—"}</span>{f.where ? <span className="muted"> · {f.where}</span> : null}<div className="muted">{f.source} · {when(f.at)} · {f.status}{f.note ? ` · ${f.note}` : ""}</div></span></div>)}</div>
           )}
           <p className="small muted"><Link href="/evidence">Evidence locker</Link> for imports and the agent.</p>

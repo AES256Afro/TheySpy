@@ -69,6 +69,13 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
       blocked: blockedRows.map((r) => ({ domain: r.domain, blocked: r.blocked, lists: [...(matches.get(r.domain)?.lists ?? [])].slice(0, 3) })),
     });
   });
+  // Indicator lookups recorded for the device under any address it has held (M15 device page).
+  router.get("/devices/:id/hits", (req, res) => {
+    const device = fleet.get(id(req));
+    if (!device) return res.status(404).json({ error: "No such device" });
+    const addresses = new Set([device.ip, ...fleet.addressesOf(device.id)].filter(Boolean));
+    res.json({ connected: Boolean(sentinel.effective().mode), hits: sentinel.hits().filter((h) => addresses.has(h.clientIp)) });
+  });
   router.get("/devices/:id", (req, res) => {
     const device = fleet.get(id(req));
     if (!device) return res.status(404).json({ error: "No such device" });

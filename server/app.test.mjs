@@ -467,4 +467,21 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     expect(response.body.scopes).toMatchObject({ pihole: false, devices: [], network: { key: "network", suggested: "balanced" } });
     expect(response.body.baselines.map((b) => b.id)).toEqual(["essential", "balanced", "strict", "lockdown"]);
   });
+  it("M15: the overview and a device's indicator lookups answer under any address the device has held", async () => {
+    const { request, fleet, db } = await start({ services: { piholeEnv: { url: "http://pihole.lan", password: "x", write: false } } });
+    await request("POST", "/api/login", { password: "correct horse" });
+    fleet.observe([{ ip: "192.168.1.30", mac: "f0:18:98:00:00:aa", hostname: "laptop", seenAt: "2026-11-01T10:00:00.000Z" }], "pihole", { inventory: true });
+    db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', 1, '2026-11-06T21:14:00.000Z', 'adfection-c2.example', 'adfection-c2.example', 'query', '192.168.1.30', 'laptop', 'FORWARDED', 0, 'hunt', '2026-11-06T21:15:00.000Z')").run();
+    fleet.observe([{ ip: "192.168.1.31", mac: "f0:18:98:00:00:aa", seenAt: "2026-11-07T11:55:00.000Z" }], "pihole");
+    const [device] = fleet.list();
+    const hits = await request("GET", `/api/fleet/devices/${device.id}/hits`);
+    expect(hits.status).toBe(200);
+    expect(hits.body.hits).toHaveLength(1);
+    expect(hits.body.hits[0]).toMatchObject({ clientIp: "192.168.1.30", lookups: 1, blocked: 0 });
+    const overview = await request("GET", "/api/overview");
+    expect(overview.status).toBe(200);
+    expect(overview.body.questions.contacts.count).toBe(1);
+    expect(overview.body.devices[0]).toMatchObject({ name: "laptop", notBlocked: 1 });
+    expect((await request("GET", "/api/fleet/devices/999/hits")).status).toBe(404);
+  });
 });

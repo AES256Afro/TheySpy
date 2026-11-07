@@ -6,8 +6,8 @@ leaves once a sweep finds nothing. The mock-ups it led to are in [mockups-v2/](m
 
 | Category | Sweeps | Clean in a row | State |
 | --- | --- | --- | --- |
-| Readability | 1 | 0 | in the loop |
-| Usability | 1 | 0 | in the loop |
+| Readability | 1 | 0 | in the loop (R1–R6 fixed in 1.11.0) |
+| Usability | 1 | 0 | in the loop (U1 partly, U2–U4, U6 fixed in 1.11.0) |
 | Visual | 1 | 0 | in the loop |
 | Quality of life | 0 | – | not started |
 | Features the platform should have | 1 | 0 | in the loop (first pass below) |
@@ -104,3 +104,18 @@ technical, one-line descriptions: no quotations, no slogans. See [PLAN.md](PLAN.
   like them.
 - Sign-in is fine: one field, the right hint, nothing else.
 - Compact density works as described; it is just not the fix for V4.
+
+### What shipped (sweep 1) — 1.11.0, M15
+
+| # | Fix |
+| --- | --- |
+| R1 | Overview is a screen: `GET /api/overview` and three layouts the owner picks (verdict, ledger, console). The placeholder and the BoxPilot screen are gone. |
+| R2 | No milestone words anywhere the owner looks; `milestone` and `mockup` left the shipped screen list. |
+| R3, R6 | Every screen's title line is one technical sentence or less; a source test refuses quotations and em-dashes there. |
+| R4 | The verdict layout states what is wrong in words; a zero reads as "none", not as an alarm colour. |
+| R5 | Unchanged (Intel's pagination) — next sweep. |
+| U1 | Partly: the verdict's "could not check" list names what to do; a first-run sequence is still not a screen. |
+| U2 | Fixed in M14 (B21). |
+| U3, U6 | The sidebar can be five places and More; the default look is one look ("Per screen" stays as an option). |
+| U4 | A device page with evidence, exposure, CVEs, DNS activity, ports and history; Fleet, Exposure and the Overview link to it. Indicator lookups show under Evidence for every address the device has held. |
+| U5, U7, U8, V1–V5 | Not yet — the next sweep reads the new screens with the old ones. |
