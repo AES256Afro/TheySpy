@@ -175,11 +175,17 @@ export function createBaselines({ db, library, sentinel, settings, audit, now = 
       return { ...compiled, domains, etag: `${compiled.etag}-${kept.length}` };
     },
 
-    /** The devices that ask Pi-hole most, and the suggested baseline for each and for the network. */
+    /**
+     * The devices that ask Pi-hole most, and the suggested baseline for each and for the network.
+     * Without Pi-hole there are no devices to suggest for, but the network scope and the baselines
+     * themselves are still there to read: a fresh install must not answer 500 here (B21).
+     */
     async scopes() {
       const hits = new Set(sentinel.hits().map((h) => h.clientIp));
-      const devices = await sentinel.source().clients().catch(() => []);
+      const connected = Boolean(sentinel.effective().mode);
+      const devices = connected ? await sentinel.source().clients().catch(() => []) : [];
       return {
+        pihole: connected,
         network: { key: "network", suggested: "balanced", why: "Balanced is the safe default for a mixed household; raise individual devices rather than everyone." },
         devices: devices.map((d) => ({
           ...d, key: scopeKey(d.ip),

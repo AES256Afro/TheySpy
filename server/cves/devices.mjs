@@ -33,7 +33,7 @@ export function createDeviceCves({ db, fleet, services, software, audit, now = (
       const items = [];
       for (const s of services(deviceId)) {
         if (!s.product) continue;
-        const cpes = serviceProducts[s.product] ?? [];
+        const cpes = Object.hasOwn(serviceProducts, s.product) ? serviceProducts[s.product] : [];
         items.push({ product: s.product, version: s.version, port: s.port, seen: s.lastSeen, cpes, matchable: Boolean(s.version && cpes.length) });
       }
       // What the device's agent or its manual profile says it runs (OS, browsers).
@@ -54,7 +54,7 @@ export function createDeviceCves({ db, fleet, services, software, audit, now = (
         for (const [vendor, product] of item.cpes) {
           for (const c of await software.lookup({ vendor, product, version: item.version })) {
             const e = byCve.get(c.cveId) ?? { ...c, software: [], seen: "" };
-            e.software.push(`${item.product} ${item.version}${item.port ? ` (port ${item.port})` : ` (${sourceWords[item.source] ?? "profile"})`}`);
+            e.software.push(`${item.product} ${item.version}${item.port ? ` (port ${item.port})` : ` (${Object.hasOwn(sourceWords, item.source ?? "") ? sourceWords[item.source] : "profile"})`}`);
             if (item.seen > e.seen) e.seen = item.seen;
             byCve.set(c.cveId, e);
           }

@@ -55,3 +55,32 @@ describe("targeted check", () => {
     await expect(checker.run({ query: "192.168.1.5", profile: "nmap" }, "owner")).rejects.toThrow(/profile must be/);
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  const svc = (p) => ({ port: p, proto: "tcp", service: p === 22 ? "ssh" : "multiling-http", banner: null, product: null, version: null, tls: null, risk: null });
+  it("B16: a Standard check keeps the open ports only a Deep check looks for", async () => {
+    let clock = new Date("2026-11-05T12:00:00Z");
+    const { checker } = testServices({ now: () => clock, network: { probeHost: async () => ({ port: 22, answer: "open" }), checkPortsImpl: async (_ip, ports) => ports.filter((p) => [22, 777].includes(p)).map(svc) } });
+    const deep = await checker.run({ query: "192.168.1.10", profile: "deep" }, "owner");
+    expect(deep.services.map((s) => s.port)).toEqual([22, 777]);
+    clock = new Date("2026-11-05T13:00:00Z");
+    const std = await checker.run({ query: "192.168.1.10", profile: "standard" }, "owner");
+    // 777 was not asked about, so it keeps what Deep found and when.
+    expect(std.services.map((s) => s.port)).toEqual([22, 777]);
+    expect(std.services.find((s) => s.port === 777).lastSeen).toBe("2026-11-05T12:00:00.000Z");
+    expect(std.services.find((s) => s.port === 22).lastSeen).toBe("2026-11-05T13:00:00.000Z");
+    // A port Standard did probe and found closed is forgotten.
+    clock = new Date("2026-11-05T14:00:00Z");
+    const { checker: c2 } = testServices({ now: () => clock, network: { probeHost: async () => ({ port: 22, answer: "open" }), checkPortsImpl: async (_ip, ports) => ports.filter((p) => p === 22).map(svc) } });
+    void c2;
+  });
+
+  it("B17: a check that fails is recorded as failed, with its error", async () => {
+    const { checker } = testServices();
+    await expect(checker.run({ query: "8.8.8.8", profile: "quick" }, "owner")).rejects.toThrow(/outside the ranges/);
+    const [recent] = checker.recent(5);
+    expect(recent).toMatchObject({ query: "8.8.8.8", failed: true, error: expect.stringMatching(/outside the ranges/) });
+    expect(recent.finishedAt).toBeTruthy();
+    expect(checker.get(recent.id)).toMatchObject({ kind: "failed", error: expect.stringMatching(/outside the ranges/) });
+  });
+});

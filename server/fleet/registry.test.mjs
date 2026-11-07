@@ -119,3 +119,29 @@ describe("device registry", () => {
     });
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  it("B14: a merge keeps the MAC, vendor, hostname and first sighting of the record folded in", () => {
+    const { fleet } = testServices({ now: testClock("2026-11-05T12:00:00Z") });
+    fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "macbook", vendor: "Apple", seenAt: at("2026-08-01T10:00:00Z") }], "arp");
+    fleet.observe([{ ip: "100.101.102.103", seenAt: at("2026-11-05T11:00:00Z") }], "tailscale");
+    const [withMac, tailOnly] = [fleet.list().find((d) => d.mac), fleet.list().find((d) => !d.mac)];
+    // The owner merges in the "wrong" direction: the MAC-bearing record into the Tailscale-only one.
+    const merged = fleet.mergeDevices(withMac.id, tailOnly.id, "owner");
+    expect(merged).toMatchObject({ id: tailOnly.id, mac: "f0:18:98:00:00:0c", vendor: "Apple", hostname: "macbook", firstSeen: at("2026-08-01T10:00:00Z") });
+    expect(merged.addressHistory.map((a) => a.ip).sort()).toEqual(["100.101.102.103", "192.168.1.20"]);
+    // The same MAC seen again is this device, not a new one.
+    expect(fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", seenAt: at("2026-11-05T11:59:00Z") }], "arp")).toEqual([]);
+    expect(fleet.list()).toHaveLength(1);
+  });
+
+  it("B13: an address a device used to hold still maps to it", () => {
+    const { fleet } = testServices();
+    fleet.observe([{ ip: "192.168.1.30", mac: "f0:18:98:00:00:aa", seenAt: at("2026-11-01T10:00:00Z") }], "pihole");
+    fleet.observe([{ ip: "192.168.1.31", mac: "f0:18:98:00:00:aa", seenAt: at("2026-11-05T11:55:00Z") }], "pihole");
+    const [d] = fleet.list();
+    expect(d.ip).toBe("192.168.1.31");
+    expect(fleet.deviceByAddress().get("192.168.1.30")).toBe(d.id);
+    expect(fleet.addressesOf(d.id).sort()).toEqual(["192.168.1.30", "192.168.1.31"]);
+  });
+});

@@ -76,11 +76,19 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     };
   }
 
-  /** Folds one device into another: addresses, events and anything the owner set. */
+  /**
+   * Folds one device into another: addresses, events, anything the owner set - and the identity of
+   * the record folded in. The survivor keeps its own MAC, vendor and hostname where it has them and
+   * takes the other's where it does not, and is first seen at the earlier of the two; without this a
+   * merge into a MAC-less record dropped the MAC, and the next sighting of it was a new device.
+   */
   function merge(from, into) {
     q.moveAddresses.run(into.id, from.id);
     q.moveEvents.run(into.id, from.id);
     const keep = (field) => into[field] ?? from[field];
+    // The UNIQUE index on mac: the row giving up its MAC must let go before the survivor takes it.
+    if (!into.mac && from.mac) q.update.run(null, from.ip, from.hostname, from.vendor, from.sources, from.first_seen, from.last_seen, from.id);
+    q.update.run(keep("mac"), into.ip, keep("hostname"), keep("vendor"), into.sources, earlier(into.first_seen, from.first_seen), later(into.last_seen, from.last_seen), into.id);
     q.edit.run(keep("label"), keep("owner"), keep("kind"), keep("notes"), into.tags !== "[]" ? into.tags : from.tags, Math.max(into.trusted, from.trusted), Math.max(into.acknowledged, from.acknowledged), into.id);
     // What each source called it, and when each saw it: the device being kept wins on a clash.
     q.names.run(JSON.stringify({ ...JSON.parse(from.names ?? "{}"), ...JSON.parse(into.names ?? "{}") }), into.id);
@@ -224,13 +232,14 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       const out = [];
       // Names someone or something gave the device; never a guess like "Phone, tablet or laptop at …".
       const given = (d) => [d.label, d.hostname, d.names?.pihole, d.names?.netalertx, d.names?.router, d.names?.tailscale].filter((v) => typeof v === "string" && v).map(loose).filter((x) => x.length >= 4);
+      const names = rows.map(given); // once per device, not once per pair
       for (let i = 0; i < rows.length; i += 1) {
         for (let j = i + 1; j < rows.length; j += 1) {
           const [a, b] = [rows[i], rows[j]];
           if (skip.has([a.id, b.id].sort((x, y) => x - y).join("-"))) continue;
           if (a.mac && b.mac && !a.randomisedMac && !b.randomisedMac) continue; // two real MACs are two devices
-          const la = given(a);
-          const lb = given(b);
+          const la = names[i];
+          const lb = names[j];
           const close = la.some((x) => lb.some((y) => x === y || x.endsWith(y) || y.endsWith(x)));
           if (!close) continue;
           // Keep the record with a home address and a MAC; fold the other into it.
@@ -271,6 +280,28 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       const names = JSON.parse(row.names ?? "{}");
       for (const [k, v] of Object.entries(patch)) { if (v) names[k] = v; else delete names[k]; }
       q.names.run(JSON.stringify(names), id);
+    },
+
+    /**
+     * Address → device id, over every address a device has held, not only its current one. A hit
+     * Pi-hole recorded last month under a lease the device no longer has is still that device's.
+     * @returns {Map<string, number>}
+     */
+    deviceByAddress() {
+      const out = new Map();
+      for (const raw of q.allAddresses.all()) {
+        const a = /** @type {any} */ (raw);
+        if (!out.has(a.ip)) out.set(a.ip, Number(a.device_id)); // ordered by last_seen: the latest holder wins
+      }
+      for (const raw of q.all.all()) {
+        const d = /** @type {any} */ (raw);
+        if (d.ip && !out.has(d.ip)) out.set(d.ip, Number(d.id));
+      }
+      return out;
+    },
+    /** Every address a device has held. @param {number} id */
+    addressesOf(id) {
+      return q.addresses.all(id).map((a) => String(/** @type {any} */ (a).ip));
     },
 
     /** Address → best name, for every screen that shows addresses. */

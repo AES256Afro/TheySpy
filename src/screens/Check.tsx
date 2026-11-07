@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, lastLogLine, waitForJob } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob } from "../api.ts";
 
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; banner: string | null; tls: { protocol: string; subject: string | null; issuer: string | null; validTo: string | null; selfSigned: boolean } | null; risk: string | null; lastSeen?: string };
 type Hit = { domain: string; indicator: string; lookups: number; lastAt: string; lastStatus: string; citation?: { label: string } | null };
@@ -8,14 +8,14 @@ type WebCve = { cveId: string; cvss: number | null; severity: string | null; des
 type WebSoftware = { product: string; version: string | null; source: string; supportEnds?: string | null; supported?: boolean | null; cves?: WebCve[]; cvesError?: string };
 type WebFinding = { path: string; severity: "critical" | "high" | "medium" | "low"; title: string; evidence: string; fix: string };
 type Check = {
-  id: number; query: string; kind: "device" | "domain" | "network" | "website"; profile: string; durationMs: number;
+  id: number; query: string; kind: "device" | "domain" | "network" | "website" | "failed"; profile: string; durationMs: number; error?: string;
   url?: string; access?: string; software?: WebSoftware[]; findings?: WebFinding[];
   ip?: string; up?: boolean | null; open?: Service[] | null; services?: Service[]; device?: DeviceInfo | null;
   dns?: { connected: boolean; error?: string; hits: Hit[]; totalLookups: number; topDomains: { domain: string; queries: number; blocked: number }[] };
   domain?: string; days?: number; lookups?: number; indicator?: boolean; clients?: { ip: string; device: string | null; lookups: number; blocked: number; first: string; last: string; names: string[] }[];
   network?: string; sweep?: { alive: number; withMac: number; newDevices: number }; devices?: { id: number; name: string; ip: string; mac: string | null; vendor: string | null; online: boolean }[];
 };
-type Recent = { id: number; query: string; kind: string; profile: string; startedAt: string; finishedAt: string | null };
+type Recent = { id: number; query: string; kind: string; profile: string; startedAt: string; finishedAt: string | null; failed?: boolean; error?: string | null };
 type Profile = { id: string; label: string; ports: number };
 
 const profileHelp: Record<string, string> = {
@@ -27,6 +27,7 @@ const profileHelp: Record<string, string> = {
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 export function CheckScreen() {
+  const stopped = useStopped();
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const [profile, setProfile] = useState("standard");
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -52,7 +53,7 @@ export function CheckScreen() {
     try {
       const { job } = await api<{ job: { id: number } }>("POST", "/api/fleet/check", { query, profile });
       setBusy("Checking…");
-      const done = await waitForJob(job.id);
+      const done = await waitForJob(job.id, stopped);
       if (done.status !== "succeeded") throw new Error(lastLogLine(done) || "The check failed");
       const checkId = (done.result as { checkId?: number } | null)?.checkId;
       if (checkId) await show(checkId);
@@ -79,6 +80,12 @@ export function CheckScreen() {
       </form>
       {error && <div className="banner bad" role="alert"><span className="small">{error}</span></div>}
 
+      {check?.kind === "failed" && (
+        <section className="card stack">
+          <header><h2 className="mono">{check.query}</h2><span className="badge b-crit">did not run</span></header>
+          <p className="small">{check.error ?? "The check could not run."}</p>
+        </section>
+      )}
       {check?.kind === "device" && <DeviceResult check={check} />}
       {check?.kind === "domain" && <DomainResult check={check} />}
       {check?.kind === "website" && <WebsiteResult check={check} />}
@@ -93,7 +100,7 @@ export function CheckScreen() {
         <section className="card">
           <header><h2>Recent checks</h2></header>
           <div className="list small">{recent.map((r) => (
-            <div key={r.id}><button type="button" className="linkish grow" onClick={() => void show(r.id)}><b className="mono">{r.query}</b></button><span className="muted">{r.kind} · {r.profile}</span><span className="muted">{when(r.startedAt)}</span></div>
+            <div key={r.id}><button type="button" className="linkish grow" onClick={() => void show(r.id)}><b className="mono">{r.query}</b></button>{r.failed ? <span className="badge b-crit" title={r.error ?? ""}>did not run</span> : !r.finishedAt ? <span className="badge b-info">running</span> : null}<span className="muted">{r.kind} · {r.profile}</span><span className="muted">{when(r.startedAt)}</span></div>
           ))}</div>
         </section>
       )}

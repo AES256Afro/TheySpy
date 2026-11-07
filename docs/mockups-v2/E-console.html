@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · E · Console</title><link rel="stylesheet" href="v2.css">
+<style>
+  body { font-size: 13px; }
+  .app { grid-template-columns: 1fr; }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  .bar .tabs { display: flex; gap: 2px; }
+  .bar .tabs a { padding: 6px 10px; border-radius: 7px; color: var(--muted); font-weight: 600; font-size: 12.5px; }
+  .bar .tabs a.on { background: var(--panel-2); color: var(--text); }
+  .bar .tabs a .n { margin-left: 6px; font-size: 11px; }
+  .bar .status { margin-left: auto; display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); }
+  .cmd { flex: 1; max-width: 460px; display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+  .cmd kbd { margin-left: auto; font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  main { padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: calc(100vh - 44px); }
+  .pane { padding: 12px 14px; min-width: 0; }
+  .insp { border-left: 1px solid var(--line); background: var(--panel); padding: 14px; }
+  td, th { padding: 6px 8px; font-size: 12.5px; }
+  td .mono { font-size: 11.5px; }
+  tr.sel td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  tr:hover td { background: var(--panel-2); }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; font-size: 12.5px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .spark { display: flex; gap: 2px; align-items: flex-end; height: 28px; }
+  .spark i { flex: 1; background: var(--panel-2); border-radius: 2px 2px 0 0; }
+  .spark i.h { background: var(--crit); }
+  .keys { font-size: 11px; color: var(--muted); display: flex; gap: 12px; margin-top: 10px; }
+  .keys kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .insp { border-left: 0; border-top: 1px solid var(--line); } .bar .status { display: none; } }
+</style></head>
+<body><div class="app">
+<div class="bar"><b style="font-size:14px">◉ TheySpy</b>
+  <div class="tabs"><a class="on">Devices<span class="n" style="color:var(--crit)">1</span></a><a>Lookups<span class="n" style="color:var(--crit)">3</span></a><a>Bugs<span class="n" style="color:var(--high)">4</span></a><a>Findings</a><a>Pushes</a><a>Lists</a><a>Jobs</a><a>Log</a></div>
+  <div class="cmd">⌕ <span>device, address, MAC, CVE, domain… or a command</span><kbd>/</kbd></div>
+  <div class="status"><span>pihole ok 2s</span><span>watch 30s</span><span>iocs 2026-10-16</span><span>27 dev · 23 up</span></div>
+</div>
+<main>
+  <div class="pane">
+    <div class="row small" style="margin-bottom:8px"><a class="tag" style="color:var(--text);border-color:var(--accent)">attention</a><a class="tag">all</a><a class="tag">new</a><a class="tag">untrusted</a><a class="tag">offline</a><span class="grow"></span><span class="muted">sorted by harm · 27 rows</span></div>
+    <table>
+      <thead><tr><th></th><th>Device</th><th>Address</th><th>Hits 7d</th><th>KEV</th><th>Exposure</th><th>Agent</th><th>Seen</th></tr></thead>
+      <tbody>
+        <tr class="sel"><td><span class="dot bad"></span></td><td><b>Kitchen Pixel</b><br><span class="muted small">phone · Google</span></td><td class="mono">192.168.1.42</td><td><b style="color:var(--crit)">3</b> <span class="muted">/0 blocked</span></td><td>2</td><td>4/7</td><td class="muted">n/a</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><b>MacBook Pro</b><br><span class="muted small">laptop · Apple</span></td><td class="mono">192.168.1.20</td><td>0</td><td><b style="color:var(--high)">1</b></td><td>6/7</td><td>2 h</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><b>Work laptop</b><br><span class="muted small">laptop · Dell</span></td><td class="mono">192.168.1.31</td><td>0</td><td><b style="color:var(--high)">1</b></td><td>5/7</td><td style="color:var(--high)">9 d</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><b>Synology NAS</b><br><span class="muted small">storage</span></td><td class="mono">192.168.1.9</td><td>0</td><td><b style="color:var(--high)">1</b></td><td>3/3</td><td class="muted">n/a</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot warn"></span></td><td><b>iPhone 16</b><br><span class="muted small">phone · Apple</span></td><td class="mono">192.168.1.44</td><td>0</td><td>1</td><td>2/7</td><td class="muted">MVT —</td><td class="muted">4 min</td></tr>
+        <tr><td><span class="dot ok"></span></td><td><b>BoxPilot server</b><br><span class="muted small">server</span></td><td class="mono">192.168.1.5</td><td>0</td><td>0</td><td>6/6</td><td>2 h</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot ok"></span></td><td><b>LG TV</b><br><span class="muted small">tv</span></td><td class="mono">192.168.1.61</td><td>0</td><td>0</td><td>3/4</td><td class="muted">n/a</td><td class="muted">now</td></tr>
+        <tr><td><span class="dot ok"></span></td><td><b>porch sensor</b><br><span class="muted small">iot · Espressif</span></td><td class="mono">192.168.1.88</td><td>0</td><td>0</td><td>2/3</td><td class="muted">n/a</td><td class="muted">12 min</td></tr>
+        <tr><td><span class="dot"></span></td><td><b>HP printer</b><br><span class="muted small">printer</span></td><td class="mono">192.168.1.70</td><td>0</td><td>0</td><td>2/3</td><td class="muted">n/a</td><td class="muted">3 d</td></tr>
+      </tbody>
+    </table>
+    <div class="keys"><span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>⏎</kbd> open</span><span><kbd>b</kbd> block</span><span><kbd>t</kbd> trust</span><span><kbd>c</kbd> check</span><span><kbd>/</kbd> search</span></div>
+  </div>
+
+  <aside class="insp">
+    <div class="row" style="margin-bottom:10px"><h2 style="font-size:16px">Kitchen Pixel</h2><span class="badge b-crit">hit</span><span class="grow"></span><a class="small">full page ↗</a></div>
+    <div class="kv">
+      <span>address</span><span class="mono">192.168.1.42 <span class="muted">(.40 until Tue)</span></span>
+      <span>mac</span><span class="mono">a4:c1:38:00:00:19 · Google</span>
+      <span>names</span><span>Pixel (Pi-hole) · pixel-9 (router)</span>
+      <span>os</span><span>Android 16 · own check 3 d ago</span>
+      <span>trust</span><span>not trusted · seen since 12 Aug</span>
+    </div>
+    <h3 style="margin:14px 0 6px">Indicator lookups · 7 days</h3>
+    <div class="spark"><i style="height:10%"></i><i style="height:10%"></i><i style="height:10%"></i><i style="height:10%"></i><i style="height:10%"></i><i class="h" style="height:100%"></i><i style="height:10%"></i></div>
+    <div class="list small" style="margin-top:6px">
+      <div><span class="mono grow">noas-edge[.]example</span><span class="badge b-crit">3 · 0 blocked</span></div>
+    </div>
+    <div class="row" style="margin-top:10px"><a class="btn danger small">Block (b)</a><a class="btn small">MVT</a><a class="btn small">STIX</a></div>
+    <h3 style="margin:14px 0 6px">Exploited bugs · 2</h3>
+    <div class="list small">
+      <div><span class="mono">CVE-2026-4127</span><span class="grow muted">Chrome V8 · fix 141.0.7390.65</span><span class="badge b-high">KEV</span></div>
+      <div><span class="mono">CVE-2026-4092</span><span class="grow muted">WebKit · Android n/a</span><span class="badge b-med">range</span></div>
+    </div>
+    <h3 style="margin:14px 0 6px">Exposure · 4 of 7 known</h3>
+    <div class="row small"><span class="badge b-ok">DNS ✓</span><span class="badge b-info">blocker ?</span><span class="badge b-info">ad id ?</span><span class="badge b-info">GPC ?</span><span class="badge b-crit">patched ✕</span><span class="badge b-crit">contact ✕</span><span class="badge">scan –</span></div>
+    <h3 style="margin:14px 0 6px">Could not check</h3>
+    <p class="small muted">On-device scan (phones use MVT); advertising ID not recorded.</p>
+  </aside>
+</main></div>
+<p class="note" style="padding:0 14px 20px">Mock-up E · Console. One dense table per thing TheySpy tracks, an inspector that follows the selection, and keys for the actions. For the wall screen and the owner who lives in the terminal. <a href="index.html">All five</a></p>
+</body></html>

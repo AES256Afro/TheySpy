@@ -29,18 +29,22 @@ export function createDigest({ fleet, sentinel, cves, library, alerts, now = () 
       const devices = fleet.list();
       const newDevices = devices.filter((d) => d.firstSeen >= since && d.network?.kind !== "docker");
       const untrusted = devices.filter((d) => !d.trusted && d.network?.kind !== "docker");
-      const hits = sentinel.hits().filter((h) => h.lastSeen >= since);
+      const hits = sentinel.hitsSince(since);
+      const lookups = hits.reduce((n, h) => n + h.lookups, 0);
+      const unblocked = hits.reduce((n, h) => n + h.lookups - h.blocked, 0);
       const raised = alerts.since(since).map((a) => /** @type {any} */ (a));
       const kevMatches = raised.filter((a) => a.kind === "kev_match");
+      // Each kev_match alert carries its matches as data; one line per CVE, every device named.
+      const exploitedLines = [...new Map(kevMatches.flatMap((a) => (a.detail?.matches ?? []).map((m) => [m.cveId, m]))).values()].map((m) => `${m.cveId} on ${m.devices.join(", ")}`);
       const stats = cves.stats();
       const coverage = sentinel.lastCoverage();
       const held = library.quarantined();
       const sections = [
         {
-          title: "Spyware and ad-intelligence", tone: hits.some((h) => h.blocked < h.lookups) ? "bad" : hits.length ? "warn" : "good", screen: "/pihole",
+          title: "Spyware and ad-intelligence", tone: unblocked ? "bad" : lookups ? "warn" : "good", screen: "/pihole",
           lines: [
-            hits.length
-              ? `${hits.length} lookup${hits.length === 1 ? "" : "s"} of indicator addresses by ${new Set(hits.map((h) => h.clientIp)).size} device(s); ${hits.filter((h) => h.blocked < h.lookups).length} not fully blocked.`
+            lookups
+              ? `${lookups} lookup${lookups === 1 ? "" : "s"} of indicator addresses by ${hits.length} device${hits.length === 1 ? "" : "s"}; ${unblocked ? `${unblocked} not blocked` : "every one blocked"}.`
               : "No device looked up a known spyware or ad-intelligence address.",
             coverage ? `Pi-hole blocks ${coverage.blocked} of ${coverage.total} indicator domains${coverage.fullyBlocked !== undefined ? ` (${coverage.fullyBlocked} with their subdomains)` : ""}.` : "Coverage has not been checked yet.",
           ],
@@ -57,7 +61,7 @@ export function createDigest({ fleet, sentinel, cves, library, alerts, now = () 
           title: "Vulnerabilities", tone: kevMatches.length ? "bad" : "good", screen: "/intel",
           lines: [
             `${stats.kevThisWeek} CVE${stats.kevThisWeek === 1 ? "" : "s"} added to CISA's known-exploited list this week (${stats.kev} in all).`,
-            kevMatches.length ? `In software you run: ${kevMatches.map((a) => a.message.split(".")[0]).join("; ")}.` : "None of them is in software TheySpy has seen on your devices.",
+            exploitedLines.length ? `In software you run: ${exploitedLines.join("; ")}.` : "None of them is in software TheySpy has seen on your devices.",
           ],
         },
         {

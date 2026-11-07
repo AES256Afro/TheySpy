@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · five mock-ups, round two</title><link rel="stylesheet" href="v2.css">
+<style>
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+  .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; margin-top: 22px; }
+  .tile { display: block; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .tile:hover { border-color: var(--accent); }
+  .thumb { height: 212px; overflow: hidden; position: relative; background: var(--bg); }
+  .thumb iframe { width: 1360px; height: 850px; border: 0; transform: scale(.25); transform-origin: 0 0; pointer-events: none; position: absolute; }
+  .cap { padding: 12px 14px; }
+  .cap b { display: block; font-size: 15px; } .cap span { font-size: 12.5px; color: var(--muted); }
+  .cap .q { display: block; margin-top: 6px; font-size: 12px; color: var(--text); }
+</style></head>
+<body><div class="wrap">
+  <div class="row"><span class="glyph" style="width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent)">◉</span><h1>Five ways TheySpy could be laid out</h1></div>
+  <p class="muted" style="max-width:760px;margin-top:8px">Not five colour schemes: five different answers to “what is the first thing the owner should see, and how do they get from there to the thing they need to do?” All five use one look, and all use data shapes the server already produces. Each page says at the bottom what it is for. The first-run sweep that led here is in <a href="../AUDITS.md">docs/AUDITS.md</a>.</p>
+  <div class="gal" id="gal"></div>
+</div>
+<script>
+const m = [
+  ['A-verdict-first', 'A · Verdict first', 'The home screen is one sentence, then four questions in order of harm, then what could not be checked.', 'For the owner who looks once a day and wants to know if anything is wrong.'],
+  ['B-device-spine', 'B · The device is the page', 'Evidence, exposure, bugs, DNS activity and ports become tabs of a device; five screens fold into one.', 'For the owner who thinks in “my phone, my NAS, the kids’ iPad”.'],
+  ['C-ledger', 'C · The ledger', 'What happened, in order, with an action on every line; counts live in a rail; the briefing is a filter of it.', 'For the owner who wants to read the week like a log, not a dashboard.'],
+  ['D-guided', 'D · Guided', 'The ten checks TheySpy already computes are the navigation; each page is failing / unknown / passing.', 'For the first week, and for the household member who did not set it up.'],
+  ['E-console', 'E · Console', 'One dense table per thing tracked, an inspector that follows the selection, keys for every action.', 'For the wall screen and the owner who lives in a terminal.'],
+];
+document.getElementById('gal').innerHTML = m.map(([f, t, d, q]) =>
+  `<a class="tile" href="${f}.html"><div class="thumb"><iframe src="${f}.html" tabindex="-1"></iframe></div><div class="cap"><b>${t}</b><span>${d}</span><span class="q">${q}</span></div></a>`).join('');
+</script></body></html>

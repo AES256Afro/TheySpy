@@ -52,12 +52,14 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
     start: db.prepare("INSERT INTO checks (query, kind, profile, device_id, started_at, actor) VALUES (?, ?, ?, ?, ?, ?)"),
     finish: db.prepare("UPDATE checks SET finished_at = ?, device_id = ?, result = ? WHERE id = ?"),
     get: db.prepare("SELECT * FROM checks WHERE id = ?"),
-    recent: db.prepare("SELECT id, query, kind, profile, device_id, started_at, finished_at, actor FROM checks ORDER BY id DESC LIMIT ?"),
+    recent: db.prepare("SELECT id, query, kind, profile, device_id, started_at, finished_at, actor, result FROM checks ORDER BY id DESC LIMIT ?"),
     service: db.prepare(`INSERT INTO device_services (device_id, port, proto, service, product, version, banner, tls, risk, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (device_id, port, proto) DO UPDATE SET service = excluded.service, product = COALESCE(excluded.product, product), version = COALESCE(excluded.version, version),
       banner = COALESCE(excluded.banner, banner), tls = COALESCE(excluded.tls, tls), risk = excluded.risk, last_seen = excluded.last_seen`),
     services: db.prepare("SELECT port, proto, service, product, version, banner, tls, risk, first_seen, last_seen FROM device_services WHERE device_id = ? ORDER BY port"),
-    clearClosed: db.prepare("DELETE FROM device_services WHERE device_id = ? AND last_seen < ?"),
+    // Only ports this check probed: a Standard check (67 ports) must not erase what Deep (1,067) found.
+    clearClosed: db.prepare("DELETE FROM device_services WHERE device_id = ? AND last_seen < ? AND port IN (SELECT value FROM json_each(?))"),
+    fail: db.prepare("UPDATE checks SET finished_at = ?, result = ? WHERE id = ?"),
   };
 
   const servicesOf = (deviceId) => q.services.all(deviceId).map((raw) => {
@@ -107,6 +109,18 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
       if (!["quick", "standard", "deep", "dns"].includes(profile)) throw Object.assign(new Error("profile must be quick, standard, deep or dns"), { status: 400 });
       const started = now();
       const id = Number(q.start.run(query, kind, profile, null, started.toISOString(), actor).lastInsertRowid);
+      try {
+        return await checker.finish({ id, query, kind, value, profile, started, log }, actor);
+      } catch (error) {
+        // A check that could not run is a failed check, not one that is still running: the row says
+        // so, and the screen shows the reason rather than an empty result.
+        q.fail.run(now().toISOString(), JSON.stringify({ kind: "failed", error: error.message, status: Number(error.status) || null }), id);
+        throw error;
+      }
+    },
+
+    /** The body of a check, after its row exists. @param {{ id: number, query: string, kind: string, value: string, profile: string, started: Date, log: (line: string) => void }} c */
+    async finish({ id, query, kind, value, profile, started, log }, actor) {
       let result;
       let deviceId = null;
 
@@ -158,7 +172,7 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
                 const at = now().toISOString();
                 for (const s of open) q.service.run(device.id, s.port, s.proto, s.service, s.product, s.version, s.banner, s.tls ? JSON.stringify(s.tls) : null, s.risk, at, at);
                 // A full Standard or Deep check is the truth for its ports: forget what no longer answers.
-                q.clearClosed.run(device.id, started.toISOString());
+                q.clearClosed.run(device.id, started.toISOString(), JSON.stringify(ports));
               }
               log(`${open.length} open port${open.length === 1 ? "" : "s"}${open.some((s) => s.risk) ? `, ${open.filter((s) => s.risk).length} worth a look` : ""}.`);
             }
@@ -185,7 +199,8 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
     },
     recent: (limit = 15) => q.recent.all(limit).map((raw) => {
       const r = /** @type {any} */ (raw);
-      return { id: r.id, query: r.query, kind: r.kind, profile: r.profile, deviceId: r.device_id, startedAt: r.started_at, finishedAt: r.finished_at };
+      const failure = r.result && r.result.startsWith('{"kind":"failed"') ? JSON.parse(r.result) : null;
+      return { id: r.id, query: r.query, kind: r.kind, profile: r.profile, deviceId: r.device_id, startedAt: r.started_at, finishedAt: r.finished_at, failed: Boolean(failure), error: failure?.error ?? null };
     }),
     servicesOf,
   };

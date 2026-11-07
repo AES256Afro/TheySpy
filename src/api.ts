@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -33,6 +34,20 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "DELETE", url: str
  * Polls a job until it finishes; returns it with its log. Pass `stopped` (an AbortSignal, or any
  * `{ aborted }`) from a screen that may go away, so the polling goes with it.
  */
+/**
+ * A flag a screen hands to waitForJob: set once the screen has gone, so the polling stops with it.
+ * The object is stable for the component's life, so the same one can be passed to every wait.
+ */
+export function useStopped(): { aborted: boolean } {
+  const ref = useRef({ aborted: false });
+  useEffect(() => {
+    const flag = ref.current;
+    flag.aborted = false;
+    return () => { flag.aborted = true; };
+  }, []);
+  return ref.current;
+}
+
 export async function waitForJob(id: number, stopped?: { aborted: boolean }): Promise<Job> {
   for (let i = 0; i < 600; i += 1) {
     if (stopped?.aborted) throw new ApiError(0, "Stopped watching the job; see Activity.");

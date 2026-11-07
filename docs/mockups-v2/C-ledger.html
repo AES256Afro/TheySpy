@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · C · The ledger</title><link rel="stylesheet" href="v2.css">
+<style>
+  .day { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 18px 0 6px; }
+  .entry { display: grid; grid-template-columns: 52px 10px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .entry .t { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); padding-top: 3px; }
+  .entry .rail { position: relative; }
+  .entry .rail i { position: absolute; left: 1px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .entry .rail i.bad { background: var(--crit); box-shadow: 0 0 0 4px color-mix(in srgb, var(--crit) 25%, transparent); }
+  .entry .rail i.warn { background: var(--high); } .entry .rail i.ok { background: var(--ok); }
+  .entry b { font-weight: 600; }
+  .entry .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .entry .acts { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .entry.quiet { opacity: .7; }
+  .counts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .counts div { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
+  .counts b { display: block; font-size: 22px; font-weight: 800; }
+  .counts span { font-size: 11px; color: var(--muted); }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filters .tag.on { color: var(--text); border-color: var(--accent); }
+</style></head>
+<body><div class="app"><aside class="side" data-on="home"></aside>
+<main>
+  <div class="top"><div><h1>What happened</h1><p class="muted small">Everything TheySpy saw or did, newest first, with what you can do about each. The same ledger the weekly briefing is written from.</p></div><div class="grow"></div><div class="filters"><a class="tag on">Everything</a><a class="tag">Needs me</a><a class="tag">Spyware</a><a class="tag">Devices</a><a class="tag">Bugs</a><a class="tag">Housekeeping</a></div></div>
+
+  <div class="two-col">
+    <section class="card" style="padding-top:6px">
+      <div class="day">Today · Thursday 7 November</div>
+      <div class="entry"><span class="t">06:00</span><span class="rail"><i class="warn"></i></span><div><b>CISA listed CVE-2026-4127 (Chrome V8) as exploited</b><div class="d">It is on MacBook Pro, Work laptop and Kitchen Pixel at versions the range covers. Chrome has a fix; it applies on restart.</div><div class="acts"><a class="btn small">Open the patch list</a><a class="btn small">Accept as a known risk</a></div></div></div>
+      <div class="entry quiet"><span class="t">02:10</span><span class="rail"><i class="ok"></i></span><div><b>Blocklists updated</b><div class="d">6 lists, 2,391,106 names. Nothing held for review. HaGeZi Normal grew by 1,208.</div></div></div>
+      <div class="entry quiet"><span class="t">01:30</span><span class="rail"><i class="ok"></i></span><div><b>Agents reported from 4 computers</b><div class="d">No indicator traces. 2 checks could not run on Work laptop (browser history locked); counted as gaps, not as clean.</div><div class="acts"><a class="btn small">See the gaps</a></div></div></div>
+
+      <div class="day">Yesterday · Wednesday 6 November</div>
+      <div class="entry"><span class="t">21:14</span><span class="rail"><i class="bad"></i></span><div><b>Kitchen Pixel reached <span class="mono">noas-edge[.]example</span></b><div class="d">3 lookups in two minutes; Pi-hole did not block any. AdFection C2, tier 1. A lookup is a contact, not proof of infection. You were alerted on ntfy at 21:15.</div><div class="acts"><a class="btn danger small">Block in Pi-hole</a><a class="btn small">Open the device</a><a class="btn small">Run MVT</a><a class="btn small">Export STIX</a></div></div></div>
+      <div class="entry quiet"><span class="t">18:40</span><span class="rail"><i></i></span><div><b>Kitchen Pixel's address changed</b><div class="d">192.168.1.40 → 192.168.1.42 (DHCP). Its history came with it.</div></div></div>
+      <div class="entry quiet"><span class="t">09:12</span><span class="rail"><i class="ok"></i></span><div><b>You pushed 27 indicator domains to Pi-hole</b><div class="d">Push #14 · can be rolled back as a group.</div><div class="acts"><a class="btn small">Roll back</a></div></div></div>
+
+      <div class="day">Tuesday 5 November</div>
+      <div class="entry"><span class="t">16:03</span><span class="rail"><i class="warn"></i></span><div><b>A new device joined: Espressif board at 192.168.1.88</b><div class="d">Found by the network sweep. You labelled it “porch sensor” and trusted it at 16:20.</div></div></div>
+      <div class="entry quiet"><span class="t">06:00</span><span class="rail"><i class="ok"></i></span><div><b>Indicator set checked</b><div class="d">zero-breach 2026-10-16 is still the newest; signature verified against the pinned key.</div></div></div>
+      <div style="padding:12px 0 4px" class="small muted">Older entries are in the full ledger · <a>Export this week</a></div>
+    </section>
+
+    <div class="stack">
+      <section class="card">
+        <header><h2>Right now</h2></header>
+        <div class="counts"><div><b style="color:var(--crit)">1</b><span>device reached spyware</span></div><div><b style="color:var(--high)">4</b><span>exploited bugs on devices</span></div><div><b>23<span style="font-size:12px;color:var(--muted)">/27</span></b><span>devices online</span></div></div>
+        <div class="list small" style="margin-top:10px">
+          <div><span class="dot ok"></span><span class="grow">Pi-hole watching, 291/291 indicators blocked</span></div>
+          <div><span class="dot ok"></span><span class="grow">Lists fresh (5 h) · indicators fresh (3 weeks)</span></div>
+          <div><span class="dot"></span><span class="grow">3 phones never checked on-device</span><a>Why</a></div>
+        </div>
+      </section>
+      <section class="card">
+        <header><h2>Needs you</h2><span class="badge b-high">2</span></header>
+        <div class="list small">
+          <div><span class="grow"><b>Decide on the Pixel's contact</b><br><span class="muted">Block, investigate, or mark as explained.</span></span></div>
+          <div><span class="grow"><b>Restart Chrome on 3 computers</b><br><span class="muted">Then the KEV match closes itself.</span></span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <p class="note">Mock-up C · The ledger. The home screen is time, not boxes: what happened, in order, with an action on each line. The counts live in a rail. The briefing becomes a filter of this. <a href="index.html">All five</a></p>
+</main></div><script src="nav.js"></script></body></html>

@@ -51,3 +51,13 @@ describe("CVEs per device", () => {
     expect(() => deviceCves.decide(id, "CVE-2025-26465", "ignored", null, "owner")).toThrow(/status must be/);
   });
 });
+
+describe("sweep 3 hygiene (M14)", () => {
+  it("C17: a product named after an Object.prototype member is not matchable, not a crash", async () => {
+    const { createDeviceCves } = await import("./devices.mjs");
+    const { testServices } = await import("../test-helpers.mjs");
+    const { db, fleet, software, audit } = testServices();
+    const cves = createDeviceCves({ db, fleet, software, audit, services: () => [{ port: 80, product: "constructor", version: "1", lastSeen: "2026-11-05T00:00:00Z" }], reported: () => [{ vendor: "x", product: "y", version: "1", label: null, source: "constructor", seen_at: "2026-11-05T00:00:00Z" }] });
+    expect(cves.inventory(1)).toEqual([expect.objectContaining({ product: "constructor", matchable: false, cpes: [] }), expect.objectContaining({ product: "y", source: "constructor" })]);
+  });
+});

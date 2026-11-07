@@ -7,6 +7,7 @@ import { productVersion } from "./shared.mjs";
 
 const day = 86_400_000;
 const priorities = { urgent: "5", high: "4", default: "3", low: "2" };
+const tags = { new_device: "computer", indicator_lookup: "rotating_light", kev_match: "warning", pihole_down: "x", blocklist_held: "hourglass", digest: "newspaper" };
 
 /**
  * @param {{
@@ -23,7 +24,7 @@ const priorities = { urgent: "5", high: "4", default: "3", low: "2" };
  */
 export function createAlerts({ db, settings, audit, secretBox, env = {}, names = () => ({}), kevMatches = () => [], fetchImpl = fetch, now = () => new Date() }) {
   const q = {
-    add: db.prepare("INSERT OR IGNORE INTO alerts (key, at, kind, priority, title, message, link) VALUES (?, ?, ?, ?, ?, ?, ?)"),
+    add: db.prepare("INSERT OR IGNORE INTO alerts (key, at, kind, priority, title, message, link, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"),
     get: db.prepare("SELECT * FROM alerts WHERE key = ?"),
     recent: db.prepare("SELECT * FROM alerts ORDER BY at DESC LIMIT ?"),
     pending: db.prepare("SELECT * FROM alerts WHERE delivered_at IS NULL AND at >= ? ORDER BY at"),
@@ -65,7 +66,7 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
         const matches = kevMatches(d.cves ?? []);
         if (!matches.length) return null; // only exploited bugs in software you run
         const who = action === "cves.kev_added" ? "CISA lists it" : `${(d.sources ?? []).join(", ") || "The vendor"} reports it`;
-        return { key: `exploited:${matches.map((m) => m.cveId).sort().join(",")}`, kind: "kev_match", priority: "high",
+        return { key: `exploited:${matches.map((m) => m.cveId).sort().join(",")}`, kind: "kev_match", priority: "high", detail: { matches },
           title: "Exploited vulnerability in software you run",
           message: matches.map((m) => `${m.cveId} (on ${m.devices.join(", ")})`).join("; ") + `. ${who} as exploited in the wild; update those devices.`, link: link("/intel") };
       }
@@ -97,8 +98,8 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
       const response = await fetchImpl(`${t.url}/${encodeURIComponent(t.topic)}`, {
         method: "POST",
         headers: {
-          "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: priorities[row.priority] ?? "3",
-          Tags: { new_device: "computer", indicator_lookup: "rotating_light", kev_match: "warning", pihole_down: "x", blocklist_held: "hourglass", digest: "newspaper" }[row.kind] ?? "bell",
+          "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: Object.hasOwn(priorities, row.priority) ? priorities[row.priority] : "3",
+          Tags: Object.hasOwn(tags, row.kind) ? tags[row.kind] : "bell",
           ...(row.link ? { Click: row.link } : {}), ...(t.token ? { Authorization: `Bearer ${t.token}` } : {}),
         },
         body: row.message,
@@ -115,8 +116,8 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
 
   const alerts = {
     /** Records an alert (once per key) and sends it. Returns false when the key was already used. */
-    async raise({ key, kind, priority = "default", title, message, link: url = null }) {
-      const inserted = Number(q.add.run(key, now().toISOString(), kind, priority, title, message, url).changes) > 0;
+    async raise({ key, kind, priority = "default", title, message, link: url = null, detail = null }) {
+      const inserted = Number(q.add.run(key, now().toISOString(), kind, priority, title, message, url, detail === null ? null : JSON.stringify(detail)).changes) > 0;
       if (inserted) await deliver(/** @type {any} */ (q.get.get(key)));
       return inserted;
     },
@@ -132,7 +133,7 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
       const r = /** @type {any} */ (raw);
       return { key: r.key, at: r.at, kind: r.kind, priority: r.priority, title: r.title, message: r.message, link: r.link, delivered: Boolean(r.delivered_at), error: r.error };
     }),
-    since: (iso) => q.since.all(iso),
+    since: (iso) => q.since.all(iso).map((raw) => { const r = /** @type {any} */ (raw); return { ...r, detail: r.detail ? JSON.parse(r.detail) : null }; }),
 
     config() {
       const stored = settings.get("alerts_ntfy") ?? {};
@@ -170,8 +171,12 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
   };
 
   audit.onRecord((entry) => {
-    const alert = fromAudit(entry);
-    if (alert) void alerts.raise(alert);
+    // raise() is async, so a throw inside it is a rejected promise, which the audit log's own
+    // try/catch around listeners cannot see. Neither half may be silent: a lost alert is the one
+    // failure this module exists to prevent.
+    let alert;
+    try { alert = fromAudit(entry); } catch (error) { console.error(`alerts: could not build an alert from ${entry.action}: ${error.message}`); return; }
+    if (alert) alerts.raise(alert).catch((error) => console.error(`alerts: could not record ${alert.key}: ${error.message}`));
   });
   return alerts;
 }
