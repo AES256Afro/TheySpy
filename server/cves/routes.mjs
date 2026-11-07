@@ -1,5 +1,6 @@
 import express from "express";
 import { attributions } from "./feeds.mjs";
+import { intQuery } from "../params.mjs";
 
 /**
  * /api/cves, behind sign-in: the aggregated CVE list, one CVE, and updating the feeds.
@@ -13,7 +14,7 @@ export function cveRoutes({ cves, jobs, advisories }) {
       kev: f.kev === "1", zeroDay: f.zeroDay === "1", minEpss: f.minEpss ? Number(f.minEpss) : undefined,
       q: f.q ? String(f.q).slice(0, 100) : undefined, product: f.product ? String(f.product).slice(0, 60) : undefined,
       severity: ["critical", "high", "medium", "low"].includes(String(f.severity)) ? String(f.severity) : undefined,
-      limit: f.limit ? Number(f.limit) : 50, offset: f.offset ? Number(f.offset) : 0,
+      limit: intQuery(f.limit, { name: "limit", fallback: 50, min: 1, max: 200 }), offset: intQuery(f.offset, { name: "offset", fallback: 0, max: 1_000_000 }),
     };
     if (filters.minEpss !== undefined && !(filters.minEpss >= 0 && filters.minEpss <= 1)) return res.status(400).json({ error: "minEpss must be between 0 and 1" });
     res.json({ ...cves.list(filters), stats: cves.stats(), events: cves.recentEvents(15), attributions, research: advisories?.research() ?? [], advisories: advisories?.status() ?? null });
