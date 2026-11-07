@@ -8,6 +8,7 @@ type Data = {
   digest: { week: string; since: string; until: string; sections: Section[]; alerts: number };
   alerts: Alert[];
   ntfy: { url: string; topic: string; hasToken: boolean; fromEnv: { url: boolean; topic: boolean; token: boolean }; ready: boolean };
+  webhook: { url: string; hasSecret: boolean; ready: boolean };
   tokens: Token[];
 };
 
@@ -19,6 +20,7 @@ export function BriefingScreen() {
   const [data, setData] = useState<Data | null>(null);
   const [days, setDays] = useState(7);
   const [ntfy, setNtfy] = useState({ url: "", topic: "", token: "" });
+  const [hook, setHook] = useState({ url: "", secret: "" });
   const [newToken, setNewToken] = useState<{ name: string; token: string } | null>(null);
   const [tokenName, setTokenName] = useState("");
   const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
@@ -27,6 +29,7 @@ export function BriefingScreen() {
     const d = await api<Data>("GET", `/api/briefing?days=${days}`);
     setData(d);
     setNtfy((n) => ({ ...n, url: n.url || d.ntfy.url, topic: n.topic || d.ntfy.topic }));
+    setHook((h) => ({ ...h, url: h.url || d.webhook.url }));
   }, [days]);
   useEffect(() => { load().catch((e: Error) => setMessage({ tone: "bad", text: e.message })); }, [load]);
   const act = async (fn: () => Promise<unknown>, done: string) => {
@@ -38,11 +41,11 @@ export function BriefingScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Briefing</h1><p className="muted small">{days === 7 ? `The week to ${when(data.digest.until)} (${data.digest.week})` : "The last 24 hours"}. Sent to ntfy on Monday mornings.</p></div>
+        <div><h1>Briefing</h1><p className="muted small">{days === 7 ? `The week to ${when(data.digest.until)} (${data.digest.week})` : "The last 24 hours"}. Sent to ntfy or your webhook on Monday mornings.</p></div>
         <div className="grow" />
         <div className="seg" role="group" aria-label="Period">{[[1, "24 hours"], [7, "Week"]].map(([d, label]) => <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(Number(d))}>{label}</button>)}</div>
         <button className="btn" type="button" onClick={() => window.print()}>Print</button>
-        <button className="btn primary" type="button" disabled={!data.ntfy.ready} title={data.ntfy.ready ? "" : "Set up ntfy below first"} onClick={() => act(() => api("POST", "/api/briefing/send"), "Sent to ntfy.")}>Send now</button>
+        <button className="btn primary" type="button" disabled={!data.ntfy.ready && !data.webhook.ready} title={data.ntfy.ready || data.webhook.ready ? "" : "Set up ntfy or a webhook below first"} onClick={() => act(() => api("POST", "/api/briefing/send"), "Sent.")}>Send now</button>
       </div>
       {message && <div className={`banner ${message.tone}`} role="status"><span className="small">{message.text}</span></div>}
 
@@ -80,6 +83,19 @@ export function BriefingScreen() {
             <div className="row">
               <button className="btn" type="button" onClick={() => act(() => api("PUT", "/api/briefing/ntfy", { url: ntfy.url, topic: ntfy.topic, ...(ntfy.token ? { token: ntfy.token } : {}) }), "Saved.")}>Save</button>
               <button className="btn" type="button" disabled={!data.ntfy.ready} onClick={() => act(() => api("POST", "/api/briefing/ntfy/test"), "Test notification sent.")}>Send a test</button>
+            </div>
+          </section>
+
+          <section className="card stack">
+            <h3>Or a webhook</h3>
+            <p className="small muted">Each alert and the weekly briefing POSTed as JSON to an address of yours: a Discord or Slack relay, Home Assistant, n8n. With a secret set, the <code>X-TheySpy-Signature</code> header carries the HMAC-SHA256 of the body.</p>
+            <div className="compact-fields">
+              <div className="field"><label htmlFor="w-url">Address</label><input id="w-url" className="input" placeholder="https://hooks.example/theyspy" value={hook.url} onChange={(e) => setHook({ ...hook, url: e.target.value })} /></div>
+              <div className="field"><label htmlFor="w-secret">Secret</label><input id="w-secret" className="input" type="password" autoComplete="off" placeholder={data.webhook.hasSecret ? "saved; type to replace" : "optional"} value={hook.secret} onChange={(e) => setHook({ ...hook, secret: e.target.value })} /></div>
+            </div>
+            <div className="row">
+              <button className="btn" type="button" onClick={() => act(async () => { await api("PUT", "/api/briefing/webhook", { url: hook.url, ...(hook.secret ? { secret: hook.secret } : {}) }); setHook((h) => ({ ...h, secret: "" })); }, "Saved.")}>Save</button>
+              <button className="btn" type="button" disabled={!data.webhook.ready} onClick={() => act(() => api("POST", "/api/briefing/webhook/test"), "Test notification sent.")}>Send a test</button>
             </div>
           </section>
 

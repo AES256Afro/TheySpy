@@ -50,6 +50,10 @@ On **Fleet**, devices Pi-hole already knows are marked **in Pi-hole**. Devices i
 1. Enter your ntfy server and topic.
 2. Press **Send a test**.
 
+**Or a webhook** (the card below ntfy): an address of yours that takes a POST, such as a Discord or Slack relay, Home Assistant or n8n. Each alert and the weekly briefing arrive as JSON (`event`, `key`, `at`, `kind`, `priority`, `title`, `message`, `link`, `detail`). With a secret set, the `X-TheySpy-Signature` header is `sha256=` followed by the HMAC-SHA256 of the exact body, hex, so the receiver can refuse anything else. Both channels can be on at once; an alert counts as delivered when every channel has it, and a retry goes only to the one that has not.
+
+**On a phone**, open TheySpy in the browser and add it to the home screen: it opens on **This device**, full screen, with its own icon.
+
 You then get a message for:
 - a new device;
 - an indicator lookup;
