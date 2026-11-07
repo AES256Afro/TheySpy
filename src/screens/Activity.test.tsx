@@ -24,6 +24,7 @@ describe("the Activity screen's Database card (M35)", () => {
       if (url === "/api/security") return json({ notes: [] });
       if (url === "/api/household" && init?.method === "PUT") return json({ set: true });
       if (url === "/api/household") return json({ set: false });
+      if (url === "/api/tls") return json({ enabled: true, port: 8798, fingerprint: "AB:CD:EF", notAfter: "2036-11-04T11:59:00.000Z", names: ["theyspy", "bigbox"], addresses: ["192.168.8.5"] });
       if (url === "/api/retention" && init?.method === "PUT") return json({ policy: { ...retention.policy, audit: 30 } });
       if (url === "/api/retention") return json(retention);
       return json({});
@@ -32,6 +33,9 @@ describe("the Activity screen's Database card (M35)", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     const text = screen.container.textContent ?? "";
     expect(text).toContain("195 MB on disk, 3.0 MB of it free inside the file");
+    expect(text).toContain("port 8798 · TheySpy’s own certificate");
+    expect(text).toContain("AB:CD:EF");
+    expect(text).toContain("For theyspy, bigbox, 192.168.8.5");
     expect(text).toContain("cves 134 MB (the CVE mirror");
     expect(text).toContain("Not trimmed yet.");
     const audit = screen.getByLabelText("The audit log") as HTMLInputElement;

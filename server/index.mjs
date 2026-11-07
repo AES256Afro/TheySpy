@@ -33,6 +33,8 @@ import { createQuietRunner } from "./quietly.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
+import { ensureCertificate, ownNames } from "./tls.mjs";
+import https from "node:https";
 import { createRetention, retentionJobKinds } from "./retention.mjs";
 import { createNetworkLogs } from "./netlogs.mjs";
 import { createEgress, hostOf } from "./egress.mjs";
@@ -101,10 +103,23 @@ if (auth.generatedPassword) {
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup: createBackup({ db, audit }), retention, netalertx, sites, protec, netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
+// HTTPS of its own (M40): a certificate made on the first start that has none, kept in data/tls.
+let tls = null;
+if (config.tlsPort) {
+  const own = ownNames();
+  const made = ensureCertificate(config.dataDirectory, { names: [...own.names, ...config.tlsNames], addresses: own.addresses });
+  if (made.made) audit.record("system", "tls.certificate_made", null, { fingerprint: made.fingerprint, names: made.names, addresses: made.addresses, notAfter: made.notAfter });
+  tls = { port: config.tlsPort, key: made.key, cert: made.cert, fingerprint: made.fingerprint, notAfter: made.notAfter, names: made.names, addresses: made.addresses };
+}
+
+const app = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup: createBackup({ db, audit }), retention, netalertx, sites, protec, netlogs: createNetworkLogs({ db, fleet, iocStore, audit }), tls: tls && { port: tls.port, fingerprint: tls.fingerprint, notAfter: tls.notAfter, names: tls.names, addresses: tls.addresses } });
+const server = app.listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
+const secure = tls ? https.createServer({ key: tls.key, cert: tls.cert }, app).listen(tls.port, config.host, () => {
+  console.log(`TheySpy ${productVersion} also on https://${config.host}:${tls.port} (its own certificate, SHA-256 ${tls.fingerprint})`);
+}) : null;
 
 // Look for a newer indicator set once a day (first check an hour after start). A found update
 // waits on the Indicators screen; nothing is applied without the owner.
@@ -198,11 +213,12 @@ sentinel.watch.start();
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     sentinel.watch.stop();
+    secure?.close();
     server.close(() => {
       db.close();
       process.exit(0);
     });
     // Open connections (a browser's keep-alive) must not hold the stop past BoxPilot's timeout.
-    setTimeout(() => server.closeAllConnections(), 3000).unref();
+    setTimeout(() => { server.closeAllConnections(); secure?.closeAllConnections(); }, 3000).unref();
   });
 }
