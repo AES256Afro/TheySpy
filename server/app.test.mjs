@@ -200,6 +200,9 @@ describe("HTTP API", () => {
     expect(all.attributions[0]).toMatch(/not endorsed or certified by the NVD/);
     expect((await request("GET", "/api/cves?product=synology")).body.rows.map((r) => r.cveId)).toEqual(["CVE-2026-5000"]);
     expect((await request("GET", "/api/cves?minEpss=7")).status).toBe(400);
+    // M26, B37: a page size or offset that is not a number is the caller's mistake, not a 500.
+    expect((await request("GET", "/api/cves?limit=abc")).status).toBe(400);
+    expect((await request("GET", "/api/cves?offset=1e3")).status).toBe(400);
     expect((await request("GET", "/api/cves/CVE-2026-4127")).body.cve).toMatchObject({ zeroDay: true, kev: { due: "2026-11-17" } });
     expect((await request("GET", "/api/cves/CVE-1999-0001")).status).toBe(404);
     expect((await request("GET", "/api/cves/not-a-cve")).status).toBe(400);
