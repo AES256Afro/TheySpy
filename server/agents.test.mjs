@@ -107,3 +107,17 @@ describe("M17 C30", () => {
     expect(row.source_ref.length).toBeLessThanOrEqual(84);
   });
 });
+
+describe("M20 B30: the MVT import is one transaction", () => {
+  it("records nothing when a later file is malformed, and writes each (module, indicator) once", () => {
+    const { fleet, agents, db } = testServices();
+    fleet.observe([{ ip: "192.168.1.42", mac: "a4:c1:38:00:00:19", hostname: "pixel", seenAt: new Date().toISOString() }], "pihole", { inventory: true });
+    const [d] = fleet.list();
+    const good = { name: "sms_detected.json", content: JSON.stringify([{ matched_indicator: { value: "c2.example" } }, { matched_indicator: { value: "c2.example" } }, { matched_indicator: { value: "other.example" } }]) };
+    expect(() => agents.importMvt(d.id, [good, { name: "broken_detected.json", content: "{not json" }], "owner")).toThrow(/not JSON/);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM findings").get().n).toBe(0);
+    expect(agents.importMvt(d.id, [good], "owner")).toEqual({ findings: 2 });
+    expect(agents.importMvt(d.id, [good], "owner")).toEqual({ findings: 0 });
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'findings_contact'").get()).toBeTruthy();
+  });
+});

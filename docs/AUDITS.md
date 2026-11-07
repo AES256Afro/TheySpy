@@ -6,20 +6,21 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 8 | 0 | in the loop |
-| Bugs (correctness) | 8 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 9 | 0 | in the loop |
+| Bugs (correctness) | 9 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
-in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped). Security left the loop after
-sweep 5. Bugs came back clean in sweep 7 and then found one thing in sweep 8 (back to 0); code found
-something in both.
+in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20).
+Security left the loop after sweep 5. Bugs found one thing in each of sweeps 8 and 9; code too.
 
-Sweep 9 continues the second pass: `agent-routes.mjs`, `netalertx.mjs` and `protec.mjs` after M16,
-`thisdevice.mjs`, `alerts.mjs` and `digest.mjs` after M14, `iocs/exports.mjs`, `blocklists/taxonomy.mjs`,
-`fleet/addresses.mjs`, `params.mjs`, `shared.mjs`, `scripts/` (the checks the build runs), and the
-Appearance and Sites screens; then measures the import paths (MVT, network logs) on large inputs.
+Sweep 10 is the last of the second pass: `scripts/` (the checks the build runs and the e2e
+drivers), `src/looks/looks.test.ts`'s coverage of the looks, `src/router.tsx`, `src/Sidebar.tsx`,
+`src/SignIn.tsx`, the Appearance and Sites screens, and `third_party/` as vendored (what is checked
+at start and what is not). It measures what sweeps 7–9 did not: `library.update()` with HTTP
+304s, `discover()` against the real directory shapes, and `backup.snapshot()` on the seeded
+database.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -561,3 +562,46 @@ HTTP, keeps everything inside its `try`, and signs the exact bytes it sends.
 | B29 | The export route reads its formats with `Object.hasOwn`; `constructor` and `__proto__` are 404. |
 | C34 | A baseline exception must be a canonical domain name (`canonical()`), or the route answers 400. |
 | C36 | `ioc_hit_events_at`, an index on `at`. |
+
+## Sweep 9 — 7 Nov 2026, at 1.15.0
+
+Read in full: `iocs/exports.mjs`, `blocklists/taxonomy.mjs`, `fleet/addresses.mjs`, `shared.mjs`,
+`params.mjs`, and what M14 changed in `alerts.mjs` and `digest.mjs`. Measured the two import paths
+on large inputs, on the seeded database.
+
+**Measured:** 500,000 Zeek DNS records (a 37 MB `dns.log`, 60 clients, 100 indicator lookups)
+import in **593 ms** with 60 MB of heap — the M13 streaming rewrite holds. 100,000 MVT items in 20
+files took **261 seconds**: every item asks the database whether the contact exists, the only index
+on `findings` is `(device_id, at)`, so each ask scans the device's rows and the import is
+quadratic; and nothing is inside a transaction, so a malformed third file leaves the first two
+files' findings behind.
+
+**Baseline:** the exports write the same bytes as zero-breach's emitters (the existing test
+compares every format); `parseCidr` and `hostsOf` refuse what they should; `readCappedBytes`
+checks the declared length and then counts; the alert and digest fixes from M14 read as intended.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B30 | **The MVT import is quadratic and not atomic.** Reproduced: 100,000 items, 261 s; a realistic 5,000 would be a second or two, which is why nobody saw it. The per-item existence check has no index to use, duplicates within the import are asked of the database again, and there is no transaction, so a malformed file after a good one leaves a half-import. | `agents.mjs`, `db.mjs` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C37 | The last of B1's class in places a third party names the key: `sources[sourceKey]` (the indicator file's source column; `citation("constructor")` printed "undefined, undefined, undefined") in three places in `exports.mjs`, and `adguardKeys[filterKey]` / `filterListsTags[id]` in `taxonomy.mjs` (a directory's own keys). None reachable from a real feed; one `Object.hasOwn` each. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- The network-log import holds 60 MB of heap for a 37 MB file: the file is a string in the request
+  body already (C9's second half, still open), and the import itself streams.
+- `fromName()` guesses categories from a list's name with ordered substrings, like `guessKind()`
+  did; its outputs are candidates the owner reviews, not findings, so a wrong guess costs a click.
+
+### What shipped (sweep 9) — 1.16.0, M20
+
+| # | Fix |
+| --- | --- |
+| B30 | The MVT import parses every file first, writes in one transaction, deduplicates within the import in memory, and `findings_contact (device_id, source, indicator)` indexes the existence check. A test: a malformed second file records nothing; the same file twice records each pair once. |
+| C37 | `Object.hasOwn` in `exports.mjs` and `taxonomy.mjs`. |
