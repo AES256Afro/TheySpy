@@ -99,7 +99,7 @@ export function ThisDeviceScreen() {
                   ? <Check ok={Boolean(result.dns.throughPihole)} title="DNS goes through Pi-hole" yes={`A one-time test name was seen in Pi-hole’s log from ${result.dns.from}.`} no="The test name never reached Pi-hole: this browser or device uses its own DNS (Chrome’s Secure DNS, iCloud Private Relay, Android Private DNS or a VPN), so Pi-hole’s blocking and TheySpy’s watch do not cover it." />
                   : <div><span className="badge b-info">?</span><span className="grow">DNS through Pi-hole: {result.dns.error ?? "connect Pi-hole to check."}</span></div>}
                 <div><span className="badge b-info">?</span><span className="grow">Advertising ID: a web page cannot read it. On phones, turn off Personalized ads / delete the advertising ID (Android) or turn off Allow Apps to Request to Track (iOS).</span></div>
-                <div><span className="badge b-info">?</span><span className="grow">Public IP and Starlink egress: coming in a later version.</span></div>
+                <div><span className="badge b-info">?</span><span className="grow">Public address and Starlink: checked for the whole network on <a href="/exposure">Ad exposure</a> (Check my connection).</span></div>
               </div>
             </section>
           </div>

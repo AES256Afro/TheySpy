@@ -508,4 +508,12 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     expect(body.hits).toHaveLength(1);
     expect(body.hits[0].device).toBe("old-tablet");
   });
+
+  it("M18 B28: a failing scheduled fleet read is listed on the Fleet overview", async () => {
+    const { request, settings } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    settings.set("fleet_last_sync_error", { at: "2026-11-07T11:55:00.000Z", error: "Pi-hole refused the password" });
+    const { body } = await request("GET", "/api/fleet");
+    expect(body.errors).toEqual({ sync: { at: "2026-11-07T11:55:00.000Z", error: "Pi-hole refused the password" } });
+  });
 });

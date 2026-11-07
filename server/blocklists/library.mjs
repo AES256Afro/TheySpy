@@ -73,6 +73,8 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
     insertVersion: db.prepare("INSERT INTO blocklist_versions (source_id, status, sha256, count, added, removed, sample, reasons, domains, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
     decide: db.prepare("UPDATE blocklist_versions SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?"),
     supersede: db.prepare("UPDATE blocklist_versions SET status = 'superseded' WHERE source_id = ? AND status = 'active' AND id != ?"),
+    heldWithDigest: db.prepare("SELECT id FROM blocklist_versions WHERE source_id = ? AND sha256 = ? AND status = 'quarantined' LIMIT 1"),
+    supersedeHeld: db.prepare("UPDATE blocklist_versions SET status = 'superseded' WHERE source_id = ? AND status = 'quarantined' AND id != ?"),
     quarantined: db.prepare("SELECT v.id, v.source_id, v.count, v.added, v.removed, v.sample, v.reasons, v.fetched_at, s.name FROM blocklist_versions v JOIN blocklist_sources s ON s.id = v.source_id WHERE v.status = 'quarantined' ORDER BY v.id DESC"),
     pruneOld: db.prepare("DELETE FROM blocklist_versions WHERE source_id = ? AND status IN ('superseded', 'rejected') AND id NOT IN (SELECT id FROM blocklist_versions WHERE source_id = ? AND status IN ('superseded', 'rejected') ORDER BY id DESC LIMIT 2)"),
   };
@@ -102,12 +104,17 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
   }
 
   // --- never-block -------------------------------------------------------------------------------
-  /** Built-in names, the owner's pins, and the sites the network uses most (from Pi-hole, if known). */
+  /** Built-in names and the owner's pins: left out of every compiled list. */
   function neverBlockSet() {
     const pins = settings.get("blocklists_pins") ?? [];
-    const popular = settings.get("blocklists_popular") ?? [];
-    return new Set([...neverBlock, ...pins, ...popular]);
+    return new Set([...neverBlock, ...pins]);
   }
+  /**
+   * The names the network looks up most (from Pi-hole). Not an exemption: on an unblocked network
+   * those are the trackers, and keeping them off every list kept the ad lists from doing their job
+   * (B27). An update that newly blocks one is held for review instead, and says which.
+   */
+  const popularSet = () => new Set(settings.get("blocklists_popular") ?? []);
 
   // --- compiled lists ----------------------------------------------------------------------------
   // Big lists run to millions of names (HaGeZi's threat feed alone is about two million), so only
@@ -119,7 +126,11 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
   const cacheLimit = 500_000;
   let cache = new Map();
   let counts = null;
-  const invalidate = () => { cache = new Map(); counts = null; };
+  // matchNames() answers per name, kept until the lists change (C31): the activity card and the
+  // device page ask for a dozen names each time they open, and each ask walked every list.
+  const matchMemoSize = 2000;
+  let matchMemo = new Map();
+  const invalidate = () => { cache = new Map(); counts = null; matchMemo = new Map(); };
   function domainsOf(source) {
     if (source.directory === "builtin") {
       const set = iocStore.activeSet();
@@ -251,11 +262,20 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
         const reasons = [];
         if (previous && previous.count >= 100 && Math.abs(domains.size - previous.count) / previous.count > sizeJump) reasons.push(`size changed from ${previous.count} to ${domains.size} entries`);
         const protectedNames = neverBlockSet();
+        const popular = popularSet();
         const risky = added.filter((d) => protectedNames.has(d));
         if (previous && risky.length) reasons.push(`would newly block ${risky.length} protected name${risky.length === 1 ? "" : "s"}: ${risky.slice(0, 5).join(", ")}`);
+        // A name this network looks up most is held for review even in a first version: it may be a
+        // tracker everyone talks to (block it) or a site the household needs (pin it).
+        const busy = added.filter((d) => popular.has(d) && !protectedNames.has(d));
+        if (busy.length) reasons.push(`would block ${busy.length} name${busy.length === 1 ? "" : "s"} this network looks up most: ${busy.slice(0, 5).join(", ")}`);
+        // B26: the same held update, fetched again, is held once - not once per fetch.
+        const heldAlready = /** @type {any} */ (q.heldWithDigest.get(id, sha));
+        if (reasons.length && heldAlready) return { id, outcome: "quarantined", count: domains.size, added: added.length, removed: removed.length, reasons, unchanged: true };
         const status = reasons.length ? "quarantined" : "active";
-        const sample = { added: added.slice(0, 50), removed: removed.slice(0, 50), risky: risky.slice(0, 50) };
+        const sample = { added: added.slice(0, 50), removed: removed.slice(0, 50), risky: [...risky, ...busy].slice(0, 50) };
         const versionId = Number(q.insertVersion.run(id, status, sha, domains.size, added.length, removed.length, JSON.stringify(sample), JSON.stringify(reasons), pack(domains), now().toISOString()).lastInsertRowid);
+        if (status === "quarantined") q.supersedeHeld.run(id, versionId); // one held version per list
         if (status === "active") {
           q.supersede.run(id, versionId);
           q.changed.run(now().toISOString(), versionId, id);
@@ -351,6 +371,22 @@ export function createBlocklistLibrary({ db, settings, audit, iocStore, fetchImp
      * @returns {Map<string, { categories: Set<string>, lists: Set<string> }>}
      */
     matchNames(names) {
+      const out = new Map();
+      const unknown = [];
+      for (const name of new Set(names)) {
+        if (matchMemo.has(name)) { const hit = matchMemo.get(name); if (hit) out.set(name, { categories: new Set(hit.categories), lists: new Set(hit.lists) }); } else unknown.push(name);
+      }
+      if (!unknown.length) return out;
+      for (const [name, e] of library.matchNamesUncached(unknown)) out.set(name, e);
+      for (const name of unknown) {
+        const e = out.get(name) ?? null;
+        matchMemo.set(name, e ? { categories: [...e.categories], lists: [...e.lists] } : null);
+        if (matchMemo.size > matchMemoSize) matchMemo.delete(matchMemo.keys().next().value);
+      }
+      return out;
+    },
+    /** @param {string[]} names @returns {Map<string, { categories: Set<string>, lists: Set<string> }>} */
+    matchNamesUncached(names) {
       const bySuffix = new Map();
       for (const name of names) {
         const labels = name.split(".");

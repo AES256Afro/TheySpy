@@ -19,6 +19,7 @@ type Overview = {
   lastSweep: { at: string; networks: string[]; alive: number; withMac: number; newDevices: number } | null;
   events: FleetEvent[];
   vendors: { prefixes: number; at?: string; named?: number };
+  errors: Record<string, { at: string; error: string }>;
 };
 
 const sourceLabel: Record<string, string> = { pihole: "PH", arp: "ARP", sweep: "SWEEP" };
@@ -123,6 +124,9 @@ export function FleetScreen() {
         <button className="btn primary" type="button" disabled={Boolean(busy) || !overview.targets.length} title={overview.targets.length ? "" : "Choose networks to sweep below"} onClick={() => run("sweep", () => api("POST", "/api/fleet/sweep"))}>{busy === "sweep" ? "Sweeping…" : "Sweep now"}</button>
       </div>
       {message && <div className={`banner ${message.tone}`} role="status"><span className="small">{message.text}</span></div>}
+      {Object.entries(overview.errors ?? {}).map(([name, e]) => (
+        <div key={name} className="banner bad" role="alert"><span className="small">The scheduled {({ sync: "Pi-hole read", sweep: "network sweep", vendors: "MAC vendor update", netalertx: "NetAlertX pull" } as Record<string, string>)[name] ?? name} failed {ago(e.at)}: {e.error}. It is tried again on its schedule.</span></div>
+      ))}
 
       <div className="grid g4">
         <section className="card"><h3>Online</h3><div className="kpi">{counts.online}</div><p className="small muted">of {counts.total} known · seen in the last 15 minutes</p></section>

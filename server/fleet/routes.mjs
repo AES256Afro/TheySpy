@@ -1,6 +1,7 @@
 import express from "express";
 import { classify } from "./targeted.mjs";
 import { intParam } from "../params.mjs";
+import { createQuietRunner } from "../quietly.mjs";
 
 /**
  * /api/fleet, behind sign-in: the device registry, discovery settings and runs.
@@ -17,10 +18,12 @@ import { intParam } from "../params.mjs";
  *   netalertx: ReturnType<typeof import("./netalertx.mjs").createNetAlertX>,
  *   exposure: ReturnType<typeof import("../exposure.mjs").createExposure>,
  *   agents: ReturnType<typeof import("../agents.mjs").createAgents>,
+ *   settings?: ReturnType<typeof import("../db.mjs").createSettingsStore>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx, exposure, agents }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx, exposure, agents, settings }) {
   const router = express.Router();
+  const quiet = settings ? createQuietRunner({ settings, prefix: "fleet" }) : null;
 
   // NetAlertX, both ways (netalertx.mjs): connect, sync now, preview and fill empty fields there.
   router.get("/netalertx", (_req, res) => res.json(netalertx.config()));
@@ -38,6 +41,8 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
       counts: { total: devices.length, online: devices.filter((d) => d.online).length, isNew: devices.filter((d) => d.isNew).length, untrusted: devices.filter((d) => !d.trusted).length, randomised: devices.filter((d) => d.randomisedMac).length, piholeUntrusted: devices.filter((d) => d.inPihole && !d.trusted).length },
       targets: discovery.targets(), suggestions: discovery.suggestions(), mergeSuggestions: fleet.suggestions(), scanRanges: discovery.scanRanges(),
       lastSync: discovery.lastSync(), lastSweep: discovery.lastSweep(), events: fleet.recentEvents(20), vendors: oui.status(),
+      // Scheduled work that is failing (B28): the Pi-hole read, the sweep, the vendor update, the NetAlertX pull.
+      errors: quiet ? quiet.errors(["sync", "sweep", "vendors", "netalertx"]) : {},
     });
   });
   // Address → best name, so every screen can say who an address is.

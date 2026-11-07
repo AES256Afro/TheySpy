@@ -28,4 +28,11 @@ describe("screen copy", () => {
       }
     }
   });
+
+  it("promises nothing for later (M18, C32)", () => {
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".tsx"))) {
+      const source = readFileSync(new URL(file, dir), "utf8");
+      expect(source, file).not.toMatch(/coming in a later version|arrives in milestone|in M\d{1,2}\b/);
+    }
+  });
 });
