@@ -813,7 +813,12 @@ pin it), HTTPS on a second port, and the plain-HTTP note on Activity replaced by
 secure one. ACME when a public name is set is left for later: BoxPilot already does that in front.
 
 ### M41 — The agent on a schedule from TheySpy's side (S)
-The enrol page writes the schedule as well as the key: a cron line, a launchd plist or a Task
+**Status (7 Nov 2026): done** (1.37.0). `theyspy-agent.py install [--every 12h] [--quick]` writes
+the schedule itself (a marked crontab line, a launchd plist loaded with launchctl, or a Task
+Scheduler task), `uninstall` removes it, `--print` shows the plan; each report then carries the
+interval, and the "scanned on schedule" check counts a report overdue after twice it (a day at
+least), a week when the agent set none. With this the closing list is built. **Originally:** The
+enrol page writes the schedule as well as the key: a cron line, a launchd plist or a Task
 Scheduler command, generated for the machine's platform, and the "last report overdue" check
 knows the interval it set.
 

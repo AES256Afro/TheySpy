@@ -310,6 +310,6 @@ Said plainly, in the order I would take them; none is a finding against what exi
 7. **A read-only view for the household** (built: M37, 1.33.0). One owner password opens everything; a second password
    that opens the Overview, Checks and the device pages only would let the family look without
    being able to change Pi-hole.
-8. **The agent on a schedule from TheySpy's side.** The agent is scheduled by hand (cron, launchd,
+8. **The agent on a schedule from TheySpy's side** (built: M41, 1.37.0). The agent is scheduled by hand (cron, launchd,
    Task Scheduler); a "last report overdue" check exists, but an installer that sets the schedule
    does not.
