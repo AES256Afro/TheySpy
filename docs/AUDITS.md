@@ -6,21 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 3 | 0 | in the loop |
-| Bugs (correctness) | 3 | 0 | in the loop |
-| Security | 3 | **1** | in the loop |
+| Code (structure, hygiene, dead weight) | 4 | 0 | in the loop |
+| Bugs (correctness) | 4 | 0 | in the loop |
+| Security | 4 | **2** | in the loop |
 
-Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's are planned as M14.
-**Sweep 3 is the first clean sweep for one category: security.** The attack surface in the modules it
-read (the fleet registry and its checks, the CVE matchers, exposure, alerts, the briefing, This
-device, both parsers, the thirteen screens) held up, so security's streak is 1 of the 3 it needs.
-Code and bugs both found things, so both go back to 0.
+Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
+sweep 4's are planned as M16. **Security is clean for the second sweep running** (streak 2 of 3).
+Code and bugs both found things, so both stay at 0.
 
-Sweep 4 reads what none of the three has: `web/scan.mjs` in full, `cves/store.mjs`, `cves/lookup.mjs`
-and `cves/advisories.mjs`, `fleet/services.mjs`, `fleet/explain.mjs`, `fleet/oui.mjs`,
-`fleet/netalertx.mjs`, `protec.mjs`, `backup.mjs`, `summary.mjs`, `readmodel.mjs`, `jobs.mjs`'s
-failure paths, and `src/looks/`. It should also re-read `fleet/registry.mjs` once M14 lands, since
-M14 changes how devices are merged and keyed.
+Sweep 5 reads: `pihole/client.mjs` and the three other DNS connectors (`pihole/connectors.mjs`),
+`iocs/store.mjs`, `iocs/updater.mjs`, `blocklists/directories.mjs`, `blocklists/baselines.mjs`
+(the parts sweep 2 skipped), `sites.mjs`, `integrations.mjs` (the MCP surface), `agents.mjs`'s
+import paths (MVT, inventory), `netlogs.mjs`'s parsers, and `src/screens/Pihole.tsx`,
+`Baselines.tsx`, `Blocklists.tsx`, `Check.tsx` in full. It should re-read `overview.mjs` and
+`exposure.mjs` once M16's time-bounded attribution lands.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -285,3 +284,81 @@ running the test before the fix, or with the wiring removed):
 | C19 | A Client Hints version must match `/^[\d.]{1,30}$/`, as `confirmedVersion` must; otherwise the user agent is read instead. |
 | C20 | An exposure factor the server did not report renders as `?` ("This check was not reported"), not as "does not apply". |
 | B21 | **Found by the Stage 2 sweep** ([docs/UI-AUDIT.md](UI-AUDIT.md), U2), fixed here: on a fresh install `GET /api/blocklists/baselines` answered 500, because `scopes()` asked Pi-hole for its clients before checking that anything was connected, and the Baselines screen showed only "Something went wrong on the server." It now answers 200 with the network scope, no devices and `pihole: false`; the screen's own "connect Pi-hole first" notice then shows. |
+
+## Sweep 4 — 7 Nov 2026, at 1.11.0
+
+Read in full: `web/scan.mjs`, `cves/store.mjs`, `cves/lookup.mjs`, `cves/advisories.mjs`,
+`fleet/services.mjs`, `fleet/explain.mjs`, `fleet/oui.mjs`, `fleet/netalertx.mjs`, `protec.mjs`,
+`backup.mjs`, `summary.mjs`, `readmodel.mjs`, `jobs.mjs`, `src/looks/looks.ts`; the registry's M14
+changes; and the M15 code (`overview.mjs`, `Overview.tsx`, `Device.tsx`) as new code gets read.
+Swept: what the previous two milestones' fixes assumed, whether each landed everywhere its bug
+lived, and what the home screen now costs.
+
+**Baseline:** `npm run check` green at 279 tests. The website check's authorisation is sound: a
+name is resolved once, every request is pinned to those addresses (no rebinding between the check
+and the probes), only same-origin redirects are followed, bodies are capped, and a public site must
+publish an HMAC token the owner cannot guess. `cves/store.mjs` resumes an interrupted NVD load from
+the page it reached, retries slow pages, and sets a refused API key aside. `jobs.mjs` marks jobs
+stranded by a restart as interrupted instead of running for ever. `backup.mjs` checks its copy
+before handing it over.
+
+**Every finding below was reproduced against the real modules, except where it says "by construction".**
+
+### Security
+
+Nothing. The two owner-configured endpoints (NetAlertX, Protec) keep only an origin, refuse
+credentials in the URL, and send their token only to that origin; the website check cannot be
+pointed at a third party. Security's streak is 2.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B22 | **A device is blamed for a lookup made by whoever held its address before it.** M14's B13 keys evidence on every address a device has ever held, without *when* it held it. On a home network DHCP reuses addresses across devices over months. Reproduced: an old tablet at 192.168.1.30 looks up an unblocked indicator in January and is not seen again; a new laptop takes .30 in November and Ad exposure shows the laptop as `fail` — "It reached an indicator address that Pi-hole did not block" — for the tablet's lookup. The Overview's `deviceByAddress()` has the same shape ("the latest holder wins"), so it would credit the laptop with any hit at .30 in the window, including one made before it joined. The data to do this right is already stored: `device_addresses` has `first_seen` and `last_seen` per device per address, and every hit has `at`. Attribution must be by *who held the address at the time*. B13 fixed the false clean; this is the false alarm it opened. | `exposure.mjs`, `overview.mjs`, `fleet/routes.mjs` (`/devices/:id/hits`), `fleet/registry.mjs` | **high** |
+| B23 | **A website check that fails is still a check that never finished.** M14's B17 fix lives in `targeted.mjs`'s `run()`, but a website address is handed to `web.scan()`, which inserts its own `checks` row and writes `finished_at` only on success. Reproduced: a site on this network that refuses the connection throws "Could not reach …" and leaves `finished_at: null`, and `recent()` reports it as `failed: false` — the new field says the opposite of the truth. **Correction to this ledger:** sweep 3's "What shipped" claims B17 done; it is done for one of the two inserts. Same lesson as B20: the test exercised the module the fix was in, not the path the bug was reported on. | `web/scan.mjs` | medium |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C21 | `readmodel.exploited()` runs one `products LIKE '%vendor:product%'` scan over the whole `cves` table per inventory item per device. Measured: **1,396 ms** for 30 devices with 5 recognised services each over 40,000 CVEs (a few months of NVD). The Overview calls it twice per load — once itself, once inside `exposure.overview()` — and polls every 60 s, so an open home screen costs about 3 s of CPU a minute on the box; `summary.mjs` and the MCP tools call it too. A `(product, cve_id)` table or an index over the JSON would make it a lookup; at the least it should run once per compose and be cached for the poll interval. |
+| C22 | The device page fetches the whole exposure overview and the whole findings list to show one device, so opening one device costs what the Exposure and Evidence screens cost together (and C21 again). Both need a per-device endpoint. |
+| C23 | `Overview.tsx` defines the `Q` row component inside `Verdict`'s render, so React sees a new component type on every poll and remounts the four rows each minute. Harmless today (they hold no state), and the wrong shape. |
+| C24 | `jobs.drain()` is fired with `void` and `runOne` catches only the job's own throw: a failing `finish.run` or `audit.record` in the catch path rejects the drain promise with nothing listening — the shape M14 fixed in `alerts.mjs` (C15). By construction. |
+| C25 | Kind guesses are substring tests in list order. Reproduced: a network `garage-switch` is a "Games console", `nest-cam` and `nest-doorbell` are "Smart speaker", a device called `console` is a "Router". Specific words must come before generic ones, and `cam` before `nest`. |
+| C26 | B1/C17's remainder: `links()[machine.id]` and `packageSoftware[name]` in `protec.mjs` read a plain object by a key from Protec's JSON. Protec is the owner's own, and its ids are UUIDs; one `Object.hasOwn` each, for consistency with the rest. |
+| C27 | `overview.describe()`'s default branch prints the raw audit action (`iocs.seeded`, `blocklists.updated hagezi-normal`) on the home screen. Technical is the brief; unlabelled is not. Either every action worth showing gets a line, or the default is dropped. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `cves/lookup.mjs` does not cache a failed NVD lookup, so a device page opened while NVD is down
+  waits one paced request per recognised service. Bounded (60 s each, one at a time) and the
+  honest behaviour; a negative cache would hide a real outage.
+- `syncNvd` resumes from `previous.progress`, which after a completed window still names that
+  window with `done = total`, so a run that fails before its first new page re-fetches one old
+  page. One wasted request; correct result.
+- `protec.sync()` with an address and no credential reports the network error, not "no credential":
+  checked, and the message is right because the request is made and fails; it only looks like a
+  credential problem in the reader's head.
+- NetAlertX addresses are not checked against `TS_SCAN_RANGES` before entering the fleet, unlike
+  Pi-hole's and ARP's. Not verified what NetAlertX sends for an offline device; noted for sweep 5.
+- `services.checkPort` sends an HTTP `HEAD` to a silent port it cannot name. One request, no
+  credentials; within what the screen says it does.
+- `src/looks/looks.ts`: nothing. Tokens are written as custom properties, never interpolated into
+  CSS text.
+
+### What shipped (sweep 4) — 1.12.0, M16
+
+All of sweep 4 is fixed in **1.12.0**, each with a test that fails without its fix:
+
+| # | Fix |
+| --- | --- |
+| B22 | `fleet/attribution.mjs`: `holderAt(holders, ip, at)` — a lease stays with the device that had it until another device is seen with the address; before the first known holder, nobody. `attributeHits()` groups hit events per device the way `sentinel.hits()` groups them per address. Exposure, the Overview, `/devices/:id/hits` and the read model all credit a hit by *when* it happened. A source that knows when it first saw a device (`firstSeenAt`, from Pi-hole's network table) backdates the holding, so a fresh install's history has holders. Exit test: the January tablet's lookup stays the tablet's after the laptop takes the address; the laptop reads `pass`; the laptop's own lookup from that address is the laptop's. |
+| B23 | `web.scan()` writes `finished_at` and a failed result on any throw after its insert; `recent()` reports it `failed: true`. The test drives the website path through `checker.run()`. |
+| C21 | `cve_products (product, cve_id)`, filled as CVEs arrive and backfilled by the migration; `cves.exploitedFor(product)`; the Overview computes the exploited list and the hits once and hands both to `exposure.overview()`. |
+| C22 | `GET /api/fleet/devices/:id/exposure` and `/findings`; the device page uses them. |
+| C23 | `Q` is a component of its own. |
+| C24 | `drain()` catches the runner's own failure, records `job.runner_failed` and marks the job failed; a test makes the audit write throw and checks there is no unhandled rejection. |
+| C25 | Guesses are specific-first with word boundaries: `garage-switch` is a network switch, `nest-cam` a camera, `console` nothing. |
+| C26 | `Object.hasOwn` in `protec.mjs`. |
+| C27 | Every audit action the home screen shows has a line; the rest are not shown. |

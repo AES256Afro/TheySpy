@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../api.ts";
 import type { Appearance } from "../looks/looks.ts";
 import { Link } from "../router.tsx";
@@ -59,16 +59,20 @@ function sentence(q: Data["questions"], status: Data["status"]) {
   return `${parts.join("; ")}.`;
 }
 
-function Verdict({ data }: { data: Data }) {
-  const { questions: q, status } = data;
-  const tone = q.contacts.count ? "bad" : q.exploited.count || q.network.failing || !status.pihole ? "warn" : "good";
-  const Q = ({ n, mark, title, children, href }: { n: string | number; mark: "bad" | "warn" | "ok" | "none"; title: string; children: React.ReactNode; href: string }) => (
+/** One of the four questions: a count, a title, what it rests on, and where to go. */
+function Q({ n, mark, title, children, href }: { n: string | number; mark: "bad" | "warn" | "ok" | "none"; title: string; children: ReactNode; href: string }) {
+  return (
     <section className="card q">
       <div className={`mark ${mark}`}>{n}</div>
       <div><h2>{title}</h2><div className="small muted">{children}</div></div>
       <Link className="btn" href={href}>Open</Link>
     </section>
   );
+}
+
+function Verdict({ data }: { data: Data }) {
+  const { questions: q, status } = data;
+  const tone = q.contacts.count ? "bad" : q.exploited.count || q.network.failing || !status.pihole ? "warn" : "good";
   return (
     <div className="stack">
       <div className={`verdict ${tone}`}>

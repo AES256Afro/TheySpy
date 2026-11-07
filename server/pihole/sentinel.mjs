@@ -44,6 +44,11 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     FROM ioc_hit_events e LEFT JOIN iocs i ON i.value = e.indicator
     GROUP BY e.indicator, e.domain, e.via, e.client_ip
     ORDER BY lastSeen DESC`);
+  // Every hit as it happened, for attributing each to the device that held its address at the time.
+  const hitEvents = db.prepare(`
+    SELECT e.at, e.indicator, e.domain, e.via, e.client_ip AS clientIp, e.client_name AS clientName, e.blocked, e.status, i.tier, i.confidence, i.source
+    FROM ioc_hit_events e LEFT JOIN iocs i ON i.value = e.indicator
+    WHERE e.at >= ? ORDER BY e.at`);
   // The window's own lookups, for the briefing: what happened this week, not the history of every
   // group that happened to recur this week.
   const hitsSince = db.prepare("SELECT client_ip AS clientIp, COUNT(*) AS lookups, SUM(blocked) AS blocked FROM ioc_hit_events WHERE at >= ? GROUP BY client_ip");
@@ -220,6 +225,10 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
       return hitsSince.all(iso).map((r) => { const row = /** @type {any} */ (r); return { clientIp: String(row.clientIp), lookups: Number(row.lookups), blocked: Number(row.blocked) }; });
     },
 
+    /** The hit events since `since` (all of them when null), oldest first. @param {string | null} [since] */
+    hitEvents(since = null) {
+      return hitEvents.all(since ?? "").map((r) => ({ .../** @type {any} */ (r), blocked: Number(/** @type {any} */ (r).blocked) }));
+    },
     hits() {
       return hitGroups.all().map((r) => {
         const row = /** @type {any} */ (r);

@@ -1,4 +1,5 @@
 import { inCidr } from "./fleet/addresses.mjs";
+import { attributeHits } from "./fleet/attribution.mjs";
 import { productVersion, readCapped } from "./shared.mjs";
 
 // Ad exposure (docs/PLAN.md M8, mockup 07): Citizen Lab's defender guidance as live checks. Every
@@ -49,19 +50,17 @@ export function createExposure({ fleet, sentinel, agents, read, deviceCves, sett
   const fresh = (iso, days) => Boolean(iso) && now().getTime() - Date.parse(iso) <= days * day;
 
   /**
-   * The seven per-device checks, from what TheySpy has seen of the device. Evidence is matched on
-   * every address the device has held, not its current one: a hit Pi-hole recorded under last
-   * month's lease is still this device's, and a lease change must not turn a fail into a pass.
-   * @param {any} d @param {any[]} exploited @param {any[]} allHits read once per overview, not per device
+   * The seven per-device checks, from what TheySpy has seen of the device. A hit is this device's
+   * when it held the hit's address at the time (fleet/attribution.mjs): a lease change must not
+   * turn a fail into a pass, and a reused address must not hand one device another's history.
+   * @param {any} d @param {any[]} exploited @param {Map<number | null, any[]>} hitsByDevice read once per overview, not per device
    */
-  function deviceFactors(d, exploited, allHits) {
+  function deviceFactors(d, exploited, hitsByDevice) {
     const profile = agents.profile(d.id);
     const seen = profile.observed ?? null;
     const agent = agents.agentFor(d.id);
     const contacts = agents.contactsFor(d.id);
-    const addresses = new Set(fleet.addressesOf(d.id));
-    if (d.ip) addresses.add(d.ip);
-    const hits = allHits.filter((h) => addresses.has(h.clientIp));
+    const hits = hitsByDevice.get(d.id) ?? [];
     const isComputer = Boolean(agent) || ["computer", "laptop", "desktop"].includes(d.kind ?? "") || /computer|mac\b/i.test(d.guess?.label ?? "");
     const isPhone = ["phone", "tablet", "watch"].includes(d.kind ?? d.guess?.kind ?? "") || /iphone|ipad|android|phone/i.test(`${d.guess?.label ?? ""} ${profile.os ?? ""}`);
     const piholeRecent = fresh(d.sources?.pihole, 1);
@@ -106,12 +105,29 @@ export function createExposure({ fleet, sentinel, agents, read, deviceCves, sett
   }
 
   const exposure = {
-    /** Every device's checklist and score, and the network's pillars. */
-    overview() {
-      const exploited = read.exploitedOnDevices();
-      const allHits = sentinel.hits();
+    /** Hits grouped by the device that held each address at the time. @param {string | null} [since] */
+    hitsByDevice(since = null) {
+      return attributeHits(sentinel.hitEvents(since), fleet.addressHolders());
+    },
+
+    /** One device's checklist, for its page. @param {number} id */
+    forDevice(id) {
+      const d = fleet.list().find((x) => x.id === id);
+      if (!d) throw Object.assign(new Error("No such device"), { status: 404 });
+      const factors = deviceFactors(d, read.exploitedOnDevices().filter((e) => e.deviceId === id), exposure.hitsByDevice());
+      return { id: d.id, name: d.name, ip: d.ip, kind: d.kind ?? d.guess?.label ?? null, factors, ...scoreOf(factors) };
+    },
+
+    /**
+     * Every device's checklist and score, and the network's pillars. The exploited list and the
+     * hits may be passed in by a caller that has them already (the Overview), so they are read once.
+     * @param {{ exploited?: any[], hitsByDevice?: Map<number | null, any[]> }} [given]
+     */
+    overview(given = {}) {
+      const exploited = given.exploited ?? read.exploitedOnDevices();
+      const byDevice = given.hitsByDevice ?? exposure.hitsByDevice();
       const devices = fleet.list().filter((d) => d.network?.kind !== "docker" && d.network?.kind !== "router").map((d) => {
-        const factors = deviceFactors(d, exploited, allHits);
+        const factors = deviceFactors(d, exploited, byDevice);
         return { id: d.id, name: d.name, ip: d.ip, kind: d.kind ?? d.guess?.label ?? null, factors, ...scoreOf(factors) };
       });
       const coverage = sentinel.lastCoverage();

@@ -145,3 +145,16 @@ describe("sweep 3 (M14)", () => {
     expect(fleet.addressesOf(d.id).sort()).toEqual(["192.168.1.30", "192.168.1.31"]);
   });
 });
+
+describe("M16", () => {
+  it("B22: a source that knows when it first saw a device backdates the holding, so older hits have a holder", () => {
+    const { fleet } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "ipad", seenAt: at("2026-11-07T11:59:00Z"), firstSeenAt: at("2026-09-01T08:00:00Z") }], "pihole", { inventory: true });
+    const [d] = fleet.list();
+    expect(d.firstSeen).toBe(at("2026-09-01T08:00:00Z"));
+    expect(fleet.addressHolders().get("192.168.1.20")).toEqual([{ deviceId: d.id, first: at("2026-09-01T08:00:00Z"), last: at("2026-11-07T11:59:00Z") }]);
+    // A later sighting without the field never moves first_seen forward.
+    fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", seenAt: at("2026-11-07T12:00:00Z") }], "arp");
+    expect(fleet.get(d.id).firstSeen).toBe(at("2026-09-01T08:00:00Z"));
+  });
+});

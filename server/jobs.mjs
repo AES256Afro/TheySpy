@@ -64,10 +64,17 @@ export function createJobRunner({ db, audit, kinds = jobKinds, now = () => new D
     }
   }
 
+  // The runner's own failure (a write that cannot happen) is caught here: fired with `void`, a
+  // rejected drain was an unhandled rejection in a process that must keep running.
   function drain() {
     if (!draining) {
       draining = (async () => {
-        for (let row = nextQueued.get(); row; row = nextQueued.get()) await runOne(row);
+        for (let row = nextQueued.get(); row; row = nextQueued.get()) {
+          try { await runOne(row); } catch (error) {
+            try { audit.record("system", "job.runner_failed", `job:${row.id}`, { error: error.message }); } catch { /* the log itself is what failed */ }
+            try { finish.run("failed", JSON.stringify({ error: error.message }), now().toISOString(), Number(row.id)); } catch { /* same */ }
+          }
+        }
       })().finally(() => { draining = null; });
     }
     return draining;
