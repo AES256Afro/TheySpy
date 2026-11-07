@@ -90,6 +90,14 @@ export function apiSource({ url, password, fetchImpl }) {
         return [...seen.values()].map(fromApi).filter((q) => q.domain === domain || q.domain.endsWith(`.${domain}`));
       });
     },
+    /** One client's lookups over a window, oldest first (M39). @param {string} ip @param {{ from: number, until: number }} window */
+    async queriesOf(ip, { from, until }) {
+      return client().session(async (c) => {
+        const seen = new Map();
+        for (const disk of [false, true]) for (const row of await c.queries({ from, until, disk, client: ip })) seen.set(`${row.id}:${row.time}`, row);
+        return [...seen.values()].map(fromApi).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+      });
+    },
     /**
      * New queries since `from`: indicator hits, and each query to `observe`.
      * @param {any} matcher @param {number} from @param {(query: any) => void} [observe]
@@ -192,6 +200,15 @@ export function databaseSource({ path }) {
         const out = [];
         for (const q of rows(db, from, until)) if (q.domain === domain || q.domain.endsWith(`.${domain}`)) out.push(q);
         return out;
+      } finally { db.close(); }
+    },
+    /** One client's lookups over a window, oldest first (M39). @param {string} ip @param {{ from: number, until: number }} window */
+    async queriesOf(ip, { from, until }) {
+      const db = open();
+      try {
+        const out = [];
+        for (const q of rows(db, from, until)) if (q.clientIp === ip) out.push(q);
+        return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
       } finally { db.close(); }
     },
     /** Pi-hole's network table (tables `network` and `network_addresses`), in the API's shape. */

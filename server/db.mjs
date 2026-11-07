@@ -400,6 +400,13 @@ export const migrations = [
   `ALTER TABLE alerts ADD COLUMN deliveries TEXT NOT NULL DEFAULT '{}';`,
   // M37: a session is the owner's or the household's (a read-only password).
   `ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'owner';`,
+  // M39: the minute around a hit. The client's lookups thirty seconds either side of each hit,
+  // from the source's query log, kept with the hit (and gone with it).
+  `CREATE TABLE hit_context (
+     hit_id INTEGER PRIMARY KEY REFERENCES ioc_hit_events (id) ON DELETE CASCADE,
+     queries TEXT NOT NULL,
+     fetched_at TEXT NOT NULL
+   );`,
 ];
 
 /**
