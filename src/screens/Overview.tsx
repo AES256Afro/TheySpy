@@ -4,7 +4,7 @@ import type { Appearance } from "../looks/looks.ts";
 import { Link } from "../router.tsx";
 
 type Factor = { id: string; label: string; state: "pass" | "partial" | "fail" | "unknown" | "na"; evidence: string; fix: string };
-type Lookup = { device: string; deviceId: number | null; clientIp: string; domain: string; indicator: string; lookups: number; blocked: number; lastSeen: string };
+type Lookup = { device: string; deviceId: number | null; clientIp: string; domain: string; indicator: string; via: string; lookups: number; blocked: number; lastSeen: string };
 type Exploited = { cveId: string; device: string; deviceId: number | null; software: string; fixed: string | null };
 type Gap = { deviceId: number | null; device: string | null; check: string; evidence: string; fix: string };
 type Event = { at: string; action: string; tone: "bad" | "warn" | "none"; text: string; link: string | null };
@@ -70,7 +70,7 @@ function Q({ n, mark, title, children, href }: { n: string | number; mark: "bad"
   );
 }
 
-function Verdict({ data }: { data: Data }) {
+export function Verdict({ data }: { data: Data }) {
   const { questions: q, status } = data;
   const tone = q.contacts.count ? "bad" : q.exploited.count || q.network.failing || !status.pihole ? "warn" : "good";
   return (
@@ -80,7 +80,7 @@ function Verdict({ data }: { data: Data }) {
         <h1>{sentence(q, status)}</h1>
       </div>
       <Q n={q.contacts.count} mark={q.contacts.count ? "bad" : status.pihole ? "ok" : "none"} title="Indicator contacts not blocked (7 days)" href="/pihole">
-        {q.contacts.top.length ? q.contacts.top.map((l) => <div key={`${l.clientIp}-${l.indicator}`}>{devLink(l.deviceId, l.device)} → <span className="mono">{l.indicator}</span> · {l.lookups - l.blocked} of {l.lookups} not blocked · {ago(l.lastSeen)}</div>) : status.pihole ? "None in Pi-hole's history." : "Not readable until Pi-hole is connected."}
+        {q.contacts.top.length ? q.contacts.top.map((l) => <div key={`${l.clientIp}-${l.domain}-${l.via}`}>{devLink(l.deviceId, l.device)} → <span className="mono">{l.indicator}</span> · {l.lookups - l.blocked} of {l.lookups} not blocked · {ago(l.lastSeen)}</div>) : status.pihole ? "None in Pi-hole's history." : "Not readable until Pi-hole is connected."}
       </Q>
       <Q n={q.exploited.count} mark={q.exploited.count ? "warn" : "ok"} title="Exploited CVEs in device software" href="/intel">
         {q.exploited.top.length ? q.exploited.top.map((e) => <div key={`${e.cveId}-${e.device}`}><span className="mono">{e.cveId}</span> · {devLink(e.deviceId, e.device)} · {e.software}{e.fixed ? ` · fixed in ${e.fixed}` : ""}</div>) : "None matched against known software versions."}
@@ -147,7 +147,7 @@ function Ledger({ data }: { data: Data }) {
   );
 }
 
-function Console({ data }: { data: Data }) {
+export function Console({ data }: { data: Data }) {
   const [sel, setSel] = useState<number | null>(data.devices[0]?.id ?? null);
   const row = data.devices.find((d) => d.id === sel) ?? null;
   const { status } = data;
@@ -179,7 +179,7 @@ function Console({ data }: { data: Data }) {
               <div className="row"><h2>{row.name}</h2><span className="grow" /><Link className="small" href={`/fleet/devices/${row.id}`}>Device page</Link></div>
               <div className="kv"><span>address</span><span className="mono">{row.ip ?? "—"}</span><span>kind</span><span>{row.kind ?? "—"}</span><span>trust</span><span>{row.trusted ? "trusted" : "not trusted"}</span><span>seen</span><span>{when(row.lastSeen)}</span><span>agent</span><span>{row.agentAt ? when(row.agentAt) : "none"}</span></div>
               <h3>Indicator lookups · 7 days</h3>
-              <div className="list small">{data.questions.contacts.top.filter((l) => l.deviceId === row.id).map((l) => <div key={l.indicator}><span className="mono grow">{l.indicator}</span><span className="badge b-crit">{l.lookups - l.blocked} not blocked</span></div>)}{!data.questions.contacts.top.some((l) => l.deviceId === row.id) && <div className="muted">none not blocked</div>}</div>
+              <div className="list small">{data.questions.contacts.top.filter((l) => l.deviceId === row.id).map((l) => <div key={`${l.clientIp}-${l.domain}-${l.via}`}><span className="mono grow">{l.indicator}</span><span className="badge b-crit">{l.lookups - l.blocked} not blocked</span></div>)}{!data.questions.contacts.top.some((l) => l.deviceId === row.id) && <div className="muted">{row.notBlocked ? `${row.notBlocked} not blocked (see device page)` : "none not blocked"}</div>}</div>
               <h3>Exploited CVEs</h3>
               <div className="list small">{data.questions.exploited.top.filter((e) => e.deviceId === row.id).map((e) => <div key={e.cveId}><span className="mono">{e.cveId}</span><span className="grow muted">{e.software}</span></div>)}{!data.questions.exploited.top.some((e) => e.deviceId === row.id) && <div className="muted">{row.kev ? `${row.kev} (see device page)` : "none"}</div>}</div>
               <h3>Could not check</h3>
