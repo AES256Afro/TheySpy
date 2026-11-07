@@ -550,3 +550,15 @@ describe("M28 B39", () => {
     expect(r.body.error).toMatch(/Pi-hole is not connected/);
   });
 });
+
+describe("M32 O1", () => {
+  it("compresses a large answer when the browser accepts gzip, and never the backup", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const gz = await request("GET", "/api/iocs/indicators", undefined, { "accept-encoding": "gzip" });
+    expect(gz.headers.get("content-encoding")).toBe("gzip");
+    expect(gz.body.indicators.length).toBeGreaterThan(100);
+    const plain = await request("GET", "/api/iocs/indicators", undefined, { "accept-encoding": "identity" });
+    expect(plain.headers.get("content-encoding")).toBeNull();
+  });
+});

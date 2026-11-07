@@ -74,6 +74,12 @@ export function FleetScreen() {
   }, [load]);
 
   const open = async (id: number) => setSelected((await api<{ device: DeviceDetail }>("GET", `/api/fleet/devices/${id}`)).device);
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]);
   const run = async (label: string, start: () => Promise<{ job: Job }>) => {
     setBusy(label);
     setMessage(null);
@@ -131,7 +137,7 @@ export function FleetScreen() {
       <div className="grid g4">
         <section className="card"><h3>Online</h3><div className="kpi">{counts.online}</div><p className="small muted">of {counts.total} known · seen in the last 15 minutes</p></section>
         <section className="card"><h3>New</h3><div className="kpi" style={{ color: counts.isNew ? "var(--high)" : undefined }}>{counts.isNew}</div><p className="small muted">not yet looked at; label or trust them to clear</p></section>
-        <section className="card"><h3>Not trusted</h3><div className="kpi">{counts.untrusted}</div><p className="small muted">devices you have not marked as yours</p></section>
+        <section className="card"><h3>Not trusted</h3><div className="kpi">{counts.untrusted}</div><p className="small muted">not marked as yours; trusting clears the new badge and stops merge suggestions, and changes no blocking</p></section>
         <section className="card"><h3>Private MACs</h3><div className="kpi">{counts.randomised}</div><p className="small muted">randomised addresses: no vendor, may change</p></section>
       </div>
 
@@ -355,7 +361,7 @@ function DeviceCard({ device, others, onMerge, onSave, onClose, onForget }: { de
       </div>
       <div className="row">
         <button className="btn primary" type="button" onClick={() => onSave({ label: form.label, owner: form.owner, kind: form.kind, notes: form.notes, tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) })}>Save</button>
-        <button className="btn" type="button" onClick={() => onSave({ trusted: !device.trusted })}>{device.trusted ? "Stop trusting" : "Trust this device"}</button>
+        <button className="btn" type="button" title="Trusted: yours. It clears the new badge and stops merge suggestions; blocking and alerts are unchanged." onClick={() => onSave({ trusted: !device.trusted })}>{device.trusted ? "Stop trusting" : "Trust this device"}</button>
         {device.ip && <a className="btn" href={`/check?q=${encodeURIComponent(device.ip)}`}>Check it</a>}
         <button className="btn danger" type="button" onClick={onForget}>Forget</button>
       </div>

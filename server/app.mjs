@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import compression from "compression";
 import express from "express";
 import { appearanceOptions, effectiveAppearance, validateAppearance } from "./appearance.mjs";
 import { sessionCookie } from "./auth.mjs";
@@ -70,6 +71,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
+  // The bundle is 415 KB raw and 112 KB gzipped; the indicator and candidate lists are 100 KB of
+  // JSON each. Compressed when the browser asks (O1); the backup is already a file and is left alone.
+  app.use(compression({ filter: (req, res) => req.path !== "/api/backup" && compression.filter(req, res) }));
 
   app.use((_req, res, next) => {
     // Nothing third-party: fonts are bundled, and the app makes no outbound requests from the browser.
