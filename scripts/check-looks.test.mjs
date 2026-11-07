@@ -21,3 +21,11 @@ describe("look checks", () => {
     expect(colourLiterals(dir)).toHaveLength(2);
   });
 });
+
+describe("M21 C38", () => {
+  it("still sees a colour written after a URL on the same line", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "theyspy-src-"));
+    writeFileSync(path.join(dir, "x.ts"), 'const a = { url: "https://a.example", color: "#ff0000" }; // #00ff00 in a comment is fine\n');
+    expect(colourLiterals(dir)).toEqual([expect.stringMatching(/x\.ts:1: #ff0000$/)]);
+  });
+});
