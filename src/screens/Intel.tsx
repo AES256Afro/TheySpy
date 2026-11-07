@@ -70,7 +70,7 @@ export function IntelScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>CVEs &amp; zero-days</h1><p className="muted small">{n(stats.total)} CVEs · {n(stats.zeroDays)} exploited ({n(stats.kev)} in CISA KEV, the rest reported by vendors) · exploited ones first. The ones in software on your devices are on each device's Targeted check, and you get an alert when one appears.</p></div>
+        <div><h1>CVEs &amp; zero-days</h1><p className="muted small">{n(stats.total)} CVEs · {n(stats.zeroDays)} exploited ({n(stats.kev)} in CISA KEV, the rest reported by vendors).</p></div>
         <div className="grow" />
         <button className="btn primary" type="button" disabled={busy} onClick={update}>{busy ? "Updating…" : "Update now"}</button>
       </div>

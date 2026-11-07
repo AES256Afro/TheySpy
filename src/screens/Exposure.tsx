@@ -28,14 +28,14 @@ export function ExposureScreen() {
   const device = data.devices.find((d) => d.id === open) ?? null;
   return (
     <div className="stack">
-      <div className="top"><div><h1>Ad exposure</h1><p className="muted small">“There is currently no consistently safe way to expose your users and networks to targeted ads.” — Citizen Lab. Each line below is a live check with what it was decided on and how to fix it.</p></div></div>
+      <div className="top"><div><h1>Ad exposure</h1><p className="muted small">Per-device and network checks, each with the evidence it was decided on and the fix.</p></div></div>
       {message && <div className={`banner ${message.tone}`} role="status"><span className="small">{message.text}</span></div>}
 
       <div className="grid g3">
         <section className="card"><h3>Network</h3><div className="kpi">{data.networkScore.score ?? "—"}</div><span className={`badge ${toneBadge[data.networkScore.tone]}`}>{data.networkScore.known} of {data.networkScore.of} checks known</span></section>
         <section className="card"><h3>Devices (average)</h3><div className="kpi">{data.average ?? "—"}</div><p className="small muted">{data.devices.filter((d) => d.tone === "bad").length} red · {data.devices.filter((d) => d.tone === "warn").length} amber · {data.devices.filter((d) => d.tone === "good").length} green · {data.devices.filter((d) => d.tone === "unknown").length} not enough known yet</p></section>
         <section className="card stack"><h3>Your connection</h3>
-          <p className="small muted">Is this network’s public address Starlink’s (which ad bidders can target)? Asks Cloudflare for the address and compares it with SpaceX’s published list; the address is not kept.</p>
+          <p className="small muted">Reads this network’s public address from Cloudflare and checks it against SpaceX’s published Starlink prefixes. The address is not stored.</p>
           <div><button className="btn" type="button" onClick={() => void api("POST", "/api/exposure/egress").then(load, (e: Error) => setMessage({ tone: "bad", text: e.message }))}>Check my connection</button></div>
         </section>
       </div>
@@ -71,7 +71,7 @@ export function ExposureScreen() {
               <div className="list small">{kitList.map(([id, name, what, ext]) => (
                 <div key={id} style={{ alignItems: "flex-start" }}><span className="grow"><b>{name}</b><br /><span className="muted">{what}</span></span><a className="btn small" href={`/api/exposure/kits/${id}`}>{ext}</a></div>
               ))}</div>
-              <p className="small muted">Pi-hole side: subscribe to TheySpy’s Recommended list (Blocklist library) and pick a baseline per device (Baselines). Click a device for its own checklist.</p>
+              <p className="small muted">Network side: the Recommended list (Blocklist library) and a baseline per device (Baselines).</p>
             </section>
           )}
         </div>

@@ -92,15 +92,10 @@ shapes the server already produces.
 | **D · Guided** | The ten checks are the navigation; each is failing / unknown / passing; the sidebar is progress. | The first week; the household member who did not set it up. | Reorganises existing factors; strongest first-run, weakest for daily use. |
 | **E · Console** | One dense table per thing tracked, an inspector that follows the selection, keys for every action. | The wall screen; the terminal owner. | A table shell and an inspector; the least change to what exists, the most to how it is used. |
 
-**My recommendation:** build **A as the home, B as the device page, and D's failing / unknown /
-passing structure as every empty state.** A gives the product a front door. B removes four device
-tables and answers the question people actually ask. D is onboarding without an onboarding wizard —
-the same screen on day one and day three hundred. C's ledger is the right shape for Activity and
-the briefing once those exist, and E's inspector is a good second pane for B's device list on wide
-screens. One look by default, five sidebar places, the rest under More.
-
-That is a milestone, not a sweep fix. Proposed as **M15 — The face** in [PLAN.md](PLAN.md) once M14
-has landed (the two must not edit the plan at once).
+**Decision (7 Nov):** the layout is the owner's choice, not a recommendation. M15 ships A, C and E
+as selectable home layouts, B as the device page under all of them, and D's failing / unknown /
+passing shape as the empty state wherever a screen has checks. Copy across the product is cut to
+technical, one-line descriptions: no quotations, no slogans. See [PLAN.md](PLAN.md) M15.
 
 ### Not findings
 

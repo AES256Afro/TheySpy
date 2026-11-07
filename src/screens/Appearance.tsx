@@ -71,7 +71,7 @@ export function AppearanceScreen({ appearance, server, local, setLocal, setPrevi
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Appearance &amp; branding</h1><p className="muted small">Every mockup’s style is a look. Pick one for the whole app, then make it yours.</p></div>
+        <div><h1>Appearance &amp; branding</h1><p className="muted small">Look, name, logo, accent, home screen, density.</p></div>
         <div className="grow" />
         <div className="seg" role="group" aria-label="Apply changes to">
           <button type="button" aria-pressed={scope === "browser"} onClick={() => { setScope("browser"); setDraft({}); }}>This browser</button>

@@ -26,7 +26,7 @@ export function SitesScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Sites</h1><p className="muted small">Other places you run TheySpy (a cabin, a parents&apos; house), read through each one&apos;s read-only API every 15 minutes. This TheySpy can see them but change nothing there. A lookup that gets past a site&apos;s blocking alerts you here.</p></div>
+        <div><h1>Sites</h1><p className="muted small">Other TheySpy instances, read through their read-only API every 15 minutes. A lookup that gets past a site’s blocking raises an alert here.</p></div>
         <div className="grow" />
         {sites.length > 0 && <button className="btn" type="button" disabled={busy} onClick={() => act(() => api("POST", "/api/sites/refresh"), "Read every site.")}>{busy ? "Reading…" : "Read now"}</button>}
       </div>
@@ -53,7 +53,7 @@ export function SitesScreen() {
 
       <section className="card stack">
         <h3>Add a site</h3>
-        <p className="small muted">In the other TheySpy: Briefing → API and MCP → create a token. Paste its address and the token here; it is stored encrypted. The token is read-only, so this TheySpy can never change that site.</p>
+        <p className="small muted">Create a token on the other instance (Briefing → API and MCP). The token is read-only and stored encrypted.</p>
         <div className="compact-fields">
           <div className="field"><label htmlFor="site-name">Name</label><input id="site-name" className="input" placeholder="Cabin" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
           <div className="field"><label htmlFor="site-url">Address</label><input id="site-url" className="input" placeholder="https://cabin.example.ts.net:8797" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>

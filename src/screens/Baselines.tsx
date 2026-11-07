@@ -105,7 +105,7 @@ export function BaselinesScreen() {
 
   const header = (
     <div className="top">
-      <div><h1>Baselines</h1><p className="muted small">Suggested blocking levels, from the gentlest to the most severe. Pick one to see which sites it would block, based on {days} days of this network’s real DNS traffic.</p></div>
+      <div><h1>Baselines</h1><p className="muted small">Blocking levels per device or network; the preview uses {days} days of this network’s DNS history.</p></div>
     </div>
   );
   if (!overview) return <div className="stack">{header}{message ? <div className="banner bad">{message.text}</div> : <p className="muted small">Loading…</p>}</div>;

@@ -116,7 +116,7 @@ export function FleetScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>Fleet</h1><p className="muted small">Every device seen on your network, merged by MAC from Pi-hole’s network table, the neighbour table and sweeps of the networks you choose.</p></div>
+        <div><h1>Fleet</h1><p className="muted small">Devices from Pi-hole’s network table, the ARP table and sweeps, merged by MAC.</p></div>
         <div className="grow" />
         <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => run("sync", () => api("POST", "/api/fleet/sync"))}>{busy === "sync" ? "Reading…" : "Read Pi-hole now"}</button>
         <button className="btn primary" type="button" disabled={Boolean(busy) || !overview.targets.length} title={overview.targets.length ? "" : "Choose networks to sweep below"} onClick={() => run("sweep", () => api("POST", "/api/fleet/sweep"))}>{busy === "sweep" ? "Sweeping…" : "Sweep now"}</button>
@@ -140,7 +140,7 @@ export function FleetScreen() {
       {overview.mergeSuggestions.length > 0 && (
         <section className="card stack">
           <h3>Same device?</h3>
-          <p className="small muted">These look like one device seen twice, for example at home and over Tailscale. Merging keeps one record with both addresses; TheySpy merges by itself only when the names prove it.</p>
+          <p className="small muted">Records that may be one device (for example at home and over Tailscale). Merging keeps one record with both addresses.</p>
           <div className="list small">{overview.mergeSuggestions.map((m) => (
             <div key={`${m.from.id}-${m.into.id}`}>
               <span className="grow"><b>{m.from.name}</b> <span className="mono muted">{m.from.ip}</span> and <b>{m.into.name}</b> <span className="mono muted">{m.into.ip}</span></span>
@@ -251,7 +251,7 @@ function NetAlertXCard({ onChanged }: { onChanged: () => void }) {
   return (
     <section className="card stack">
       <h3>NetAlertX</h3>
-      <p className="small muted">Its devices join the Fleet, with the names, owners and types you gave them there. TheySpy can fill the same fields in NetAlertX where they are empty, never ones you filled, and only after you allow it.</p>
+      <p className="small muted">NetAlertX devices, names, owners and types are read every 30 minutes. With write access, TheySpy fills only empty NetAlertX fields, after a preview.</p>
       <div className="compact-fields">
       <div className="field"><label htmlFor="nax-url">API address</label><input id="nax-url" className="input" placeholder="http://192.168.1.5:20212" value={url} onChange={(e) => setUrl(e.target.value)} /><span className="hint">NetAlertX&apos;s API port (GRAPHQL_PORT), 20212 by default.</span></div>
       <div className="field"><label htmlFor="nax-token">API token</label><input id="nax-token" className="input" type="password" autoComplete="off" placeholder={config.hasToken ? "Saved (leave empty to keep)" : "Settings → API → API_TOKEN"} value={token} onChange={(e) => setToken(e.target.value)} /></div>
@@ -296,7 +296,7 @@ function ProtecCard({ devices, onChanged }: { devices: Device[]; onChanged: () =
   return (
     <section className="card stack">
       <h3>Protec</h3>
-      <p className="small muted">Each enrolled machine&apos;s installed packages (dpkg, Homebrew) are checked for CVEs on its Fleet device. Debian and Ubuntu fix bugs without changing the version, so a CVE matched from a Linux package may already be patched; your updates are what fix it.</p>
+      <p className="small muted">Installed packages (dpkg, Homebrew) per enrolled machine, read hourly with a viewer credential, matched against CVEs on the machine’s device. Debian and Ubuntu backport fixes without changing the version, so a match may already be patched.</p>
       <div className="compact-fields">
         <div className="field"><label htmlFor="protec-url">Address</label><input id="protec-url" className="input" placeholder="https://protec.example.ts.net:8765" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
         <div className="field"><label htmlFor="protec-token">Viewer credential</label><input id="protec-token" className="input" type="password" autoComplete="off" placeholder={state.hasToken ? "Saved (leave empty to keep)" : "Protec → Access → viewer"} value={token} onChange={(e) => setToken(e.target.value)} /><span className="hint">A viewer credential reads only. Protec&apos;s last at most 720 hours: issue a new one when it runs out.</span></div>
