@@ -113,7 +113,7 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     const n = JSON.parse(r.names ?? "{}");
     return { tailscale: typeof n.tailscale === "string" ? n.tailscale.toLowerCase().replace(/\.$/, "") : null, given: [r.label, n.pihole, n.netalertx, shortOf(n.router), r.hostname && r.hostname !== "pi.hole" ? shortOf(r.hostname) : null].filter(Boolean).map((x) => String(x).toLowerCase()) };
   };
-  // "iPhone 15", "ipad173", "Chris's iPad" → "iphone", "ipad", "chrissipad": close enough to ask, never to merge alone.
+  // "iPhone 15", "ipad173", "Sam's iPad" → "iphone", "ipad", "samsipad": close enough to ask, never to merge alone.
   const loose = (name) => String(name).toLowerCase().replace(/\.[a-z0-9-]+\.ts\.net$/, "").replace(/[^a-z]/g, "");
   const notSame = () => new Set((/** @type {string[]} */ (JSON.parse(/** @type {any} */ (db.prepare("SELECT value FROM settings WHERE key = 'fleet_not_same'").get())?.value ?? "[]"))));
 

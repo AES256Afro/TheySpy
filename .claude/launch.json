@@ -16,7 +16,7 @@
     {
       "name": "theyspy-review",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["TS_HOST=127.0.0.1", "TS_PORT=8801", "TS_DATA_DIR=/private/tmp/claude-501/-Users-chris-Projects-TheySpy/a5606d09-ca63-4f86-af49-8cace2e72d78/scratchpad/review-data", "TS_IOC_AUTOCHECK=false", "node", "server/index.mjs"],
+      "runtimeArgs": ["TS_HOST=127.0.0.1", "TS_PORT=8801", "TS_DATA_DIR=/tmp/theyspy-dev", "TS_IOC_AUTOCHECK=false", "node", "server/index.mjs"],
       "port": 8801,
       "autoPort": false
     },
