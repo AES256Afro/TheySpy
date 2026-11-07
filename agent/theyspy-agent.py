@@ -2,8 +2,11 @@
 """TheySpy agent: runs zero-breach's scanner on this computer and reports to your TheySpy.
 
     python3 theyspy-agent.py enroll https://theyspy.example:8797 tse_ONE_TIME_TOKEN
-    python3 theyspy-agent.py run            # scan and report (schedule this daily)
+    python3 theyspy-agent.py run            # scan and report
     python3 theyspy-agent.py run --quick    # skip file fingerprinting (reported as a gap)
+    python3 theyspy-agent.py install        # schedule "run" daily (cron, launchd or Task Scheduler)
+    python3 theyspy-agent.py install --every 12h [--quick] [--print]
+    python3 theyspy-agent.py uninstall      # remove that schedule
     ... --insecure                          # allow a http:// TheySpy (readable on the network)
 
 What it does, and does not do:
@@ -235,6 +238,7 @@ def run(quick=False, insecure=False):
     body = json.dumps({
         "agentVersion": VERSION, "hostname": platform.node(), "platform": platform.system(), "macs": macs(),
         "inventory": inventory(), "scan": {"exitCode": code, "report": report, "error": error},
+        "schedule": {"everyHours": cfg.get("everyHours")} if cfg.get("everyHours") else None,
     }).encode()
     _, headers = signed(cfg, body)
     try:
@@ -248,6 +252,100 @@ def run(quick=False, insecure=False):
     return 2 if v.get("hits") else (1 if report is None else 0)
 
 
+# --- the schedule (docs/PLAN.md M41) -----------------------------------------------------------
+
+SCHEDULE_LABEL = "com.theyspy.agent"
+
+
+def parse_every(argv):
+    """--every 12h / --every 2d (1 hour to 7 days); daily when absent."""
+    if "--every" not in argv:
+        return 24
+    value = argv[argv.index("--every") + 1] if argv.index("--every") + 1 < len(argv) else ""
+    m = re.fullmatch(r"(\d+)\s*([hd]?)", value.strip().lower())
+    if not m:
+        raise SystemExit("--every takes hours or days, such as 12h or 2d")
+    hours = int(m.group(1)) * (24 if m.group(2) == "d" else 1)
+    if not 1 <= hours <= 168:
+        raise SystemExit("--every must be between 1h and 7d")
+    return hours
+
+
+def schedule_plan(system, script, python, every_hours, quick=False):
+    """What installing the schedule writes or runs on a platform, as data, so it can be shown or tested."""
+    args = [python, script, "run"] + (["--quick"] if quick else [])
+    command = " ".join('"{}"'.format(a) if " " in a else a for a in args)
+    if system == "Darwin":
+        plist = os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents", SCHEDULE_LABEL + ".plist")
+        body = plistlib.dumps({"Label": SCHEDULE_LABEL, "ProgramArguments": args, "StartInterval": every_hours * 3600, "RunAtLoad": False,
+                               "StandardOutPath": os.path.join(os.path.expanduser("~"), "Library", "Logs", "theyspy-agent.log"),
+                               "StandardErrorPath": os.path.join(os.path.expanduser("~"), "Library", "Logs", "theyspy-agent.log")}, sort_keys=False).decode()
+        return {"kind": "launchd", "path": plist, "content": body, "load": ["launchctl", "load", "-w", plist], "unload": ["launchctl", "unload", "-w", plist]}
+    if system == "Windows":
+        task = "TheySpyAgent"
+        when = ["/SC", "DAILY", "/ST", "09:00"] if every_hours >= 24 else ["/SC", "HOURLY", "/MO", str(every_hours)]
+        if every_hours > 24:
+            when = ["/SC", "DAILY", "/MO", str(every_hours // 24), "/ST", "09:00"]
+        return {"kind": "schtasks", "task": task, "create": ["schtasks", "/Create", "/F", "/TN", task, "/TR", command] + when, "delete": ["schtasks", "/Delete", "/F", "/TN", task]}
+    # Linux and the rest: the user's crontab, one marked line.
+    if every_hours >= 24:
+        field = "0 9 */{} * *".format(every_hours // 24) if every_hours > 24 else "0 9 * * *"
+    else:
+        field = "0 */{} * * *".format(every_hours)
+    line = "{} {} # {}".format(field, command, SCHEDULE_LABEL)
+    return {"kind": "cron", "line": line, "marker": SCHEDULE_LABEL}
+
+
+def install_schedule(argv):
+    every = parse_every(argv)
+    quick = "--quick" in argv
+    cfg = load_config()  # enrol first: the schedule is pointless without a key
+    plan = schedule_plan(platform.system(), os.path.abspath(__file__), sys.executable or "python3", every, quick)
+    if "--print" in argv:
+        print(json.dumps(plan, indent=2))
+        return 0
+    if plan["kind"] == "launchd":
+        os.makedirs(os.path.dirname(plan["path"]), exist_ok=True)
+        subprocess.run(plan["unload"], capture_output=True)
+        with open(plan["path"], "w", encoding="utf-8") as f:
+            f.write(plan["content"])
+        subprocess.run(plan["load"], check=True)
+    elif plan["kind"] == "schtasks":
+        subprocess.run(plan["create"], check=True)
+    else:
+        current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        lines = [l for l in (current.stdout.splitlines() if current.returncode == 0 else []) if plan["marker"] not in l]
+        lines.append(plan["line"])
+        subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True, check=True)
+    cfg["everyHours"] = every
+    save_config(cfg)
+    print("Scheduled: every {} hour(s) via {}. TheySpy will count a report overdue after twice that.".format(every, plan["kind"]))
+    return 0
+
+
+def uninstall_schedule():
+    plan = schedule_plan(platform.system(), os.path.abspath(__file__), sys.executable or "python3", 24)
+    if plan["kind"] == "launchd":
+        subprocess.run(plan["unload"], capture_output=True)
+        if os.path.exists(plan["path"]):
+            os.remove(plan["path"])
+    elif plan["kind"] == "schtasks":
+        subprocess.run(plan["delete"], capture_output=True)
+    else:
+        current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        if current.returncode == 0:
+            lines = [l for l in current.stdout.splitlines() if plan["marker"] not in l]
+            subprocess.run(["crontab", "-"], input="\n".join(lines) + ("\n" if lines else ""), text=True, check=True)
+    try:
+        cfg = load_config()
+        cfg.pop("everyHours", None)
+        save_config(cfg)
+    except FileNotFoundError:
+        pass
+    print("Schedule removed.")
+    return 0
+
+
 def main(argv):
     insecure = "--insecure" in argv
     if len(argv) >= 3 and argv[0] == "enroll":
@@ -255,6 +353,10 @@ def main(argv):
         return 0
     if argv and argv[0] == "run":
         return run(quick="--quick" in argv, insecure=insecure)
+    if argv and argv[0] == "install":
+        return install_schedule(argv[1:])
+    if argv and argv[0] == "uninstall":
+        return uninstall_schedule()
     print(__doc__)
     return 64
 
