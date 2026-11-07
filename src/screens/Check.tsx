@@ -70,7 +70,7 @@ export function CheckScreen() {
       <div className="top"><div><h1>Targeted check</h1><p className="muted small">Address, MAC, hostname, network or domain. Active probes stay inside {ranges.join(", ") || "the scan ranges"}; a domain is read from DNS history only.</p></div></div>
       <form className="card stack" onSubmit={submit}>
         <div className="row">
-          <input className="input grow" style={{ minWidth: 220 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="192.168.1.42 · a4:c1:38:… · nas · 192.168.1.0/24 · example.com · https://your-site" aria-label="What to check" required />
+          <input className="input grow" style={{ minWidth: 220 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="192.168.1.42 · a4:c1:38:… · nas · 192.168.1.0/24 · example.com · https://your-site" aria-label="What to check" autoFocus required />
           <button className="btn primary" type="submit" disabled={Boolean(busy)}>{busy ? "Checking…" : "Check"}</button>
         </div>
         <div className="seg" role="group" aria-label="Profile">{profiles.map((p) => (

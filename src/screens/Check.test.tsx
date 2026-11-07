@@ -56,3 +56,15 @@ describe("M25 B36", () => {
     expect(banner).toContain("1 not blocked");
   });
 });
+
+describe("M34, feature 5", () => {
+  it("takes the focus when opened, and a key pressed in a field is typing, not a shortcut", async () => {
+    const { isTypingTarget } = await import("../router.tsx");
+    globalThis.fetch = (async () => new Response(JSON.stringify({ checks: [], profiles: [], scanRanges: [] }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const screen = render(<CheckScreen />);
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    expect(document.activeElement).toBe(screen.getByLabelText("What to check"));
+    expect(isTypingTarget(screen.getByLabelText("What to check"))).toBe(true);
+    expect(isTypingTarget(document.body)).toBe(false);
+  });
+});
