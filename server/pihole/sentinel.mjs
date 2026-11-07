@@ -1,4 +1,5 @@
 import { isListAddress } from "../blocklists/addresses.mjs";
+import { canonicalIp } from "../fleet/addresses.mjs";
 import { blocklistDomains } from "../iocs/exports.mjs";
 import { PiholeError, wildcardRegex } from "./client.mjs";
 import { createMatcher } from "./match.mjs";
@@ -99,7 +100,7 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     const foundAt = now().toISOString();
     const from = effective().mode ?? "pihole";
     for (const h of hits) {
-      const { changes } = insertEvent.run(from, h.queryId, h.at, h.indicator, h.domain, h.via, h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
+      const { changes } = insertEvent.run(from, h.queryId, h.at, h.indicator, h.domain, h.via, canonicalIp(h.clientIp) ?? h.clientIp, h.clientName, h.status, h.blocked ? 1 : 0, foundBy, foundAt);
       if (Number(changes)) fresh.push(h);
     }
     if (fresh.length) {

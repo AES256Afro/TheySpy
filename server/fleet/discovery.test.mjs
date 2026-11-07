@@ -16,12 +16,14 @@ describe("discovery", () => {
     expect(parseArpAn("? (192.168.1.20) at f0:18:98:0:a:c on en0 ifscope [ethernet]\n? (192.168.1.255) at (incomplete) on en0 [ethernet]\n")).toEqual([{ ip: "192.168.1.20", mac: "f0:18:98:00:0a:0c" }]);
   });
 
-  it("syncs Pi-hole's devices into the registry, leaving out loopback and addresses outside the scan ranges", async () => {
+  it("syncs Pi-hole's devices into the registry, leaving out loopback and IPv4 addresses outside the scan ranges", async () => {
     const pihole = fakePihole({ network: piholeNetwork });
     const { discovery, fleet, sentinel } = testServices({ piholeFetch: pihole.fetchImpl, network: { neighbours: async () => [{ ip: "192.168.1.1", mac: "00:11:22:33:44:55" }, { ip: "8.8.8.8", mac: "00:11:22:33:44:56" }] } });
     sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
-    expect(await discovery.sync()).toMatchObject({ pihole: 2, arp: 1, devices: 3 });
+    // The pixel's link-local IPv6 address is kept beside its IPv4 (M38); 8.8.8.8 from the neighbour table is not.
+    expect(await discovery.sync()).toMatchObject({ pihole: 3, arp: 1, devices: 3 });
     expect(fleet.list().map((d) => d.ip).sort()).toEqual(["192.168.1.1", "192.168.1.42", "192.168.1.77"]);
+    expect(fleet.addressesOf(fleet.list().find((d) => d.ip === "192.168.1.42").id).sort()).toEqual(["192.168.1.42", "fe80::1"]);
     expect(fleet.list().find((d) => d.ip === "192.168.1.42")).toMatchObject({ vendor: "Google, Inc.", hostname: "pixel.lan" });
     expect(discovery.suggestions()).toEqual([{ cidr: "192.168.1.0/24", devices: 3 }]);
     // Pi-hole's table and the neighbour table together are the first inventory: nothing is "new".
@@ -101,5 +103,22 @@ describe("sweep 3 hygiene (M14)", () => {
     fleet.setNames(fleet.list()[0].id, { checkedAt: null });
     await discovery.sync();
     expect(asked.filter((a) => a.startsWith("100.100.100.100"))).toHaveLength(2);
+  });
+});
+
+describe("IPv6 (M38)", () => {
+  it("keeps the IPv6 addresses Pi-hole's table reports, although the scan ranges do not cover them", async () => {
+    const { fakePihole, testClock, testServices } = await import("../test-helpers.mjs");
+    const s = (iso) => Math.floor(Date.parse(iso) / 1000);
+    const now = testClock("2026-11-07T12:00:00Z");
+    const pihole = fakePihole({ network: [{ hwaddr: "AA:BB:CC:00:00:01", macVendor: "Apple", lastQuery: s("2026-11-07T11:59:00Z"), ips: [
+      { ip: "192.168.1.50", name: "phone", lastSeen: s("2026-11-07T11:58:00Z") }, { ip: "2a02:8010:1234:0:1c2d:3e4f:5a6b:7c8d", name: "phone", lastSeen: s("2026-11-07T11:57:00Z") }, { ip: "fe80::1c2d:3e4f:5a6b:7c8d", name: null, lastSeen: s("2026-11-07T11:50:00Z") },
+    ] }] });
+    const { discovery, fleet, sentinel } = testServices({ now, piholeFetch: pihole.fetchImpl, piholeEnv: { url: "http://192.0.2.5", password: "pihole-pass", write: false }, scanRanges: ["192.168.0.0/16"] });
+    expect(sentinel.effective().mode).toBeTruthy();
+    await discovery.sync();
+    const [d] = fleet.list();
+    expect(d.ip).toBe("192.168.1.50");
+    expect(fleet.addressesOf(d.id).sort()).toEqual(["192.168.1.50", "2a02:8010:1234:0:1c2d:3e4f:5a6b:7c8d", "fe80::1c2d:3e4f:5a6b:7c8d"]);
   });
 });

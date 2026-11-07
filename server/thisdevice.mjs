@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import express from "express";
+import { canonicalIp } from "./fleet/addresses.mjs";
 
 // This device (docs/PLAN.md M6, mockup 06): what applies to the browser the dashboard is open in.
 // The page sends what it can read (User-Agent Client Hints, the user agent, Global Privacy Control)
@@ -64,7 +65,7 @@ export function thisDeviceRoutes({ fleet, sentinel, software, remember = () => {
     for (const [t, at] of pending) if (now().getTime() - at > 600_000) pending.delete(t);
     const token = randomBytes(6).toString("hex");
     pending.set(token, now().getTime());
-    res.json({ token, dnsName: `ts-${token}.${dnsCheckZone}`, adProbeUrl, clientIp: req.ip });
+    res.json({ token, dnsName: `ts-${token}.${dnsCheckZone}`, adProbeUrl, clientIp: canonicalIp(req.ip) ?? req.ip });
   });
 
   router.post("/check", async (req, res) => {
@@ -94,11 +95,12 @@ export function thisDeviceRoutes({ fleet, sentinel, software, remember = () => {
       }
     }
     const gpc = req.get("sec-gpc") === "1" || body.gpc === true;
-    const deviceId = fleet.deviceByAddress().get(dns.from ?? req.ip) ?? null;
+    // The browser's address as the registry spells it (M38): a dual-stack socket reports an IPv4 client as ::ffff:….
+    const deviceId = fleet.deviceByAddress().get(canonicalIp(dns.from ?? req.ip) ?? "") ?? null;
     const device = deviceId === null ? null : fleet.get(deviceId);
     if (device) remember(device.id, { gpc, adBlocked: body.adBlocked === true, dnsThroughPihole: dns.checked ? Boolean(dns.throughPihole) : null, browser: browser ? `${browser.name} ${browser.version}` : null, browserExact: Boolean(browser?.exact), exploited: cves ? cves.filter((c) => c.kev).length : null, at: now().toISOString() });
     res.json({
-      browser, os, gpc, adBlocked: body.adBlocked === true, dns, clientIp: req.ip,
+      browser, os, gpc, adBlocked: body.adBlocked === true, dns, clientIp: canonicalIp(req.ip) ?? req.ip,
       device: device ? { id: device.id, name: device.name, ip: device.ip } : null,
       cves, cvesError,
       exploited: cves ? cves.filter((c) => c.kev).length : null,

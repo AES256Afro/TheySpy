@@ -116,3 +116,10 @@ describe("M25 B35: the check credits an address's lookups to who held it at the 
     expect(r.clients).toEqual([expect.objectContaining({ ip: "192.168.1.30", device: "tablet", lookups: 1 })]);
   });
 });
+
+describe("IPv6 (M38)", () => {
+  it("takes an IPv6 address as an address, spelled one way", () => {
+    expect(classify("2001:DB8::1")).toEqual({ kind: "ip", value: "2001:db8::1" });
+    expect(classify("[fe80::1]")).toEqual({ kind: "ip", value: "fe80::1" });
+  });
+});

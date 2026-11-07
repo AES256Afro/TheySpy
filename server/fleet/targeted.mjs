@@ -1,6 +1,6 @@
 import { promises as dnsPromises } from "node:dns";
 import net from "node:net";
-import { inCidr, normaliseMac, parseCidr } from "./addresses.mjs";
+import { canonicalIp, inCidr, normaliseMac, parseCidr } from "./addresses.mjs";
 import { attributeHits, holderAt } from "./attribution.mjs";
 import { checkPorts, profiles } from "./services.mjs";
 
@@ -23,7 +23,8 @@ export function classify(query) {
   if (/^https?:\/\//i.test(q)) {
     try { return { kind: "website", value: new URL(q).origin }; } catch { throw Object.assign(new Error(`"${q}" is not a website address`), { status: 400 }); }
   }
-  if (net.isIPv4(q)) return { kind: "ip", value: q };
+  const ip = canonicalIp(q);
+  if (ip) return { kind: "ip", value: ip };
   if (q.includes("/") && parseCidr(q)) return { kind: "network", value: parseCidr(q).cidr };
   const mac = normaliseMac(q);
   if (mac && /^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$|^[0-9a-f]{4}(\.[0-9a-f]{4}){2}$|^[0-9a-f]{12}$/i.test(q)) return { kind: "mac", value: mac };
@@ -47,7 +48,8 @@ export function classify(query) {
  * }} deps
  */
 export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, scanRanges, now = () => new Date(), checkPortsImpl = checkPorts, lookup, web }) {
-  const resolveName = lookup ?? (async (name) => { try { return (await dnsPromises.lookup(name, { family: 4 })).address; } catch { return null; } });
+  // A name's IPv4 address when it has one, else its IPv6 (M38).
+  const resolveName = lookup ?? (async (name) => { try { const all = await dnsPromises.lookup(name, { all: true }); return (all.find((a) => a.family === 4) ?? all[0])?.address ?? null; } catch { return null; } });
   const allowed = (ip) => scanRanges.some((range) => inCidr(ip, range));
   const q = {
     start: db.prepare("INSERT INTO checks (query, kind, profile, device_id, started_at, actor) VALUES (?, ?, ?, ?, ?, ?)"),

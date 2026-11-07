@@ -66,3 +66,13 @@ describe("M16 C25: the specific guess comes before the generic one", () => {
     expect(label("ps4")).toBe("Games console");
   });
 });
+
+describe("IPv6 (M38)", () => {
+  it("places IPv6 addresses: Tailscale's, link-local, unique local, and global", () => {
+    expect(networkOf("fd7a:115c:a1e0:ab12:4843:cd96:6274:2a01", "192.168.8.1")).toMatchObject({ kind: "tailscale" });
+    expect(networkOf("fe80::1", "192.168.8.1")).toMatchObject({ kind: "lan", label: "Your network (IPv6 link-local)" });
+    expect(networkOf("fd00:1::5", "192.168.8.1")).toMatchObject({ kind: "lan", label: "Your network (IPv6)" });
+    expect(networkOf("2a02:8010::5", "192.168.8.1")).toMatchObject({ kind: "other", label: "IPv6 address" });
+    expect(networkOf("::1", "192.168.8.1")).toMatchObject({ kind: "local" });
+  });
+});

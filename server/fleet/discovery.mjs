@@ -3,6 +3,7 @@ import { promises as dnsPromises } from "node:dns";
 import { readFile } from "node:fs/promises";
 import net from "node:net";
 import { promisify } from "node:util";
+import net from "node:net";
 import { hostsOf, inCidr, normaliseMac, parseCidr, slash24 } from "./addresses.mjs";
 
 // Discovery (docs/PLAN.md M4): what feeds the device registry.
@@ -185,7 +186,9 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
       const inventory = fleet.isEmpty();
       let fromPihole = 0;
       if (sentinel.effective().mode) {
-        const observations = fromPiholeNetwork(await sentinel.source().networkDevices()).filter((o) => allowed(o.ip));
+        // An IPv6 address in Pi-hole's own table asked Pi-hole from the network (M38): kept whatever
+        // the scan ranges say, which gate what TheySpy may probe, not what it may know.
+        const observations = fromPiholeNetwork(await sentinel.source().networkDevices()).filter((o) => allowed(o.ip) || net.isIPv6(o.ip));
         fleet.observe(observations, "pihole", { inventory });
         fromPihole = observations.length;
         log(`Pi-hole's network table: ${fromPihole} addresses.`);
