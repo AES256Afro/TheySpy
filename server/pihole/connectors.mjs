@@ -52,6 +52,10 @@ function logSource({ mode, describe, test, queries, networkCounts, topClients, c
     async lookupsOf(domain, { from, until }) {
       return (await collect({ from, until, name: domain })).filter((q) => within(q.domain, domain));
     },
+    /** One client's lookups over a window, oldest first (M39). @param {string} ip @param {{ from: number, until: number }} window */
+    async queriesOf(ip, { from, until }) {
+      return (await collect({ from, until, client: ip })).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    },
     async domainCounts({ client, from, until }) {
       if (!client && networkCounts) return networkCounts();
       const counts = new Map();

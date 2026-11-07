@@ -15,7 +15,25 @@ type Finding = { id: number; deviceId: number | null; source: string; kind: stri
 type Cve = { cveId: string; name?: string | null; kev?: boolean; score?: number | null; software: string[]; decision: { status: string; contradicted: boolean } | null };
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; risk: string | null; lastSeen: string };
 type Activity = { connected: boolean; total: number; blockedTotal?: number; top: { domain: string; queries: number }[]; blocked: { domain: string; blocked: number; lists: string[] }[] };
-type Hit = { indicator: string; domain: string; via: string; clientIp: string; firstSeen: string; lastSeen: string; lookups: number; blocked: number; lastStatus: string | null; tier: string | null };
+type Around = { at: string; domain: string; status: string; blocked: boolean; hit: boolean };
+type Hit = { indicator: string; domain: string; via: string; clientIp: string; firstSeen: string; lastSeen: string; lookups: number; blocked: number; lastStatus: string | null; tier: string | null; lastContext: { at: string; queries: Around[] } | null };
+
+/** "−12 s", "+3 s", "0 s": a lookup's distance from the hit. */
+const offset = (iso: string, hitAt: string) => { const s = Math.round((Date.parse(iso) - Date.parse(hitAt)) / 1000); return s === 0 ? "0 s" : `${s < 0 ? "−" : "+"}${Math.abs(s)} s`; };
+
+/** The minute around a hit (M39): what the device asked just before and after. */
+function AroundHit({ context }: { context: Hit["lastContext"] }) {
+  if (!context) return null;
+  const others = context.queries.filter((q) => !q.hit).length;
+  return (
+    <details className="small">
+      <summary>{others === 0 ? "Nothing else asked in that minute" : `What it asked around then: ${others} other lookup${others === 1 ? "" : "s"} within 30 s`}</summary>
+      <div className="list small">{context.queries.map((q, i) => (
+        <div key={`${q.at}-${q.domain}-${i}`}><span className="mono muted" style={{ minWidth: "4em" }}>{offset(q.at, context.at)}</span><span className={`badge ${q.blocked ? "b-ok" : "b-info"}`}>{q.blocked ? "blocked" : "allowed"}</span><span className={`grow mono${q.hit ? "" : " muted"}`}>{q.hit ? <b>{q.domain}</b> : q.domain}</span></div>
+      ))}</div>
+    </details>
+  );
+}
 
 const tabs = ["evidence", "exposure", "cves", "dns", "ports", "history"] as const;
 type Tab = (typeof tabs)[number];
@@ -80,7 +98,7 @@ export function DeviceScreen({ id }: { id: number }) {
           <div>
             <h3>Indicator lookups · DNS history · every address this device has held</h3>
             {hits === null ? <p className="small muted">Loading…</p> : hits.length === 0 ? <p className="small muted">None recorded.</p> : (
-              <div className="list small">{hits.map((h) => <div key={`${h.domain}-${h.clientIp}-${h.via}`}><span className={`badge ${h.blocked < h.lookups ? "b-crit" : "b-med"}`}>{h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"}</span><span className="grow"><span className="mono">{h.domain}</span>{h.domain !== h.indicator ? <span className="muted"> · indicator {h.indicator}</span> : null}{h.tier ? <span className="muted"> · {h.tier}</span> : null}<div className="muted">{h.lookups} lookup{h.lookups === 1 ? "" : "s"} from {h.clientIp} · {when(h.firstSeen)} – {when(h.lastSeen)}</div></span></div>)}</div>
+              <div className="list small">{hits.map((h) => <div key={`${h.domain}-${h.clientIp}-${h.via}`}><span className={`badge ${h.blocked < h.lookups ? "b-crit" : "b-med"}`}>{h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"}</span><span className="grow"><span className="mono">{h.domain}</span>{h.domain !== h.indicator ? <span className="muted"> · indicator {h.indicator}</span> : null}{h.tier ? <span className="muted"> · {h.tier}</span> : null}<div className="muted">{h.lookups} lookup{h.lookups === 1 ? "" : "s"} from {h.clientIp} · {when(h.firstSeen)} – {when(h.lastSeen)}</div><AroundHit context={h.lastContext} /></span></div>)}</div>
             )}
           </div>
           <h3>Findings · agent, MVT, network logs</h3>

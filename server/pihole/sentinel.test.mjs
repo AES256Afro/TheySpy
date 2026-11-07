@@ -231,3 +231,50 @@ describe("M19 C33: one poll at a time", () => {
     expect(calls).toBe(perPoll); // and a later tick polls again
   });
 });
+
+describe("the minute around a hit (M39)", () => {
+  it("keeps the client's lookups thirty seconds either side of each new hit, nearest first, the hit marked, and the device page gets the newest minute", async () => {
+    const around = [
+      { id: 101, time: t("2026-10-25T21:13:40Z"), type: "A", domain: "example.org", cname: null, status: "CACHE", client: { ip: "192.168.1.61", name: null } },
+      { id: 102, time: t("2026-10-25T21:13:55Z"), type: "A", domain: "tracker.example", cname: null, status: "GRAVITY", client: { ip: "192.168.1.61", name: null } },
+      { id: 103, time: t("2026-10-25T21:14:10Z"), type: "A", domain: "api.example.net", cname: null, status: "FORWARDED", client: { ip: "192.168.1.61", name: null } },
+      { id: 104, time: t("2026-10-25T21:15:30Z"), type: "A", domain: "late.example", cname: null, status: "FORWARDED", client: { ip: "192.168.1.61", name: null } }, // outside the minute
+      { id: 105, time: t("2026-10-25T21:14:05Z"), type: "A", domain: "someone-else.example", cname: null, status: "FORWARDED", client: { ip: "192.168.1.5", name: null } }, // another client
+    ];
+    const { sentinel, fleet, exposure, db } = connected({ queries: [...history, ...around] });
+    fleet.observe([{ ip: "192.168.1.61", mac: "3c:a9:f4:00:00:21", seenAt: "2026-10-20T00:00:00.000Z" }], "pihole", { inventory: true });
+    await sentinel.hunt();
+    const event = sentinel.hitEvents().find((e) => e.domain === `cdn.${ioc}`);
+    expect(event.context).toEqual([
+      { at: "2026-10-25T21:13:40.000Z", domain: "example.org", status: "CACHE", blocked: false, hit: false },
+      { at: "2026-10-25T21:13:55.000Z", domain: "tracker.example", status: "GRAVITY", blocked: true, hit: false },
+      { at: "2026-10-25T21:14:02.000Z", domain: `cdn.${ioc}`, status: "GRAVITY", blocked: true, hit: true },
+      { at: "2026-10-25T21:14:10.000Z", domain: "api.example.net", status: "FORWARDED", blocked: false, hit: false },
+    ]);
+    // A hit with nothing else around it has an empty minute, not a missing one.
+    expect(sentinel.hitEvents().find((e) => e.domain === other && e.clientIp === "192.168.1.20").context).toEqual([expect.objectContaining({ domain: other, hit: true })]);
+    const [device] = fleet.list().filter((d) => d.ip === "192.168.1.61");
+    const [group] = exposure.hitsByDevice().get(device.id);
+    expect(group).toMatchObject({ domain: `cdn.${ioc}`, lastContext: { at: "2026-10-25T21:14:02.000Z", queries: event.context } });
+    // The minute goes with its hit.
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hit_context").get().n).toBe(sentinel.hitEvents().length);
+    db.prepare("DELETE FROM ioc_hit_events WHERE id = ?").run(event.id);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hit_context WHERE hit_id = ?").get(event.id).n).toBe(0);
+  });
+
+  it("records the hit even when the minute cannot be read", async () => {
+    const { sentinel, pihole } = connected();
+    const realFetch = pihole.fetchImpl;
+    let calls = 0;
+    const services = testServices({ now: testClock("2026-10-29T12:00:00.000Z"), piholeFetch: async (url, init) => {
+      if (String(url).includes("client_ip=")) { calls += 1; return new Response("busy", { status: 503 }); }
+      return realFetch(url, init);
+    } });
+    services.sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass", write: true }, "owner");
+    const result = await services.sentinel.hunt();
+    expect(result.newHits).toBeGreaterThan(0);
+    expect(calls).toBeGreaterThan(0);
+    expect(services.sentinel.hitEvents().every((e) => e.context === null)).toBe(true);
+    void sentinel;
+  });
+});
