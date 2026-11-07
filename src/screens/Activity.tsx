@@ -18,6 +18,30 @@ export function sizeText(bytes: number | null): string {
 /** Which tables are the mirrors and libraries (bounded by their sources), as against what grows with use. */
 const bounded: Record<string, string> = { cves: "the CVE mirror (every CVE NVD lists, kept because an old router has old CVEs)", blocklist_versions: "the blocklist library (the last two versions of each list)", oui: "the MAC vendor registry", cves_published: "the CVE mirror's index", cves_epss: "exploit-likelihood scores", cves_kev: "known-exploited entries" };
 
+function HouseholdCard() {
+  const [set, setSet] = useState<boolean | null>(null);
+  const [password, setPassword] = useState("");
+  const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const load = useCallback(() => api<{ set: boolean }>("GET", "/api/household").then((r) => setSet(r.set), () => setSet(null)), []);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (fn: () => Promise<unknown>, done: string) => {
+    try { await fn(); setNote({ tone: "good", text: done }); setPassword(""); await load(); } catch (e) { setNote({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
+  };
+  if (set === null) return null;
+  return (
+    <section className="card" aria-labelledby="household-heading">
+      <header><h2 id="household-heading">Household</h2><span className="muted small">{set ? "a household password is set" : "no household password"}</span></header>
+      <p className="small">A second password that opens the Overview, Checks, Fleet and the device pages, and This device, and changes nothing: for the family to look without being able to touch Pi-hole, the lists or the settings. Who signed in with it is in the audit log.</p>
+      <div className="row">
+        <input className="input" type="password" autoComplete="new-password" aria-label="Household password" placeholder={set ? "type to replace (8+ characters)" : "8 characters or more"} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button className="btn primary" type="button" disabled={password.length < 8} onClick={() => act(() => api("PUT", "/api/household", { password }), set ? "Replaced; the household signs in again with the new one." : "Set. The household can sign in with it now.")}>{set ? "Replace" : "Set"}</button>
+        {set && <button className="btn" type="button" onClick={() => act(() => api("DELETE", "/api/household"), "Cleared; household sessions are ended.")}>Clear</button>}
+        {note && <span className={`small${note.tone === "bad" ? "" : " muted"}`} role={note.tone === "bad" ? "alert" : undefined}>{note.text}</span>}
+      </div>
+    </section>
+  );
+}
+
 const policyOrder: (keyof RetentionPolicy)[] = ["hits", "audit", "jobs", "checks", "events", "reports"];
 
 function DatabaseCard({ retention, onChange }: { retention: Retention | null; onChange: () => Promise<void> }) {
@@ -116,6 +140,7 @@ export function ActivityScreen() {
           <p className="small">{note.fix}</p>
         </div>
       ))}
+      <HouseholdCard />
       <DatabaseCard retention={retention} onChange={load} />
       <section className="card">
         <header><h2>Jobs</h2><span className="muted small">newest first</span></header>
