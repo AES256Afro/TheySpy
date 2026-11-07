@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
@@ -48,6 +48,7 @@ function ago(iso: string) {
 const shortMac = (mac: string) => `${mac.slice(0, 8)}:…:${mac.slice(-2)}`;
 
 export function FleetScreen() {
+  const stopped = useStopped();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted" | "pihole">("all");
   const [query, setQuery] = useState("");
@@ -73,7 +74,7 @@ export function FleetScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {

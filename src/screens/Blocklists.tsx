@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, lastLogLine, safeLink, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Source = {
   id: number; key: string; directory: string; name: string; description: string | null; url: string | null; homepage: string | null; license: string | null; syntax: string | null;
@@ -30,6 +30,7 @@ function CategoryChips({ ids, all }: { ids: string[]; all: Category[] }) {
 }
 
 export function BlocklistsScreen() {
+  const stopped = useStopped();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [candidates, setCandidates] = useState<{ total: number; candidates: Source[] }>({ total: 0, candidates: [] });
   const [search, setSearch] = useState({ q: "", category: "", directory: "" });
@@ -58,7 +59,7 @@ export function BlocklistsScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await Promise.all([load(), loadCandidates()]);
     } catch (error) {
