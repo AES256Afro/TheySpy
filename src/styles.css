@@ -224,7 +224,10 @@ table.dense tr:hover td { background: var(--panel-2); }
   .brand { padding: 4px 10px; }
   .side a.nav { white-space: nowrap; }
   main { padding: 16px; }
-  .g2, .g3, .g4, .tiers, .facts, .counts { grid-template-columns: 1fr; }
+  .g2, .g3, .tiers, .facts { grid-template-columns: 1fr; }
+  .g4, .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .g4 .kpi { font-size: 24px; }
+  .ev .mono { width: 60px; white-space: nowrap; }
   .q { grid-template-columns: 44px 1fr; } .q .btn { grid-column: 2; justify-self: start; } .q .mark { width: 44px; height: 44px; font-size: 18px; }
   .field { grid-template-columns: 1fr; }
   .field .hint { grid-column: 1; }

@@ -6,12 +6,12 @@ leaves once a sweep finds nothing. The mock-ups it led to are in [mockups-v2/](m
 
 | Category | Sweeps | Clean in a row | State |
 | --- | --- | --- | --- |
-| Readability | 1 | 0 | in the loop (R1–R6 fixed in 1.11.0) |
-| Usability | 1 | 0 | in the loop (U1 partly, U2–U4, U6 fixed in 1.11.0) |
-| Visual | 1 | 0 | in the loop |
-| Quality of life | 0 | – | not started |
-| Features the platform should have | 1 | 0 | in the loop (first pass below) |
-| Optimisation | 0 | – | not started |
+| Readability | 2 | 0 | in the loop (R1–R7 fixed) |
+| Usability | 2 | 0 | in the loop (U1 partly, U2–U6, U8 fixed; U7 open) |
+| Visual | 2 | 0 | in the loop (V3 fixed; V1, V2, V4, V5 open) |
+| Quality of life | 1 | 0 | in the loop |
+| Features the platform should have | 2 | 0 | in the loop (1, 2, 4 shipped; 3, 5, 6, 7 open) |
+| Optimisation | 1 | 0 | in the loop |
 
 ## Sweep 1 — 7 Nov 2026, at 1.9.0
 
@@ -119,3 +119,66 @@ technical, one-line descriptions: no quotations, no slogans. See [PLAN.md](PLAN.
 | U3, U6 | The sidebar can be five places and More; the default look is one look ("Per screen" stays as an option). |
 | U4 | A device page with evidence, exposure, CVEs, DNS activity, ports and history; Fleet, Exposure and the Overview link to it. Indicator lookups show under Evidence for every address the device has held. |
 | U5, U7, U8, V1–V5 | Not yet — the next sweep reads the new screens with the old ones. |
+
+## Sweep 2 — 7 Nov 2026, at 1.27.0
+
+Read in a real browser on the seeded database, at 1280 and at 375 pixels, after M15's three
+layouts and the device page; the first sweep's open items checked against the new screens; and the
+first pass of quality of life and optimisation, measured.
+
+### Readability
+
+| # | Finding | Where |
+| --- | --- | --- |
+| R5 | Still open from sweep 1: "Previous · page 1 of 1 · Next" over a result that fits on one page. | Intel |
+| R7 | The ledger shows "Blocklist updated:" and nothing after the colon: the audit entry behind it is the update run's summary (lists, updated, held, failed) and has no list name. | `overview.mjs` |
+
+### Usability
+
+| # | Finding | Where |
+| --- | --- | --- |
+| U5 | Still open: on a phone Fleet's four counters stack one per row, each a card 150 pixels tall, so the device list starts a full screen down; in the ledger the time column wraps "11:22 AM" onto two lines. | `styles.css` |
+| U8 | Still open: nothing says what trusting changes. | Fleet |
+| U7 | Open; a long action still shows a button label and one log line. Next sweep, with a shared job hook for the five screens that wait on jobs. | Fleet, Blocklists, Pi-hole, Indicators, Baselines |
+| U1 | The first-run path is still not a screen; the verdict's "could not check" list carries it for now. Next sweep. | Overview |
+
+### Visual
+
+| # | Finding | Where |
+| --- | --- | --- |
+| V3 | Still open on Evidence: "No indicator found on any device" on an install with no agent, no MVT import and no network log reads as good news, against the product's own rule. | Evidence |
+| V1, V2, V4, V5 | Open; each needs a pass over `styles.css` with the looks' tokens, which is the next sweep's visual work. | `styles.css` |
+
+### Quality of life (first pass)
+
+| # | Finding | Where |
+| --- | --- | --- |
+| Q1 | Escape does nothing anywhere: a device card on Fleet closes only by its button. | Fleet |
+| Q2 | Open: the five screens that wait on a job each poll it their own way and lose it on navigation (U7's root). | `api.ts` |
+| Q3 | Open: the Fleet filter and search reset on every visit. | Fleet |
+
+### Optimisation (first pass, measured)
+
+| # | Finding | Where |
+| --- | --- | --- |
+| O1 | Nothing is compressed: the bundle is 415 KB on the wire (112 KB gzipped) and the Indicators and candidate lists are 97 and 102 KB of JSON each, on every visit; `/api/cves` is 91 KB a page. Express sends them as they are. | `app.mjs` |
+| — | Every screen's API answer is under 30 ms on the seeded database (`/api/cves` 27 ms, the rest under 5); the bundle is cached for an hour. Not findings. | |
+
+### Features (second pass)
+
+Shipped since sweep 1: 1 (the verdict home), 2 (the device page), 4 (one look, five places and
+More). Open, in the order to build: 3 (the first-run checklist as the permanent structure), 7
+("could not check" as a first-class list — the verdict's list is a start, not the place), 5
+(global search), 6 (alert links that land on the item). Nothing further to remove.
+
+### What shipped (sweep 2) — 1.28.0, M32
+
+| # | Fix |
+| --- | --- |
+| R5 | The pager appears only past one page. |
+| R7 | "Blocklists checked: 7 lists, 2 updated, 1 held for review", amber when something was held or failed; a test. |
+| U5 | On a phone the counters sit two by two at a smaller size, and a ledger time stays on one line. |
+| U8 | The Not trusted counter and the Trust button say what trusting changes (the new badge and merge suggestions; never blocking or alerts). |
+| V3 | An Evidence locker that has checked nothing says so: "Nothing checked yet: no agent report, MVT import or network log. That is a gap, not a clean result." |
+| Q1 | Escape closes the device card. |
+| O1 | Answers are gzipped when the browser asks (the backup excepted, it is already a file); a test. |

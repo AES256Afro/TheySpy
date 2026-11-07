@@ -80,7 +80,7 @@ export function EvidenceScreen() {
         <div className="stack">
           <section className="card stack">
             <header><h2>Findings</h2><label className="small row" style={{ gap: 4 }}><input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />Show dismissed</label></header>
-            {contacted.length === 0 ? <p className="small muted">No indicator found on any device.</p> : (
+            {contacted.length === 0 ? <p className="small muted">{data.agents.some((a) => !a.revoked) || gaps.length || prints.length ? "No indicator found on any device checked." : "Nothing checked yet: no agent report, MVT import or network log. That is a gap, not a clean result."}</p> : (
               <div className="list">{contacted.map((f) => (
                 <div key={f.id} className="stack" style={{ alignItems: "stretch", gap: 4, opacity: f.status === "dismissed" ? 0.55 : 1 }}>
                   <div className="row" style={{ gap: 8 }}>

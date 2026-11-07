@@ -123,11 +123,13 @@ export function IntelScreen() {
               </div>
             </div>
           ))}</div>
-          <div className="row">
-            <button className="btn small" type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
-            <span className="small muted">page {page + 1} of {Math.max(1, Math.ceil(data.total / 50))}</span>
-            <button className="btn small" type="button" disabled={(page + 1) * 50 >= data.total} onClick={() => setPage(page + 1)}>Next</button>
-          </div>
+          {data.total > 50 && (
+            <div className="row">
+              <button className="btn small" type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
+              <span className="small muted">page {page + 1} of {Math.ceil(data.total / 50)}</span>
+              <button className="btn small" type="button" disabled={(page + 1) * 50 >= data.total} onClick={() => setPage(page + 1)}>Next</button>
+            </div>
+          )}
         </section>
         <div className="stack sticky">
           <section className="card stack">
