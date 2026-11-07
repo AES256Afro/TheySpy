@@ -398,6 +398,8 @@ export const migrations = [
   `CREATE INDEX findings_contact ON findings (device_id, source, indicator);`,
   // M36: which channels an alert has reached (ntfy, webhook), so a retry sends only to the rest.
   `ALTER TABLE alerts ADD COLUMN deliveries TEXT NOT NULL DEFAULT '{}';`,
+  // M37: a session is the owner's or the household's (a read-only password).
+  `ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'owner';`,
 ];
 
 /**

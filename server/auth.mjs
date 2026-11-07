@@ -54,8 +54,9 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
   }
   const sessionId = (token) => createHmac("sha256", secret).update(token).digest("hex");
 
-  const insertSession = db.prepare("INSERT INTO sessions (id, created_at, last_seen_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)");
-  const findSession = db.prepare("SELECT id, last_seen_at, expires_at FROM sessions WHERE id = ?");
+  const insertSession = db.prepare("INSERT INTO sessions (id, created_at, last_seen_at, expires_at, user_agent, role) VALUES (?, ?, ?, ?, ?, ?)");
+  const findSession = db.prepare("SELECT id, last_seen_at, expires_at, role FROM sessions WHERE id = ?");
+  const deleteHousehold = db.prepare("DELETE FROM sessions WHERE role = 'household'");
   const touchSession = db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?");
   const deleteSession = db.prepare("DELETE FROM sessions WHERE id = ?");
   const deleteExpired = db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
@@ -87,7 +88,7 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
     /**
      * @param {unknown} password
      * @param {{ ip: string, userAgent?: string }} client
-     * @returns {{ ok: true, token: string, expiresAt: Date } | { ok: false, retryAfterSeconds?: number }}
+     * @returns {{ ok: true, token: string, expiresAt: Date, role: "owner" | "household" } | { ok: false, retryAfterSeconds?: number }}
      */
     login(password, { ip, userAgent }) {
       const at = now().getTime();
@@ -97,7 +98,11 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
       if (current && current.failures >= failuresAllowed) {
         return { ok: false, retryAfterSeconds: Math.ceil((current.since + failureWindowMs - at) / 1000) };
       }
-      if (typeof password !== "string" || !password || !passwordMatches(password, ownerPassword)) {
+      // The owner's password first; then the household's, when one is set (M37). The same lockout
+      // counts both, so a guess at either costs the same.
+      const household = settings.get("household_password");
+      const role = typeof password === "string" && password ? (passwordMatches(password, ownerPassword) ? "owner" : household && passwordMatches(password, household) ? "household" : null) : null;
+      if (!role) {
         failures.set(ip, { failures: (current?.failures ?? 0) + 1, since: current?.since ?? at });
         audit.record("anonymous", "owner.sign_in_failed", ip);
         return { ok: false };
@@ -106,29 +111,61 @@ export function createAuth({ db, settings, audit, adminPassword, sessionSecret, 
       deleteExpired.run(now().toISOString());
       const token = randomBytes(32).toString("base64url");
       const expiresAt = new Date(at + sessionLifetimeMs);
-      insertSession.run(sessionId(token), now().toISOString(), now().toISOString(), expiresAt.toISOString(), userAgent?.slice(0, 300) ?? null);
-      audit.record("owner", "owner.signed_in", ip);
-      return { ok: true, token, expiresAt };
+      insertSession.run(sessionId(token), now().toISOString(), now().toISOString(), expiresAt.toISOString(), userAgent?.slice(0, 300) ?? null, role);
+      audit.record(role, `${role}.signed_in`, ip);
+      return { ok: true, token, expiresAt, role };
     },
 
     /** @param {string | undefined} token @returns {boolean} */
-    verify(token) {
-      if (!token) return false;
+    verify(token) { return Boolean(this.role(token)); },
+
+    /**
+     * Whose session a token is: "owner", "household", or null when it is no session at all.
+     * @param {string | undefined} token @returns {"owner" | "household" | null}
+     */
+    role(token) {
+      if (!token) return null;
       const row = /** @type {any} */ (findSession.get(sessionId(token)));
-      if (!row) return false;
+      if (!row) return null;
       if (Date.parse(row.expires_at) <= now().getTime()) {
         deleteSession.run(row.id);
-        return false;
+        return null;
       }
       if (now().getTime() - Date.parse(row.last_seen_at) > 60_000) touchSession.run(now().toISOString(), row.id);
-      return true;
+      return row.role === "household" ? "household" : "owner";
+    },
+
+    /** Whether a household password is set. */
+    householdSet() { return Boolean(settings.get("household_password")); },
+
+    /**
+     * Sets the read-only password the household signs in with, or clears it (null), which also
+     * ends every household session. Eight characters at least, and never the owner's own.
+     * @param {unknown} password @param {string} actor
+     */
+    setHouseholdPassword(password, actor) {
+      if (password === null || password === "") {
+        settings.delete("household_password");
+        deleteHousehold.run();
+        audit.record(actor, "household.password_cleared");
+        return { set: false };
+      }
+      if (typeof password !== "string" || password.length < 8) throw Object.assign(new Error("The household password needs at least 8 characters"), { status: 400 });
+      if (password.length > 200) throw Object.assign(new Error("The household password is too long (200 characters at most)"), { status: 400 });
+      if (passwordMatches(password, ownerPassword)) throw Object.assign(new Error("The household password must differ from the owner's"), { status: 400 });
+      settings.set("household_password", hashPassword(password));
+      deleteHousehold.run();
+      audit.record(actor, "household.password_set");
+      return { set: true };
     },
 
     /** @param {string | undefined} token */
     logout(token) {
       if (!token) return;
+      const row = /** @type {any} */ (findSession.get(sessionId(token)));
       deleteSession.run(sessionId(token));
-      audit.record("owner", "owner.signed_out");
+      const role = row?.role === "household" ? "household" : "owner";
+      audit.record(role, `${role}.signed_out`);
     },
   };
 }
