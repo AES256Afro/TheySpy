@@ -25,7 +25,7 @@ export function colourLiterals(directory = path.join(root, "src")) {
       if (statSync(file).isDirectory()) { walk(file); continue; }
       if (!/\.(css|ts|tsx)$/.test(name) || /\.test\.tsx?$/.test(name) || name.endsWith(".d.ts")) continue;
       readFileSync(file, "utf8").split("\n").forEach((line, index) => {
-        const code = line.replace(/\/\/.*$|\/\*.*?\*\//g, "");
+        const code = line.replace(/(?<!:)\/\/.*$|\/\*.*?\*\//g, ""); // a "//" after ":" is a URL in a string, not a comment (M21, C38)
         for (const match of code.matchAll(colourLiteral)) found.push(`${path.relative(root, file)}:${index + 1}: ${match[0]}`);
       });
     }
