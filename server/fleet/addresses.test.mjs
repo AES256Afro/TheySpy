@@ -29,3 +29,36 @@ describe("addresses", () => {
     expect(hostsOf("192.168.4.0/22")).toHaveLength(1022);
   });
 });
+
+describe("IPv6 (M38)", () => {
+  it("spells an address one way: mapped IPv4 as IPv4, IPv6 lower-case and compressed, zones and brackets gone", async () => {
+    const { canonicalIp } = await import("./addresses.mjs");
+    expect(canonicalIp("::ffff:192.168.1.5")).toBe("192.168.1.5");
+    expect(canonicalIp("::FFFF:192.168.1.5")).toBe("192.168.1.5");
+    expect(canonicalIp("2001:DB8:0:0:0:0:0:1")).toBe("2001:db8::1");
+    expect(canonicalIp("[2001:db8::1]")).toBe("2001:db8::1");
+    expect(canonicalIp("fe80::1%eth0")).toBe("fe80::1");
+    expect(canonicalIp("192.168.1.5")).toBe("192.168.1.5");
+    expect(canonicalIp("phone.local")).toBeNull();
+    expect(canonicalIp("")).toBeNull();
+    expect(canonicalIp(null)).toBeNull();
+  });
+
+  it("knows IPv6 ranges: in the scope guard, never in a sweep", async () => {
+    const { parseRange, privateRanges } = await import("./addresses.mjs");
+    expect(inCidr("fd7a:115c:a1e0:ab12::1", "fd7a:115c:a1e0::/48")).toBe(true);
+    expect(inCidr("fd00::1", "fd7a:115c:a1e0::/48")).toBe(false);
+    expect(inCidr("FE80::1", "fe80::/10")).toBe(true);
+    expect(inCidr("2001:db8::1", "fc00::/7")).toBe(false);
+    expect(inCidr("192.168.1.5", "fc00::/7")).toBe(false);
+    expect(inCidr("fd00::1", "192.168.0.0/16")).toBe(false);
+    expect(inCidr("::ffff:192.168.1.5", "192.168.0.0/16")).toBe(true);
+    expect(parseRange("fd00::/8")).toEqual({ family: 6, cidr: "fd00::/8", address: "fd00::", prefix: 8 });
+    expect(parseRange("2001:DB8::1")).toMatchObject({ family: 6, cidr: "2001:db8::1/128" });
+    expect(parseRange("fd00::/129")).toBeNull();
+    expect(parseRange("fd00::/8/x")).toBeNull();
+    expect(parseRange("192.168.1.0/24")).toMatchObject({ family: 4, first: 3232235776 });
+    expect(hostsOf("fd00::/64")).toEqual([]);
+    expect(privateRanges).toContain("fc00::/7");
+  });
+});

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { parseCidr, privateRanges } from "./fleet/addresses.mjs";
+import { parseRange, privateRanges } from "./fleet/addresses.mjs";
 
 /**
  * Everything TheySpy reads from the environment, in one place. BoxPilot sets these from the
@@ -10,7 +10,7 @@ export function readConfig(env = process.env) {
   const port = Number(env.TS_PORT ?? 8797);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`TS_PORT must be a port number, got "${env.TS_PORT}"`);
   const scanRanges = env.TS_SCAN_RANGES?.trim() ? env.TS_SCAN_RANGES.split(/[\s,]+/).filter(Boolean) : [...privateRanges];
-  for (const range of scanRanges) if (!parseCidr(range)) throw new Error(`TS_SCAN_RANGES: "${range}" is not an IPv4 range such as 192.168.1.0/24`);
+  for (const range of scanRanges) if (!parseRange(range)) throw new Error(`TS_SCAN_RANGES: "${range}" is not an IPv4 or IPv6 range such as 192.168.1.0/24 or fd00::/8`);
   return {
     host: env.TS_HOST ?? "0.0.0.0",
     port,

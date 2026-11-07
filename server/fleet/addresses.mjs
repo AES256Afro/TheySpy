@@ -25,11 +25,65 @@ export function parseCidr(cidr) {
   return { cidr: `${intToIpv4(first)}/${prefix}`, prefix, first, last: first + size - 1, size };
 }
 
-/** @param {string} ip @param {string} cidr */
+/**
+ * One spelling for an address (M38): an IPv4-mapped IPv6 address ("::ffff:192.168.1.5", which is
+ * how Node reports an IPv4 client on a dual-stack socket) is its IPv4; an IPv6 address is lower-case
+ * and compressed the one way RFC 5952 allows, with any zone ("%eth0") dropped; brackets go. Null for
+ * anything that is not an address. Every address TheySpy stores or looks up goes through here, so
+ * "2001:DB8:0:0:0:0:0:1" and "2001:db8::1" are the same device.
+ * @param {unknown} ip @returns {string | null}
+ */
+export function canonicalIp(ip) {
+  const s = String(ip ?? "").trim().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(s);
+  if (mapped) return net.isIPv4(mapped[1]) ? mapped[1] : null;
+  const family = net.isIP(s);
+  if (family === 4) return s;
+  if (family === 6) { try { return new URL(`http://[${s}]/`).hostname.slice(1, -1); } catch { return s.toLowerCase(); } }
+  return null;
+}
+
+/**
+ * An IPv4 or IPv6 range: "192.168.1.0/24", "fd00::/8", or a bare address. IPv4 ranges carry their
+ * first and last address as integers (sweeps count through them); IPv6 ranges only their prefix,
+ * as nothing sweeps 2^64 addresses.
+ * @param {string} cidr
+ * @returns {{ family: 4, cidr: string, prefix: number, first: number, last: number, size: number } | { family: 6, cidr: string, address: string, prefix: number } | null}
+ */
+export function parseRange(cidr) {
+  const [address, bits, ...rest] = String(cidr ?? "").trim().split("/");
+  if (rest.length) return null;
+  if (net.isIPv6(address)) {
+    if (bits !== undefined && !/^\d{1,3}$/.test(bits)) return null;
+    const prefix = bits === undefined ? 128 : Number(bits);
+    if (prefix > 128) return null;
+    const canonical = /** @type {string} */ (canonicalIp(address));
+    return { family: 6, cidr: `${canonical}/${prefix}`, address: canonical, prefix };
+  }
+  const v4 = parseCidr(cidr);
+  return v4 ? { family: 4, ...v4 } : null;
+}
+
+/** @type {Map<string, net.BlockList>} */
+const v6Ranges = new Map();
+
+/** Whether an address (either family) falls in a range (either family). @param {string} ip @param {string} cidr */
 export function inCidr(ip, cidr) {
-  const n = ipv4ToInt(ip);
-  const range = parseCidr(cidr);
-  return n !== null && range !== null && n >= range.first && n <= range.last;
+  const address = canonicalIp(ip);
+  const range = parseRange(cidr);
+  if (!address || !range) return false;
+  if (range.family === 4) {
+    const n = ipv4ToInt(address);
+    return n !== null && n >= range.first && n <= range.last;
+  }
+  if (!net.isIPv6(address)) return false;
+  let list = v6Ranges.get(range.cidr);
+  if (!list) {
+    list = new net.BlockList();
+    list.addSubnet(range.address, range.prefix, "ipv6");
+    v6Ranges.set(range.cidr, list);
+  }
+  return list.check(address, "ipv6");
 }
 
 /** The most addresses one sweep builds a list of: a /22, which is what the scope guard allows. */
@@ -42,7 +96,7 @@ export const maxSweepAddresses = 1024;
  */
 export function hostsOf(cidr) {
   const range = parseCidr(cidr);
-  if (!range) return [];
+  if (!range) return []; // an IPv6 range among them: in scope for checks, never swept
   if (range.size > maxSweepAddresses) throw Object.assign(new Error(`${range.cidr} holds ${range.size} addresses; one sweep visits at most ${maxSweepAddresses}`), { status: 400 });
   if (range.prefix >= 31) return Array.from({ length: range.size }, (_, i) => intToIpv4(range.first + i));
   return Array.from({ length: range.size - 2 }, (_, i) => intToIpv4(range.first + 1 + i));
@@ -83,7 +137,12 @@ export function isOwnNetworkHost(host) {
   return localSuffixes.some((suffix) => h.endsWith(suffix));
 }
 
-export const privateRanges = Object.freeze(["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]);
+// IPv6 (M38): unique local addresses (which is where Tailscale's fd7a:115c:a1e0::/48 lives) and
+// link-local ones. A device's global IPv6 address is recorded when Pi-hole reports it, but is
+// probed only if its prefix is put in TS_SCAN_RANGES, as nothing says which prefix is the owner's.
+export const privateRanges = Object.freeze(["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7", "fe80::/10"]);
+/** Tailscale's ranges: its IPv4 carrier-grade block and its IPv6 ULA prefix. */
+export const tailnetRanges = Object.freeze(["100.64.0.0/10", "fd7a:115c:a1e0::/48"]);
 
 /** The /24 an IPv4 address is in. */
 export const slash24 = (ip) => (net.isIPv4(ip) ? `${ip.split(".").slice(0, 3).join(".")}.0/24` : null);

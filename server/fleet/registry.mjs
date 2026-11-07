@@ -1,4 +1,5 @@
-import { inCidr, isRandomisedMac, normaliseMac } from "./addresses.mjs";
+import net from "node:net";
+import { canonicalIp, inCidr, isRandomisedMac, normaliseMac, tailnetRanges } from "./addresses.mjs";
 import { bestName, guessKind, networkOf } from "./explain.mjs";
 
 // The device registry (docs/PLAN.md M4). Every source reports observations (an address seen at a
@@ -102,7 +103,10 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
     return /** @type {any} */ (q.byId.get(into.id));
   }
 
-  const isTailnet = (ip) => Boolean(ip) && inCidr(ip, "100.64.0.0/10");
+  const isTailnet = (ip) => Boolean(ip) && tailnetRanges.some((r) => inCidr(ip, r));
+  // An IPv6 address beside an IPv4 one (M38) is the same device on the same network, not a move:
+  // it never takes the main address from the IPv4 one, and never counts as an address change.
+  const sameFamily = (a, b) => net.isIP(a) === net.isIP(b);
   const shortOf = (name) => (typeof name === "string" && name ? name.toLowerCase().replace(/\.$/, "").split(".")[0] : null);
   /** Names a device answers to, for telling two records of one device apart. */
   const namesOf = (r) => {
@@ -128,7 +132,8 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       const created = [];
       db.exec("BEGIN");
       try {
-        for (const o of observations) {
+        for (const raw of observations) {
+          const o = { ...raw, ip: canonicalIp(raw.ip) };
           if (!o.ip) continue;
           const mac = normaliseMac(o.mac);
           const seenAt = o.seenAt;
@@ -149,12 +154,12 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
           }
           const isLatest = seenAt >= device.last_seen;
           const hostname = o.hostname && o.hostname !== o.ip ? o.hostname : null;
-          if (isLatest && device.mac && device.ip && device.ip !== o.ip && !(isTailnet(o.ip) && !isTailnet(device.ip))) event(device.id, "ip_changed", { from: device.ip, to: o.ip, source });
+          if (isLatest && device.mac && device.ip && device.ip !== o.ip && sameFamily(device.ip, o.ip) && !(isTailnet(o.ip) && !isTailnet(device.ip))) event(device.id, "ip_changed", { from: device.ip, to: o.ip, source });
           if (isLatest && hostname && device.hostname && device.hostname !== hostname) event(device.id, "name_changed", { from: device.hostname, to: hostname, source });
           const sources = JSON.parse(device.sources);
           sources[source] = later(sources[source] ?? "", seenAt);
           // A device at home that is also reached over Tailscale keeps its home address as the main one.
-          const keepHome = isTailnet(o.ip) && device.ip && !isTailnet(device.ip);
+          const keepHome = Boolean(device.ip) && ((isTailnet(o.ip) && !isTailnet(device.ip)) || (net.isIPv6(o.ip) && net.isIPv4(device.ip)));
           q.update.run(device.mac ?? mac, isLatest && !keepHome ? o.ip : device.ip, (isLatest && hostname) || device.hostname || hostname, device.vendor || o.vendor || vendorOf(device.mac ?? mac),
             JSON.stringify(sources), earlier(device.first_seen, firstAt), later(device.last_seen, seenAt), device.id);
           q.address.run(device.id, o.ip, firstAt, seenAt);
