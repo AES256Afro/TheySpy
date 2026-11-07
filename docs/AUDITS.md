@@ -260,3 +260,27 @@ table; the ntfy address is rejected if it carries credentials. Security's streak
   domain and it has no dot to move. Nothing auto-links a bare IPv6 address, so there is nothing to
   defang against.
 - `Activity`'s one-second poll is gated on a job actually running and is cleared on unmount.
+
+### What shipped (sweep 3)
+
+All of sweep 3 is fixed in **1.10.0** (M14), each with a test that fails without its fix (checked by
+running the test before the fix, or with the wiring removed):
+
+| # | Fix |
+| --- | --- |
+| B13 | `fleet.deviceByAddress()` and `fleet.addressesOf(id)` over every address a device has held; the exposure factors, the exploited-CVE match (now by device id), the This device probe and the per-device activity read all use them. A device whose lease changed after an unblocked indicator lookup still reads `fail`. |
+| B14 | `merge()` keeps the survivor's MAC, vendor and hostname where it has them and takes the other's where it does not; `first_seen` is the earlier of the two. The same MAC seen again is the merged device, not a new one. |
+| B15 | `fromPiholeNetwork` stamps each address with its own `lastSeen`, falling back to the device's `lastQuery` only for an address with none. One MAC with three historical addresses writes no `ip_changed` event. |
+| B16 | `clearClosed` deletes only rows for ports this profile probed (`port IN json_each(?)`), so a Standard check keeps what Deep found, with the date it was last confirmed. |
+| B17 | A throw after the `checks` row exists writes `finished_at` and a `{ kind: "failed", error }` result; `recent()` says `failed` and `error`; the Check screen marks it "did not run" and opens to the reason. |
+| B18 | `sentinel.hitsSince(iso)` counts the window's own lookups per client; the briefing sums those, and "not blocked" is decided on this week's lookups alone. |
+| B19 | `alerts.detail` (one migration) carries a kev_match's `{ cveId, devices }` list; the briefing renders it. No `split(".")`. |
+| B20 | `useStopped()` in `src/api.ts`; all eight `waitForJob` call sites pass it. Tested through the Check screen: a job that never finishes stops being polled once the screen is unmounted. |
+| C13 | `overview()` reads `sentinel.hits()` once and hands it to each device's factors. |
+| C14 | A sync in which MagicDNS answered for no address sets `fleet_magicdns_silent_at`; it is not asked again for a day. An answer clears it. |
+| C15 | The audit listener logs an alert it cannot build and handles a `raise()` that rejects, instead of swallowing the first and leaking the second. |
+| C16 | The NetAlertX and Protec cards render a banner with the error when their settings cannot be read. |
+| C17 | `Object.hasOwn` before `serviceProducts`, `sourceWords`, `priorities`, the ntfy tag map, `eventText`, `sourceLabel`, `sourceTitle` and `networkBadge`. |
+| C18 | `suggestions()` normalises every device's names once, before the pair loop. |
+| C19 | A Client Hints version must match `/^[\d.]{1,30}$/`, as `confirmedVersion` must; otherwise the user agent is read instead. |
+| C20 | An exposure factor the server did not report renders as `?` ("This check was not reported"), not as "does not apply". |
