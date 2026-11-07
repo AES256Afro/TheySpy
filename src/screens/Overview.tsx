@@ -103,7 +103,7 @@ export function Verdict({ data }: { data: Data }) {
 function Gaps({ data }: { data: Data }) {
   return (
     <section className="card">
-      <header><h2>Could not check</h2><span className="muted small">{data.gapsTotal} item{data.gapsTotal === 1 ? "" : "s"}</span></header>
+      <header><h2>Could not check</h2><span className="muted small">{data.gapsTotal} item{data.gapsTotal === 1 ? "" : "s"} · <Link href="/checks">all checks</Link></span></header>
       {data.gaps.length === 0 ? <p className="small muted">Nothing outstanding.</p> : (
         <div className="list small">{data.gaps.map((g, i) => <div key={i}><span className="grow">{g.deviceId !== null && g.device ? <>{devLink(g.deviceId, g.device)} · </> : null}{g.check}<div className="muted">{g.evidence}</div></span></div>)}</div>
       )}

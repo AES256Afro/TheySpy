@@ -61,6 +61,12 @@ export async function waitForJob(id: number, stopped?: { aborted: boolean }): Pr
 /** The last line a job logged, without its timestamp. */
 export const lastLogLine = (job: Job) => job.log?.trim().split("\n").pop()?.replace(/^\S+ /, "") ?? "";
 
+/** What a screen says when a job it waited for has ended: its last line, and where the whole log is when it failed. */
+export function jobOutcome(job: Job): { tone: "good" | "bad"; text: string } {
+  const line = lastLogLine(job) || job.status;
+  return job.status === "succeeded" ? { tone: "good", text: line } : { tone: "bad", text: `${line} · the whole log is on Activity (job ${job.id})` };
+}
+
 export type Job = { id: number; kind: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "interrupted"; actor: string; created_at: string; started_at: string | null; finished_at: string | null; log?: string; result?: unknown };
 export type AuditEntry = { id: number; at: string; actor: string; action: string; target: string | null; detail: unknown };
 

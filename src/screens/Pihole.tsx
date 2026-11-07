@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNames } from "../names.ts";
-import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Config = {
   configured: boolean; mode: Mode | null; url: string | null; username: string | null; dbPath: string | null; write: boolean; watch: boolean; windowDays: number; canWrite: boolean; limits: string | null;
@@ -114,7 +114,7 @@ export function PiholeScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       await load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNames } from "../names.ts";
-import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Baseline = { id: string; name: string; severity: number; categories: string[]; lists: string[]; summary: string; custom?: boolean };
 type Category = { id: string; group: string; name: string };
@@ -71,7 +71,7 @@ export function BaselinesScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       setPicked(null);
       await load();
       await loadPreview();

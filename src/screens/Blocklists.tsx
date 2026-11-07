@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, lastLogLine, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Source = {
   id: number; key: string; directory: string; name: string; description: string | null; url: string | null; homepage: string | null; license: string | null; syntax: string | null;
@@ -60,7 +60,7 @@ export function BlocklistsScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       await Promise.all([load(), loadCandidates()]);
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });

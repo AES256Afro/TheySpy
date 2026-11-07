@@ -6,12 +6,12 @@ leaves once a sweep finds nothing. The mock-ups it led to are in [mockups-v2/](m
 
 | Category | Sweeps | Clean in a row | State |
 | --- | --- | --- | --- |
-| Readability | 2 | 0 | in the loop (R1–R7 fixed) |
-| Usability | 2 | 0 | in the loop (U1 partly, U2–U6, U8 fixed; U7 open) |
-| Visual | 2 | 0 | in the loop (V3 fixed; V1, V2, V4, V5 open) |
-| Quality of life | 1 | 0 | in the loop |
-| Features the platform should have | 2 | 0 | in the loop (1, 2, 4 shipped; 3, 5, 6, 7 open) |
-| Optimisation | 1 | 0 | in the loop |
+| Readability | 3 | 1 | in the loop (R1–R7 fixed; sweep 3 clean) |
+| Usability | 3 | 0 | in the loop (U1–U8 fixed) |
+| Visual | 3 | 0 | in the loop (V1, V3, V4, V5 fixed; V2 open) |
+| Quality of life | 2 | 0 | in the loop (Q1–Q3 fixed) |
+| Features the platform should have | 3 | 0 | in the loop (1–4, 7 shipped; 5, 6 open) |
+| Optimisation | 2 | 1 | in the loop (O1 fixed; sweep 3 clean) |
 
 ## Sweep 1 — 7 Nov 2026, at 1.9.0
 
@@ -182,3 +182,57 @@ More). Open, in the order to build: 3 (the first-run checklist as the permanent 
 | V3 | An Evidence locker that has checked nothing says so: "Nothing checked yet: no agent report, MVT import or network log. That is a gap, not a clean result." |
 | Q1 | Escape closes the device card. |
 | O1 | Answers are gzipped when the browser asks (the backup excepted, it is already a file); a test. |
+
+## Sweep 3 — 7 Nov 2026, at 1.28.0
+
+The open items from sweeps 1 and 2, each built or read again.
+
+### Readability
+
+Nothing new: every title line is one technical sentence, every number has a word next to it, and
+the ledger's lines name what happened. Clean.
+
+### Usability
+
+| # | Finding | Where |
+| --- | --- | --- |
+| U7 / Q2 | Six screens wait on a job and each said the outcome its own way — a last log line in a banner, with nowhere to go when it failed. | Fleet, Blocklists, Pi-hole, Indicators, Intel, Baselines |
+| U1 | The first-run path was still in nobody's head: the verdict's "could not check" list says what is missing device by device, not what to do first. | Overview |
+
+### Visual
+
+| # | Finding | Where |
+| --- | --- | --- |
+| V1 | Counter tiles, forms, tables and side notes all in the same bordered panel. | `styles.css` |
+| V4 | At 1600 pixels the page stretches to the window and the right rail stays 320. | `styles.css` |
+| V5 | `h2` at 15 px barely outranked the body; `h3` labels at 12 px competed with it. | `styles.css` |
+| V2 | Open: a dot in Fleet, a glyph badge in Exposure and Checks, an uppercase tier badge in Indicators. The glyph badge is now the one the two check screens share; the next sweep decides whether Fleet's dot joins it. | Fleet, Indicators |
+
+### Quality of life
+
+| # | Finding | Where |
+| --- | --- | --- |
+| Q3 | The Fleet filter and search reset on every visit. | Fleet |
+
+### Features
+
+| # | Finding |
+| --- | --- |
+| 3, 7 | A Checks screen: the ten checks as one list, each failing, not yet checked or passing per device, who fails it, what closes it; and on top the steps a fresh install has left, worked out from what the checks cannot see yet (connect Pi-hole, read its network table, turn the watch on, add an agent, open This device once, press Check my connection). Day one it is the order to set up in; later it is the same list. The verdict's "could not check" links to it. |
+| 5, 6 | Open: a global search from the check box; alert links that land on the item. |
+
+### Optimisation
+
+After O1, measured again on the seeded database: the bundle is 112 KB on the wire, the Indicators
+list 14 KB, the candidates 12 KB; every answer still under 30 ms. Nothing to do. Clean.
+
+### What shipped (sweep 3) — 1.29.0, M33
+
+| # | Fix |
+| --- | --- |
+| U7, Q2 | `jobOutcome()` in `api.ts`: the last line, and "the whole log is on Activity (job 12)" when it failed; the six screens use it. A test. |
+| U1, 3, 7 | The Checks screen (`/checks`, in Watch), with the set-up steps on top; the Overview links to it. A test renders a fresh install's steps and a check's failing devices. |
+| V1 | Counter tiles lose their border and take the second panel tone, a step below the cards that hold work. |
+| V4 | The page stops at 1480 pixels; the rail grows to 28% past 320. |
+| V5 | `h2` 16 px bold, `h3` labels 11 px. |
+| Q3 | The Fleet filter and search are kept for the tab (session storage). |

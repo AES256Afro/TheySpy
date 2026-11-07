@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
+import { api, jobOutcome, useStopped, waitForJob, type Job } from "../api.ts";
 import { Link } from "../router.tsx";
 
 type Device = {
@@ -54,8 +54,11 @@ const shortMac = (mac: string) => `${mac.slice(0, 8)}:…:${mac.slice(-2)}`;
 export function FleetScreen() {
   const stopped = useStopped();
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted" | "pihole">("all");
-  const [query, setQuery] = useState("");
+  // The filter and search come back as they were left (Q3); the tab's own storage, not the owner's defaults.
+  const remembered = (() => { try { return JSON.parse(sessionStorage.getItem("theyspy.fleet.view") ?? "{}") as { filter?: string; query?: string }; } catch { return {}; } })();
+  const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted" | "pihole">((["all", "new", "online", "offline", "untrusted", "pihole"] as const).find((f) => f === remembered.filter) ?? "all");
+  const [query, setQuery] = useState(typeof remembered.query === "string" ? remembered.query : "");
+  useEffect(() => { try { sessionStorage.setItem("theyspy.fleet.view", JSON.stringify({ filter, query })); } catch { /* storage can refuse */ } }, [filter, query]);
   const [showContainers, setShowContainers] = useState(false);
   const [selected, setSelected] = useState<DeviceDetail | null>(null);
   const [targets, setTargets] = useState("");
@@ -85,7 +88,7 @@ export function FleetScreen() {
     setMessage(null);
     try {
       const done = await waitForJob((await start()).job.id, stopped);
-      setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
+      setMessage(jobOutcome(done));
       await load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : String(error) });
