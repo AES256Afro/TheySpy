@@ -7,23 +7,21 @@ swept again unless something changes that area.
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
 | Code (structure, hygiene, dead weight) | 15 | 3 | out of the loop (left after sweep 15) |
-| Bugs (correctness) | 15 | 0 | in the loop |
+| Bugs (correctness) | 16 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
 sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
-sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25); sweep 15's in 1.22.0 (M26). Security left
-the loop after sweep 5 and code after sweep 15 (clean in sweeps 13, 14 and 15). Bugs has found
-something in every sweep but 10, and is the one category left.
+sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25); sweep 15's in 1.22.0 (M26);
+sweep 16's in 1.23.0 (M27). Security left the loop after sweep 5 and code after sweep 15 (clean in
+sweeps 13, 14 and 15). Bugs has found something in every sweep but 10, and is the one category left.
 
-Sweep 16 (bugs only, now) continues the fourth pass with what no sweep has read since the first:
-`shared.mjs`, `params.mjs`, `fleet/addresses.mjs`, the network-log parsers in `netlogs.mjs`, the
-report ingest in `agents.mjs`, `agent/theyspy-agent.py`, `src/api.ts`, `src/App.tsx`,
-`src/names.ts`, `src/screens.ts`, `src/looks/looks.ts`, `shared/contrast.mjs`, and the Baselines,
-Sites, Appearance and Activity screens; then every route's query and body parameters against
-`params.mjs`, since B37 was one that was missed.
+Sweep 17 changes the method: every API route is called against the seeded database (the review
+data set, 5 devices, 1,321 lists, 405 indicators) and its answer checked for a 500, a `NaN`, an
+"Invalid Date" or an `undefined` in the JSON; then `iocs/routes.mjs` and `blocklists/directories.mjs`,
+the two server files no sweep has read since the first pass.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -847,3 +845,31 @@ None (the third clean sweep: code leaves the loop).
 | # | Fix |
 | --- | --- |
 | B37 | `intQuery` for `limit` (1–200, default 50) and `offset`; a test: `?limit=abc` and `?offset=1e3` are 400s. |
+
+## Sweep 16 — 7 Nov 2026, at 1.22.0
+
+Bugs only, now. Read: `shared.mjs`, `params.mjs`, `fleet/addresses.mjs`, the network-log parsers,
+the agent's report ingest and `agent/theyspy-agent.py`, `src/api.ts`, `App.tsx`, `names.ts`,
+`screens.ts`, `looks/looks.ts`, `shared/contrast.mjs` and the Baselines screen; and every number
+read from a request, against `params.mjs` (B37 was the one it missed; nothing else reads a number
+raw).
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B38 | **One Suricata record with a bad timestamp ends the whole network-log import with a 500.** `fromEve()` called `toISOString()` on `new Date(e.timestamp)` before checking the date, and `toISOString()` throws on an invalid one. Reproduced: a good record and one with `"timestamp": "not a time"` → `RangeError: Invalid time value` out of `parseNetworkLog`, so a day of eve.json with one odd line imports nothing. | `netlogs.mjs` | low |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- The agent's report time is checked in `verify()` (a finite time within ten minutes), so
+  `ingest()`'s `toISOString()` cannot throw; the MCP's `days` falls back to 30 on anything that is
+  not a number.
+- `names.ts` caches the address→name map per mount for a minute; a screen open longer refetches on
+  its next mount.
+
+### What shipped (sweep 16) — 1.23.0, M27
+
+| # | Fix |
+| --- | --- |
+| B38 | The record's time is read first and an unreadable one skips that record. A test: a good record and a bad one import the good one. |

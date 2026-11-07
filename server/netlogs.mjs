@@ -37,9 +37,12 @@ function fromZeek(path, r) {
 
 /** One Suricata eve.json record, as events. @returns {NetEvent[]} */
 function fromEve(e) {
-  const at = e.timestamp ? new Date(e.timestamp).toISOString() : null;
+  // A record whose time cannot be read is skipped, not the import: toISOString() throws on an
+  // invalid date, and one odd line in a day of eve.json ended the whole import with a 500 (B38).
+  const t = e.timestamp ? new Date(e.timestamp).getTime() : Number.NaN;
   const client = e.src_ip;
-  if (!at || !client || Number.isNaN(Date.parse(at))) return [];
+  if (!Number.isFinite(t) || !client) return [];
+  const at = new Date(t).toISOString();
   if (e.event_type === "dns" && e.dns) {
     const d = e.dns;
     if (!["request", "query"].includes(d.type)) return [];
