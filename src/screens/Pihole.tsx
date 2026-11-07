@@ -15,7 +15,7 @@ type Overview = {
   preview: { checkedAt: string; count: number; domains: string[]; skippedAllowlisted: string[]; token: string } | null;
   pushes: { id: number; status: "active" | "rolled_back"; entries: number; pushedAt: string; pushedBy: string; rolledBackAt: string | null }[];
 };
-type Hit = { indicator: string; domain: string; via: "query" | "cname"; clientIp: string; clientName: string | null; firstSeen: string; lastSeen: string; lookups: number; blocked: number; lastStatus: string; tier: string | null; citation: string | null };
+type Hit = { indicator: string; domain: string; via: "query" | "cname"; clientIp: string; clientName: string | null; device: string | null; firstSeen: string; lastSeen: string; lookups: number; blocked: number; lastStatus: string; tier: string | null; citation: string | null };
 
 const tierBadge: Record<string, string> = { cc: "b-crit", validator: "b-crit", candiru: "b-high", delivery: "b-med", historical: "b-low" };
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -200,7 +200,7 @@ export function PiholeScreen() {
                 <thead><tr><th>Device</th><th>Looked up</th><th>Indicator</th><th>Lookups</th><th>Pi-hole</th><th>Last seen</th></tr></thead>
                 <tbody>{hits.map((h) => (
                   <tr key={`${h.clientIp}|${h.domain}|${h.via}`}>
-                    <td><b>{names[h.clientIp]?.name ?? h.clientName ?? h.clientIp}</b><div className="muted small"><span className="mono">{h.clientIp}</span>{names[h.clientIp] ? ` · ${names[h.clientIp].network ?? ""} · name from ${names[h.clientIp].from}` : ""}</div></td>
+                    <td><b>{h.device ?? h.clientName ?? h.clientIp}</b><div className="muted small"><span className="mono">{h.clientIp}</span>{h.device ? " · held the address at the time" : names[h.clientIp] ? ` · now ${names[h.clientIp].name}` : ""}</div></td>
                     <td className="mono" style={{ wordBreak: "break-all" }}>{h.domain}{h.via === "cname" && <div className="muted small">through a CNAME</div>}</td>
                     <td>{h.tier && <span className={`badge ${tierBadge[h.tier] ?? "b-info"}`}>{h.tier}</span>}<div className="muted small">{h.citation}</div></td>
                     <td className="mono">{h.lookups}</td>

@@ -80,14 +80,17 @@ export function createSites({ settings, secretBox, audit, fetchImpl = fetch, now
           }));
           const gotThrough = rows.filter((l) => l.blocked < l.lookups);
           // An alert for each (device, indicator) that got through and was not there at the last reading.
-          const before = new Set((snaps[site.id]?.gotThrough ?? []).map((l) => `${l.device}|${l.indicator}`));
-          const fresh = gotThrough.filter((l) => !before.has(`${l.device}|${l.indicator}`));
+          // Against every pair seen last time (kept as keys, bounded), not the twenty kept for display:
+          // comparing against those twenty made the twenty-first new on every refresh.
+          const key = (l) => `${l.device}|${l.indicator}`;
+          const before = new Set(snaps[site.id]?.gotThroughKeys ?? (snaps[site.id]?.gotThrough ?? []).map(key));
+          const fresh = gotThrough.filter((l) => !before.has(key(l)));
           if (fresh.length) audit.record("system", "sites.indicator_lookups", site.name, { site: site.name, lookups: fresh.slice(0, 20) });
           snaps[site.id] = {
             at, error: null,
             version: clip(status.version ?? status.theyspy ?? "", 20) || null,
             sections: (Array.isArray(status.sections) ? status.sections : []).slice(0, 6).map((s) => ({ title: clip(s.title, 40), tone: ["good", "warn", "bad"].includes(s.tone) ? s.tone : "unknown", lines: (Array.isArray(s.lines) ? s.lines : []).slice(0, 4).map((x) => clip(x, 240)) })),
-            lookups: rows.length, gotThrough: gotThrough.slice(0, 20),
+            lookups: rows.length, gotThrough: gotThrough.slice(0, 20), gotThroughKeys: gotThrough.slice(0, 500).map(key),
             exploited: (Array.isArray(exploited.cves) ? exploited.cves : []).length,
             online: (Array.isArray(devices.devices) ? devices.devices : []).length,
           };
