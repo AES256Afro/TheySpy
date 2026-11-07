@@ -496,7 +496,13 @@ and they lead:
   needs a token. `npm run check` green, 1.9.0 tagged, the BoxPilot manifest bumped and pinned.
 
 ### M14 — Third sweep's findings (S)
-**Status: planned.** Sweep 3 ([docs/AUDITS.md](AUDITS.md)) read the fleet registry and its checks,
+**Status (7 Nov 2026): done** (1.10.0). Every item shipped with a test that fails without its fix;
+B20's test goes through the Check screen, as the exit criterion asked, and failed with the wiring
+removed. Two things came out differently: the per-device activity read sums Pi-hole's last day
+over every address the device has held rather than only its current and previous one; and the
+briefing's exploited-software line carries the matches on the alert row (one migration adds
+`alerts.detail`), so an alert raised before 1.10.0 shows in the briefing by its message alone.
+Sweep 3 ([docs/AUDITS.md](AUDITS.md)) read the fleet registry and its checks,
 the CVE matchers, exposure, alerts, the briefing, This device, both indicator parsers and the
 thirteen screens. It is the first sweep to come back clean for a category — security found nothing,
 so its streak is 1 of 3 — and the first to find that a previous sweep's fix did not land. Eight

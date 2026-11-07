@@ -84,7 +84,7 @@ describe("sweep 3 (M14)", () => {
 
 describe("sweep 3 hygiene (M14)", () => {
   it("C14: stops asking MagicDNS for a day once it answered for nothing", async () => {
-    const { testServices, testClock } = await import("../test-helpers.mjs");
+    const { testServices } = await import("../test-helpers.mjs");
     let clock = new Date("2026-11-05T12:00:00Z");
     const asked = [];
     const { discovery, fleet, settings } = testServices({ now: () => clock, network: { neighbours: async () => [{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c" }], reverseVia: async (server, ip) => { asked.push(`${server} ${ip}`); return null; } } });
