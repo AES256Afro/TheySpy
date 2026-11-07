@@ -95,3 +95,12 @@ describe("M17 B25: a log's lookup is credited to the device that held the addres
     expect(rows).toHaveLength(2);
   });
 });
+
+describe("M27 B38", () => {
+  it("skips a Suricata record whose timestamp cannot be read instead of ending the import", () => {
+    const good = JSON.stringify({ timestamp: "2026-11-07T10:00:00.000000+0000", event_type: "dns", src_ip: "192.168.1.30", dns: { type: "query", rrname: "fine.example" } });
+    const bad = JSON.stringify({ timestamp: "not a time", event_type: "dns", src_ip: "192.168.1.30", dns: { type: "query", rrname: "x.example" } });
+    const parsed = parseNetworkLog("eve.json", `${good}\n${bad}\n`);
+    expect(parsed.events.map((e) => e.name)).toEqual(["fine.example"]);
+  });
+});
