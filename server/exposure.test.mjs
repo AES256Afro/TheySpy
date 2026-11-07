@@ -74,3 +74,23 @@ describe("sweep 3 (M14)", () => {
     expect(clean()).toMatchObject({ state: "fail", evidence: expect.stringMatching(/did not block/) });
   });
 });
+
+describe("M16", () => {
+  it("B22: a device is not blamed for a lookup made by whoever held its address before it", () => {
+    const { fleet, exposure, db } = testServices({ now: testClock("2026-11-07T12:00:00Z"), piholeEnv: { url: "http://pihole.lan", password: "x", write: false } });
+    const at = (iso) => new Date(iso).toISOString();
+    const hit = db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', ?, ?, 'adfection-c2.example', 'adfection-c2.example', 'query', '192.168.1.30', ?, 'FORWARDED', 0, 'hunt', ?)");
+    // January: a tablet at .30 looks up an unblocked indicator, then is never seen again.
+    fleet.observe([{ ip: "192.168.1.30", mac: "aa:aa:aa:00:00:01", hostname: "old-tablet", seenAt: at("2026-01-10T10:00:00Z") }], "pihole", { inventory: true });
+    hit.run(1, at("2026-01-12T10:00:00Z"), "old-tablet", at("2026-01-12T10:05:00Z"));
+    // November: a new laptop takes the same address.
+    fleet.observe([{ ip: "192.168.1.30", mac: "bb:bb:bb:00:00:02", hostname: "new-laptop", seenAt: at("2026-11-07T11:00:00Z") }], "pihole");
+    const clean = (name) => exposure.overview().devices.find((d) => d.name === name).factors.find((f) => f.id === "clean");
+    expect(clean("old-tablet").state).toBe("fail");
+    expect(clean("new-laptop")).toMatchObject({ state: "pass", evidence: expect.stringMatching(/No lookups/) });
+    // A lookup the laptop itself makes from that address is the laptop's.
+    hit.run(2, at("2026-11-07T11:30:00Z"), "new-laptop", at("2026-11-07T11:31:00Z"));
+    expect(clean("new-laptop").state).toBe("fail");
+    expect(exposure.forDevice(fleet.list().find((d) => d.hostname === "old-tablet").id).factors.find((f) => f.id === "clean").state).toBe("fail");
+  });
+});

@@ -9,7 +9,9 @@ const onlineMinutes = 15;
 const editable = ["label", "owner", "kind", "notes"];
 
 /**
- * @typedef {{ ip: string, mac?: string | null, hostname?: string | null, vendor?: string | null, seenAt: string }} Observation
+ * @typedef {{ ip: string, mac?: string | null, hostname?: string | null, vendor?: string | null, seenAt: string, firstSeenAt?: string | null }} Observation
+ * `firstSeenAt`: when the source first saw the device (Pi-hole's network table knows), so a holding
+ * starts when the device really arrived, not when TheySpy first looked.
  */
 
 /**
@@ -130,6 +132,7 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
           if (!o.ip) continue;
           const mac = normaliseMac(o.mac);
           const seenAt = o.seenAt;
+          const firstAt = o.firstSeenAt && o.firstSeenAt < seenAt ? o.firstSeenAt : seenAt;
           let device = mac ? /** @type {any} */ (q.byMac.get(mac)) : null;
           const ipOnly = /** @type {any} */ (q.ipOnly.get(o.ip));
           if (mac && device && ipOnly && ipOnly.id !== device.id) device = merge(ipOnly, device);
@@ -137,9 +140,9 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
           else if (!mac && !device) device = ipOnly ?? /** @type {any} */ (q.atIp.get(o.ip)) ?? /** @type {any} */ (q.byAddress.get(o.ip)) ?? null;
 
           if (!device) {
-            const info = q.insert.run(mac, o.ip, o.hostname || null, o.vendor || vendorOf(mac), initial ? 1 : 0, JSON.stringify({ [source]: seenAt }), seenAt, seenAt);
+            const info = q.insert.run(mac, o.ip, o.hostname || null, o.vendor || vendorOf(mac), initial ? 1 : 0, JSON.stringify({ [source]: seenAt }), firstAt, seenAt);
             const id = Number(info.lastInsertRowid);
-            q.address.run(id, o.ip, seenAt, seenAt);
+            q.address.run(id, o.ip, firstAt, seenAt);
             event(id, initial ? "inventoried" : "new", { ip: o.ip, mac, source });
             created.push(id);
             continue;
@@ -153,8 +156,8 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
           // A device at home that is also reached over Tailscale keeps its home address as the main one.
           const keepHome = isTailnet(o.ip) && device.ip && !isTailnet(device.ip);
           q.update.run(device.mac ?? mac, isLatest && !keepHome ? o.ip : device.ip, (isLatest && hostname) || device.hostname || hostname, device.vendor || o.vendor || vendorOf(device.mac ?? mac),
-            JSON.stringify(sources), earlier(device.first_seen, seenAt), later(device.last_seen, seenAt), device.id);
-          q.address.run(device.id, o.ip, seenAt, seenAt);
+            JSON.stringify(sources), earlier(device.first_seen, firstAt), later(device.last_seen, seenAt), device.id);
+          q.address.run(device.id, o.ip, firstAt, seenAt);
         }
         db.exec("COMMIT");
       } catch (error) {
@@ -296,6 +299,19 @@ export function createFleet({ db, audit, now = () => new Date(), vendorOf = () =
       for (const raw of q.all.all()) {
         const d = /** @type {any} */ (raw);
         if (d.ip && !out.has(d.ip)) out.set(d.ip, Number(d.id));
+      }
+      return out;
+    },
+    /**
+     * Who held each address, and when: for attributing a hit to the device that had the address at
+     * the time (fleet/attribution.mjs). Oldest holding first per address.
+     * @returns {Map<string, { deviceId: number, first: string, last: string }[]>}
+     */
+    addressHolders() {
+      const out = new Map();
+      for (const raw of /** @type {any[]} */ (db.prepare("SELECT device_id, ip, first_seen, last_seen FROM device_addresses ORDER BY ip, first_seen").all())) {
+        if (!out.has(raw.ip)) out.set(raw.ip, []);
+        out.get(raw.ip).push({ deviceId: Number(raw.device_id), first: String(raw.first_seen), last: String(raw.last_seen) });
       }
       return out;
     },

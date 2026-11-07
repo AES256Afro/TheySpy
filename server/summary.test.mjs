@@ -17,7 +17,7 @@ function seeded() {
   const file = path.join(dir, "theyspy.db");
   const now = testClock();
   const { db, fleet } = testServices({ db: openDatabase(file), now });
-  fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "kids-ipad", seenAt: "2026-10-29T11:59:00.000Z" }], "pihole");
+  fleet.observe([{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c", hostname: "kids-ipad", seenAt: "2026-10-29T11:59:00.000Z", firstSeenAt: "2026-10-01T00:00:00.000Z" }], "pihole");
   const [device] = fleet.list();
   const hit = db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('api', ?, ?, 'fearevolve.com', 'cdn.fearevolve.com', 'query', '192.168.1.20', NULL, ?, ?, 'watch', ?)");
   hit.run(1, "2026-10-28T10:00:00.000Z", "FORWARDED", 0, "2026-10-28T10:00:05.000Z");

@@ -51,7 +51,7 @@ export function inventoryFrom(packages) {
     // Multi-arch libraries carry their architecture: "libc6:arm64", "libssl3:amd64".
     const name = String(p?.name ?? "").toLowerCase().replace(/:[a-z0-9]+$/, "");
     // python3.11 and the like: the version is in the package and in its version.
-    const software = packageSoftware[name] ?? (/^python3\.\d+$/.test(name) ? "python" : null);
+    const software = (Object.hasOwn(packageSoftware, name) ? packageSoftware[name] : null) ?? (/^python3\.\d+$/.test(name) ? "python" : null);
     const version = software ? upstreamVersion(p.version, manager) : null;
     if (software && version && !out.has(software)) out.set(software, { software, version });
   }
@@ -77,7 +77,8 @@ export function createProtec({ settings, secretBox, fleet, agents, audit, fetchI
 
   /** The Fleet device a Protec machine is: linked by the owner, or the one with its hostname. */
   function deviceFor(machine) {
-    const linked = links()[machine.id];
+    const all = links();
+    const linked = Object.hasOwn(all, String(machine.id)) ? all[String(machine.id)] : undefined;
     if (linked && fleet.get(linked)) return linked;
     const name = shortName(machine.inventory?.hostname);
     if (!name) return null;

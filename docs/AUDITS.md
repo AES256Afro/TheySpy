@@ -346,3 +346,19 @@ pointed at a third party. Security's streak is 2.
   credentials; within what the screen says it does.
 - `src/looks/looks.ts`: nothing. Tokens are written as custom properties, never interpolated into
   CSS text.
+
+### What shipped (sweep 4) — 1.12.0, M16
+
+All of sweep 4 is fixed in **1.12.0**, each with a test that fails without its fix:
+
+| # | Fix |
+| --- | --- |
+| B22 | `fleet/attribution.mjs`: `holderAt(holders, ip, at)` — a lease stays with the device that had it until another device is seen with the address; before the first known holder, nobody. `attributeHits()` groups hit events per device the way `sentinel.hits()` groups them per address. Exposure, the Overview, `/devices/:id/hits` and the read model all credit a hit by *when* it happened. A source that knows when it first saw a device (`firstSeenAt`, from Pi-hole's network table) backdates the holding, so a fresh install's history has holders. Exit test: the January tablet's lookup stays the tablet's after the laptop takes the address; the laptop reads `pass`; the laptop's own lookup from that address is the laptop's. |
+| B23 | `web.scan()` writes `finished_at` and a failed result on any throw after its insert; `recent()` reports it `failed: true`. The test drives the website path through `checker.run()`. |
+| C21 | `cve_products (product, cve_id)`, filled as CVEs arrive and backfilled by the migration; `cves.exploitedFor(product)`; the Overview computes the exploited list and the hits once and hands both to `exposure.overview()`. |
+| C22 | `GET /api/fleet/devices/:id/exposure` and `/findings`; the device page uses them. |
+| C23 | `Q` is a component of its own. |
+| C24 | `drain()` catches the runner's own failure, records `job.runner_failed` and marks the job failed; a test makes the audit write throw and checks there is no unhandled rejection. |
+| C25 | Guesses are specific-first with word boundaries: `garage-switch` is a network switch, `nest-cam` a camera, `console` nothing. |
+| C26 | `Object.hasOwn` in `protec.mjs`. |
+| C27 | Every audit action the home screen shows has a line; the rest are not shown. |

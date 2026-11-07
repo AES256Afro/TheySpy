@@ -52,3 +52,17 @@ describe("Fleet names and breadcrumbs", () => {
     expect(asked).toEqual([]);
   });
 });
+
+describe("M16 C25: the specific guess comes before the generic one", () => {
+  it("knows a switch from a console and a Nest camera from a speaker", async () => {
+    const { guessKind } = await import("./explain.mjs");
+    const label = (n) => guessKind({ names: [n] })?.label;
+    expect(label("garage-switch")).toBe("Network switch");
+    expect(label("nest-cam")).toBe("Camera");
+    expect(label("nest-doorbell")).toBe("Camera");
+    expect(label("nest-hub")).toBe("Smart speaker");
+    expect(label("console")).toBeUndefined();
+    expect(label("PlayStation-5")).toBe("Games console");
+    expect(label("ps4")).toBe("Games console");
+  });
+});

@@ -36,7 +36,22 @@ export function createOverview({ fleet, sentinel, read, exposure, agents, audit,
       case "pihole.unreachable": return { at, action, tone: "bad", text: `Pi-hole unreachable: ${d.error ?? ""}`, link: "/pihole" };
       case "blocklists.update_quarantined": return { at, action, tone: "warn", text: `Blocklist update held: ${d.name ?? target}`, link: "/blocklists" };
       case "sites.indicator_lookups": return { at, action, tone: "bad", text: `${d.site}: a device reached an indicator address`, link: "/sites" };
-      default: return { at, action, tone: "none", text: target ? `${action} ${target}` : action, link: null };
+      case "blocklists.updated": return { at, action, tone: "none", text: `Blocklist updated: ${d.name ?? target ?? ""}${d.entries ? ` · ${Number(d.entries).toLocaleString("en")} entries` : ""}`.trim(), link: "/blocklists" };
+      case "blocklists.update_applied": case "blocklists.enabled": case "blocklists.disabled": return { at, action, tone: "none", text: `${action.split(".")[1].replace("_", " ")}: ${d.name ?? target ?? ""}`.trim(), link: "/blocklists" };
+      case "iocs.applied": case "iocs.loaded": case "iocs.seeded": return { at, action, tone: "none", text: `Indicator set ${action.split(".")[1]}${d.version ? ` ${d.version}` : ""}${d.count ? ` · ${d.count} indicators` : ""}`, link: "/indicators" };
+      case "iocs.update_available": return { at, action, tone: "warn", text: `Indicator update available${d.version ? `: ${d.version}` : ""}`, link: "/indicators" };
+      case "pihole.denylist_pushed": return { at, action, tone: "none", text: `Pushed ${d.entries ?? d.count ?? ""} entries to Pi-hole's denylist`.replace(/\s+/g, " "), link: "/pihole" };
+      case "pihole.denylist_rolled_back": return { at, action, tone: "none", text: "Rolled back a Pi-hole denylist push", link: "/pihole" };
+      case "pihole.denylist_push_failed": return { at, action, tone: "warn", text: `A Pi-hole push failed: ${d.error ?? ""}`.trim(), link: "/pihole" };
+      case "pihole.hunted": return { at, action, tone: "none", text: `Hunted Pi-hole's history: ${d.hits ?? 0} hit(s)`, link: "/pihole" };
+      case "fleet.device_forgotten": return { at, action, tone: "none", text: `Forgot device ${target ?? ""}`.trim(), link: "/fleet" };
+      case "fleet.trusted_as_yours": case "fleet.trusted_pihole_clients": return { at, action, tone: "none", text: `Trusted ${d.devices ?? d.count ?? ""} device(s)`.replace(/\s+/g, " "), link: "/fleet" };
+      case "web.checked": return { at, action, tone: d.findings ? "warn" : "none", text: `Website check ${target}: ${d.findings ?? 0} finding(s)`, link: "/check" };
+      case "backup.downloaded": return { at, action, tone: "none", text: "Backup downloaded", link: "/activity" };
+      case "netalertx.pulled": return { at, action, tone: "none", text: `NetAlertX read: ${d.devices ?? 0} devices, ${d.added ?? 0} new`, link: "/fleet" };
+      case "protec.synced": return { at, action, tone: "none", text: `Protec read: ${d.matched ?? 0} of ${d.machines ?? 0} machines matched`, link: "/fleet" };
+      case "evidence.finding_status": return { at, action, tone: "none", text: `Finding ${target} ${d.status}`, link: "/evidence" };
+      default: return null; // every action worth a line on the home screen has one above
     }
   }
 
@@ -44,12 +59,17 @@ export function createOverview({ fleet, sentinel, read, exposure, agents, audit,
     compose() {
       const at = now();
       const since24 = new Date(at.getTime() - day).toISOString();
-      const byAddress = fleet.deviceByAddress();
-      const lookups = /** @type {any[]} */ (read.indicatorLookups(7));
-      const notBlocked = lookups.filter((l) => l.blocked < l.lookups);
+      const since7 = new Date(at.getTime() - 7 * day).toISOString();
       const exploited = /** @type {any[]} */ (read.exploitedOnDevices());
-      const ex = exposure.overview();
+      const hitsByDevice = exposure.hitsByDevice(); // all time, for the checklist
+      const ex = exposure.overview({ exploited, hitsByDevice });
       const devices = fleet.list().filter((d) => d.network?.kind !== "docker");
+      const names = new Map(devices.map((d) => [d.id, d.name]));
+      // The week's lookups, each credited to the device that held its address at the time.
+      const lookups = [];
+      for (const [deviceId, groups] of exposure.hitsByDevice(since7)) for (const g of groups) lookups.push({ ...g, deviceId, device: deviceId !== null && names.has(deviceId) ? names.get(deviceId) : g.clientName ?? g.clientIp });
+      lookups.sort((a, b) => (b.lookups - b.blocked) - (a.lookups - a.blocked) || (a.lastSeen < b.lastSeen ? 1 : -1));
+      const notBlocked = lookups.filter((l) => l.blocked < l.lookups);
       const newDevices = devices.filter((d) => d.isNew);
       const watch = sentinel.watch.status();
 
@@ -59,13 +79,11 @@ export function createOverview({ fleet, sentinel, read, exposure, agents, audit,
 
       const perDevice = new Map(devices.map((d) => [d.id, { hits: 0, notBlocked: 0, kev: 0 }]));
       for (const l of lookups) {
-        const id = byAddress.get(l.clientIp);
-        const row = id === undefined ? null : perDevice.get(id);
+        const row = l.deviceId === null ? null : perDevice.get(l.deviceId);
         if (row) { row.hits += l.lookups; row.notBlocked += l.lookups - l.blocked; }
       }
       for (const e of exploited) {
-        const id = byAddress.get(e.deviceIp);
-        const row = id === undefined ? null : perDevice.get(id);
+        const row = perDevice.get(e.deviceId);
         if (row) row.kev += 1;
       }
       const scored = new Map(ex.devices.map((d) => [d.id, d]));
@@ -84,8 +102,8 @@ export function createOverview({ fleet, sentinel, read, exposure, agents, audit,
         at: at.toISOString(),
         status: { pihole: Boolean(sentinel.effective().mode), watch: Boolean(watch.enabled && !watch.lastError), devices: devices.length, online: devices.filter((d) => d.online).length },
         questions: {
-          contacts: { count: notBlocked.length, lookups: notBlocked.reduce((n, l) => n + l.lookups - l.blocked, 0), top: notBlocked.slice(0, 5).map((l) => ({ ...l, deviceId: byAddress.get(l.clientIp) ?? null })) },
-          exploited: { count: exploited.length, devices: [...new Set(exploited.map((e) => e.device))].slice(0, 8), top: exploited.slice(0, 5).map((e) => ({ cveId: e.cveId, device: e.device, deviceId: byAddress.get(e.deviceIp) ?? null, software: e.software, fixed: e.fixed ?? null })) },
+          contacts: { count: notBlocked.length, lookups: notBlocked.reduce((n, l) => n + l.lookups - l.blocked, 0), top: notBlocked.slice(0, 5) },
+          exploited: { count: exploited.length, devices: [...new Set(exploited.map((e) => e.device))].slice(0, 8), top: exploited.slice(0, 5).map((e) => ({ cveId: e.cveId, device: e.device, deviceId: e.deviceId ?? null, software: e.software, fixed: e.fixed ?? null })) },
           newDevices: { count: newDevices.length, names: newDevices.slice(0, 8).map((d) => ({ id: d.id, name: d.name, ip: d.ip })) },
           network: { failing: ex.network.filter((f) => f.state === "fail").length, unknown: ex.network.filter((f) => f.state === "unknown").length, of: ex.network.length, factors: ex.network },
         },

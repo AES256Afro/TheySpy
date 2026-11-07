@@ -40,11 +40,20 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
     markZeroDay: db.prepare("UPDATE cves SET zero_day = 1, zero_day_sources = ?, updated_at = ? WHERE cve_id = ?"),
     insertReported: db.prepare(`INSERT INTO cves (cve_id, description, zero_day, zero_day_sources, sources, first_seen, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?)`),
     ids: db.prepare("SELECT cve_id FROM cves"),
+    clearProducts: db.prepare("DELETE FROM cve_products WHERE cve_id = ?"),
+    addProduct: db.prepare("INSERT OR IGNORE INTO cve_products (product, cve_id) VALUES (?, ?)"),
+    productsOf: db.prepare("SELECT products FROM cves WHERE cve_id = ?"),
+    exploitedFor: db.prepare("SELECT c.* FROM cve_products p JOIN cves c ON c.cve_id = p.cve_id WHERE p.product = ? AND c.zero_day = 1 ORDER BY c.kev DESC, c.kev_added DESC"),
     event: db.prepare("INSERT INTO cve_events (cve_id, at, kind, detail) VALUES (?, ?, ?, ?)"),
     events: db.prepare("SELECT at, kind, detail FROM cve_events WHERE cve_id = ? ORDER BY at DESC LIMIT 50"),
     recentEvents: db.prepare("SELECT e.cve_id, e.at, e.kind, e.detail, c.kev_name, c.description FROM cve_events e JOIN cves c ON c.cve_id = e.cve_id ORDER BY e.at DESC, e.id DESC LIMIT ?"),
     counts: db.prepare(`SELECT COUNT(*) AS total, SUM(kev) AS kev, SUM(zero_day) AS zero_day, SUM(CASE WHEN epss >= 0.5 THEN 1 ELSE 0 END) AS epss_high,
       SUM(CASE WHEN kev_added >= ? THEN 1 ELSE 0 END) AS kev_recent FROM cves`),
+  };
+  /** Keeps cve_products in step with a CVE's products column. @param {string} cveId */
+  const indexProducts = (cveId) => {
+    q.clearProducts.run(cveId);
+    for (const product of JSON.parse(/** @type {any} */ (q.productsOf.get(cveId))?.products ?? "[]")) q.addProduct.run(String(product), cveId);
   };
   const transaction = (work) => {
     db.exec("BEGIN");
@@ -115,6 +124,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
             added += 1;
             if (announce) q.event.run(r.cveId, at, "new", JSON.stringify({ cvss: r.cvssScore, severity: r.cvssSeverity }));
           }
+          indexProducts(r.cveId);
         }
       });
       return { added, updated: rows.length - added };
@@ -131,6 +141,7 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
           const zeroDay = JSON.stringify([{ source: "CISA KEV", at: e.added, note: e.ransomware ? "used in ransomware campaigns" : null }]);
           if (existing) q.updateKev.run(e.added, e.due, e.ransomware ? 1 : 0, e.name, e.action, zeroDay, e.description, e.product, e.product, parsed.version ?? at, at, e.cveId);
           else q.insertKev.run(e.cveId, e.description, JSON.stringify(e.cwes), JSON.stringify(e.product ? [e.product] : []), e.added, e.due, e.ransomware ? 1 : 0, e.name, e.action, zeroDay, JSON.stringify({ kev: parsed.version ?? at }), at, at);
+          indexProducts(e.cveId);
           if (!existing?.kev && !firstLoad) {
             added.push(e.cveId);
             q.event.run(e.cveId, at, "kev_added", JSON.stringify({ name: e.name, due: e.due, ransomware: e.ransomware }));
@@ -278,6 +289,10 @@ export function createCveStore({ db, settings, audit, fetchImpl = fetch, now = (
       const rows = db.prepare(`SELECT * FROM cves ${clause} ORDER BY kev DESC, kev_added DESC, COALESCE(epss, 0) DESC, published DESC LIMIT ? OFFSET ?`)
         .all(...params, limit, Math.max(Number(filters.offset ?? 0), 0)).map(present);
       return { total, rows };
+    },
+    /** The exploited (KEV or vendor-reported) CVEs that name a product, with their CPE criteria. @param {string} product "vendor:product" */
+    exploitedFor(product) {
+      return q.exploitedFor.all(product).map((row) => ({ ...present(row), cpeMatches: JSON.parse(/** @type {any} */ (row).cpe_matches) }));
     },
     get(id) {
       const row = q.get.get(String(id).toUpperCase());

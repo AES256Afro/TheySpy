@@ -15,9 +15,11 @@ import { intParam } from "../params.mjs";
  *   library: ReturnType<typeof import("../blocklists/library.mjs").createBlocklistLibrary>,
  *   jobs: ReturnType<typeof import("../jobs.mjs").createJobRunner>,
  *   netalertx: ReturnType<typeof import("./netalertx.mjs").createNetAlertX>,
+ *   exposure: ReturnType<typeof import("../exposure.mjs").createExposure>,
+ *   agents: ReturnType<typeof import("../agents.mjs").createAgents>,
  * }} deps
  */
-export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx }) {
+export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, sentinel, library, jobs, netalertx, exposure, agents }) {
   const router = express.Router();
 
   // NetAlertX, both ways (netalertx.mjs): connect, sync now, preview and fill empty fields there.
@@ -69,12 +71,17 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
       blocked: blockedRows.map((r) => ({ domain: r.domain, blocked: r.blocked, lists: [...(matches.get(r.domain)?.lists ?? [])].slice(0, 3) })),
     });
   });
-  // Indicator lookups recorded for the device under any address it has held (M15 device page).
+  // Indicator lookups credited to the device: those made from an address while it held it (M16).
   router.get("/devices/:id/hits", (req, res) => {
     const device = fleet.get(id(req));
     if (!device) return res.status(404).json({ error: "No such device" });
-    const addresses = new Set([device.ip, ...fleet.addressesOf(device.id)].filter(Boolean));
-    res.json({ connected: Boolean(sentinel.effective().mode), hits: sentinel.hits().filter((h) => addresses.has(h.clientIp)) });
+    res.json({ connected: Boolean(sentinel.effective().mode), hits: exposure.hitsByDevice().get(device.id) ?? [] });
+  });
+  router.get("/devices/:id/exposure", (req, res) => res.json(exposure.forDevice(id(req))));
+  router.get("/devices/:id/findings", (req, res) => {
+    const deviceId = id(req);
+    if (!fleet.get(deviceId)) return res.status(404).json({ error: "No such device" });
+    res.json({ findings: agents.findings().filter((f) => f.deviceId === deviceId) });
   });
   router.get("/devices/:id", (req, res) => {
     const device = fleet.get(id(req));

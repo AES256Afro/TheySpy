@@ -585,7 +585,7 @@ carries information, no quotations, no slogans.
   1.11.0 tagged, the manifest bumped and pinned.
 
 ### M16 — Fourth sweep's findings (S)
-**Status: planned.** Sweep 4 ([docs/AUDITS.md](AUDITS.md)) read the website check, the CVE store
+**Status (7 Nov 2026): done** (1.12.0). Every item shipped with a test that fails without its fix. One addition the plan did not foresee: a holding now starts when the *source* first saw the device (Pi-hole's network table carries `firstSeen`), so on a fresh install the weeks of history Pi-hole already has are credited to the devices that made them rather than to nobody. **Originally:** Sweep 4 ([docs/AUDITS.md](AUDITS.md)) read the website check, the CVE store
 and lookups, port services, the kind guesses, OUI, NetAlertX, Protec, backup, summary, the read
 model, jobs, the looks, and M14's and M15's own code. Security is clean for the second sweep
 running. Two bugs, seven pieces of hygiene; all reproduced but the one marked by construction.

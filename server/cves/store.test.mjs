@@ -175,3 +175,16 @@ describe("CVE feeds", () => {
     expect(fresh.cves.stats().feeds.nvd).toMatchObject({ through: expect.any(String), progress: null });
   });
 });
+
+describe("M16 C21: exploited CVEs per product are a lookup", () => {
+  it("indexes products as CVEs arrive and answers by product", async () => {
+    const { testServices } = await import("../test-helpers.mjs");
+    const { cves, db } = testServices();
+    cves.upsertNvd([{ cveId: "CVE-2026-0001", published: "2026-01-01", modified: "2026-01-02", status: "Analyzed", description: "nginx bug", cvssScore: 7, cvssSeverity: "HIGH", cvssVector: null, cwes: [], products: ["f5:nginx"], cpeMatches: [] }], { announce: false });
+    expect(cves.exploitedFor("f5:nginx")).toEqual([]); // not exploited yet
+    cves.applyKev({ version: "2026.11.07", entries: [{ cveId: "CVE-2026-0001", added: "2026-11-07", due: "2026-11-28", ransomware: false, name: "nginx thing", action: "patch", description: "nginx bug", product: "f5:nginx", cwes: [] }] });
+    expect(cves.exploitedFor("f5:nginx").map((c) => c.cveId)).toEqual(["CVE-2026-0001"]);
+    expect(cves.exploitedFor("nginx:nginx")).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM cve_products").get().n).toBe(1);
+  });
+});

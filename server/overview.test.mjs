@@ -40,3 +40,15 @@ describe("the overview (M15)", () => {
     expect(mine[1]).toMatchObject({ tone: "warn", text: "New device Espressif 192.168.1.88", link: "/fleet" });
   });
 });
+
+describe("M16 C27", () => {
+  it("shows a line for the actions it knows and nothing for the rest", () => {
+    const { overview, audit } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    audit.record("system", "blocklists.updated", "hagezi-normal", { name: "HaGeZi Normal", entries: 2391106 });
+    audit.record("owner", "some.future_action", "x");
+    const lines = overview.compose().events;
+    expect(lines.find((e) => e.action === "blocklists.updated")).toMatchObject({ text: "Blocklist updated: HaGeZi Normal · 2,391,106 entries", link: "/blocklists" });
+    expect(lines.some((e) => e.action === "some.future_action")).toBe(false);
+    expect(lines.every((e) => !/^[a-z]+\.[a-z_]+( |$)/.test(e.text))).toBe(true);
+  });
+});
