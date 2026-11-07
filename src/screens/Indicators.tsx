@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Provenance = { track: "bundled" | "release" | "main"; release?: string; signedBy?: string; signedAt?: string; sha256?: string; note: string };
 type Version = { id: number; status: "pending" | "active" | "superseded" | "rejected"; sha256: string; asof: string | null; count: number; provenance: Provenance; fetchedAt: string; decidedAt: string | null; decidedBy: string | null; changes?: { added: number; removed: number; changed: number } };
@@ -49,6 +49,7 @@ function DiffLists({ diff }: { diff: Diff }) {
 }
 
 export function IndicatorsScreen() {
+  const stopped = useStopped();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [pendingDiff, setPendingDiff] = useState<Diff | null>(null);
@@ -73,7 +74,7 @@ export function IndicatorsScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {

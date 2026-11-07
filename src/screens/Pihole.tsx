@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNames } from "../names.ts";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Config = {
   configured: boolean; mode: Mode | null; url: string | null; username: string | null; dbPath: string | null; write: boolean; watch: boolean; windowDays: number; canWrite: boolean; limits: string | null;
@@ -32,6 +32,7 @@ const sources: Record<Mode, { label: string; address?: string; addressHint?: str
 };
 
 function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: string) => void }) {
+  const stopped = useStopped();
   const [mode, setMode] = useState<Mode>(config.mode ?? "api");
   const [url, setUrl] = useState(config.url ?? "");
   const [username, setUsername] = useState(config.username ?? "");
@@ -55,7 +56,7 @@ function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: stri
       }
       await api("PUT", "/api/pihole/settings", body);
       setPassword("");
-      const job = await waitForJob((await api<{ job: Job }>("POST", "/api/pihole/test")).job.id);
+      const job = await waitForJob((await api<{ job: Job }>("POST", "/api/pihole/test")).job.id, stopped);
       onSaved(job.status === "succeeded" ? lastLogLine(job) : `Saved, but the connection failed: ${lastLogLine(job)}`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -88,6 +89,7 @@ function ConnectForm({ config, onSaved }: { config: Config; onSaved: (text: stri
 }
 
 export function PiholeScreen() {
+  const stopped = useStopped();
   const names = useNames();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [hits, setHits] = useState<Hit[]>([]);
@@ -111,7 +113,7 @@ export function PiholeScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {

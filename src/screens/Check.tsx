@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, lastLogLine, waitForJob } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob } from "../api.ts";
 
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; banner: string | null; tls: { protocol: string; subject: string | null; issuer: string | null; validTo: string | null; selfSigned: boolean } | null; risk: string | null; lastSeen?: string };
 type Hit = { domain: string; indicator: string; lookups: number; lastAt: string; lastStatus: string; citation?: { label: string } | null };
@@ -27,6 +27,7 @@ const profileHelp: Record<string, string> = {
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 export function CheckScreen() {
+  const stopped = useStopped();
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const [profile, setProfile] = useState("standard");
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -52,7 +53,7 @@ export function CheckScreen() {
     try {
       const { job } = await api<{ job: { id: number } }>("POST", "/api/fleet/check", { query, profile });
       setBusy("Checking…");
-      const done = await waitForJob(job.id);
+      const done = await waitForJob(job.id, stopped);
       if (done.status !== "succeeded") throw new Error(lastLogLine(done) || "The check failed");
       const checkId = (done.result as { checkId?: number } | null)?.checkId;
       if (checkId) await show(checkId);

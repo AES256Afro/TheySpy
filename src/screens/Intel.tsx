@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, lastLogLine, safeLink, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, safeLink, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Cve = {
   cveId: string; published: string | null; description: string | null; cvss: number | null; severity: string | null; vector: string | null; cwes: string[]; products: string[];
@@ -29,6 +29,7 @@ const productLabel = (p: string) => p.split(":").map((x) => x.replace(/_/g, " ")
 const feedNames: Record<string, string> = { kev: "CISA KEV", nvd: "NVD", epss: "EPSS", advisories: "vendor advisories", first: "first CVE load" };
 
 export function IntelScreen() {
+  const stopped = useStopped();
   const [data, setData] = useState<Overview | null>(null);
   const [filters, setFilters] = useState({ kev: false, minEpss: "", severity: "", q: "", product: "" });
   const [page, setPage] = useState(0);
@@ -51,7 +52,7 @@ export function IntelScreen() {
     setMessage(null);
     try {
       const { job } = await api<{ job: Job }>("POST", "/api/cves/update");
-      const done = await waitForJob(job.id);
+      const done = await waitForJob(job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {
