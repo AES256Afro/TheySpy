@@ -304,7 +304,7 @@ Said plainly, in the order I would take them; none is a finding against what exi
    owner who will not run an ntfy client.
 5. **Installable on a phone** (built: M36, 1.32.0). This device is the screen built for a phone; a web manifest and an
    icon would let it sit on the home screen.
-6. **Pi-hole's own query log as evidence.** A hit is kept as one row; the surrounding minute of
+6. **Pi-hole's own query log as evidence** (built: M39, 1.35.0). A hit is kept as one row; the surrounding minute of
    that client's lookups (what it asked just before and after) would turn a hit into a story
    without storing the whole log.
 7. **A read-only view for the household** (built: M37, 1.33.0). One owner password opens everything; a second password

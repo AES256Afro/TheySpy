@@ -793,7 +793,12 @@ a lookup from an IPv6 address is credited to the device that holds it, and the l
 (`addresses.mjs`) already know the private ranges.
 
 ### M39 — The minute around a hit (S)
-When a hit is recorded, the surrounding minute of that client's lookups (thirty seconds either
+**Status (7 Nov 2026): done** (1.35.0). Each source (Pi-hole's API and database, AdGuard,
+Technitium, OPNsense) answers one client's lookups over a window; the sentinel reads the minute
+once per client and minute per batch (fifty reads at most), keeps the thirty lookups nearest each
+hit with the hit marked, in `hit_context`, gone with the hit; the device page shows them under the
+hit with each one's distance in seconds. A read that fails leaves the hit without its minute.
+**Originally:** When a hit is recorded, the surrounding minute of that client's lookups (thirty seconds either
 side) is kept with it from the source's query log, capped, so the device page can show what it
 asked just before and after, without storing the log.
 
