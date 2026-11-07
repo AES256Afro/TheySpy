@@ -33,6 +33,7 @@ import { createQuietRunner } from "./quietly.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
+import { createRetention, retentionJobKinds } from "./retention.mjs";
 import { createNetworkLogs } from "./netlogs.mjs";
 import { createEgress, hostOf } from "./egress.mjs";
 import { createPacedFetch } from "./pacing.mjs";
@@ -92,14 +93,15 @@ read = createReadModel({ fleet, sentinel, cves, deviceCves, digest: () => digest
 const tokens = createApiTokens({ db, audit });
 const exposure = createExposure({ fleet, sentinel, agents, read, deviceCves, settings, audit });
 const overview = createOverview({ fleet, sentinel, read, exposure, agents, audit });
-const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
+const retention = createRetention({ db, settings, audit });
+const jobs = createJobRunner({ db, audit, kinds: { ...jobKinds, ...retentionJobKinds(retention), ...iocJobKinds({ store: iocStore, updater: createIocUpdater(), settings }), ...piholeJobKinds(sentinel), ...blocklistJobKinds(library), ...baselineJobKinds(baselines), ...fleetJobKinds(discovery), ...targetedJobKinds(checker), ...ouiJobKinds(oui), ...cveJobKinds(cves, advisories) } });
 
 if (auth.generatedPassword) {
   // Shown once. Only its hash is kept; set TS_ADMIN_PASSWORD to choose your own.
   console.log(`\nTheySpy owner password (shown once): ${auth.generatedPassword}\n`);
 }
 
-const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup: createBackup({ db, audit }), netalertx, sites, protec, netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
+const server = createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup: createBackup({ db, audit }), retention, netalertx, sites, protec, netlogs: createNetworkLogs({ db, fleet, iocStore, audit }) }).listen(config.port, config.host, () => {
   audit.record("system", "theyspy.started", null, { version: productVersion });
   console.log(`TheySpy ${productVersion} listening on http://${config.host}:${config.port} (data in ${config.dataDirectory})`);
 });
@@ -181,6 +183,13 @@ if (config.cvesAuto) {
   const retry = setInterval(() => { void alerts.retry().catch(() => {}); }, 10 * 60 * 1000);
   const weekly = setInterval(() => { const n = new Date(); if (n.getDay() === 1 && n.getHours() >= 8) void digest.sendWeekly().catch(() => {}); }, 60 * 60 * 1000);
   for (const t of [retry, weekly]) t.unref();
+}
+
+// Retention (retention.mjs): what has aged out goes once a day, the first time ten minutes after
+// start, as a job so Activity shows what went.
+{
+  const trim = () => jobs.enqueue("retention.trim", { actor: "system" });
+  for (const t of [setTimeout(trim, 10 * 60 * 1000), setInterval(trim, day)]) t.unref();
 }
 
 // Watch Pi-hole's new queries every 30 seconds once it is connected (the loop idles until then).

@@ -68,6 +68,9 @@ export function jobOutcome(job: Job): { tone: "good" | "bad"; text: string } {
 }
 
 export type Job = { id: number; kind: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "interrupted"; actor: string; created_at: string; started_at: string | null; finished_at: string | null; log?: string; result?: unknown };
+export type RetentionPolicy = { hits: number; audit: number; jobs: number; checks: number; events: number; reports: number };
+export type RetentionSize = { bytes: number; free: number; tables: { name: string; rows: number; bytes: number | null }[]; lastTrim: { at: string; removed: Record<string, number>; compacted: boolean } | null };
+export type Retention = { policy: RetentionPolicy; labels: Record<keyof RetentionPolicy, string>; limits: { min: number; max: number }; size: RetentionSize };
 export type AuditEntry = { id: number; at: string; actor: string; action: string; target: string | null; detail: unknown };
 
 /**

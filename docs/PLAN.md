@@ -743,6 +743,57 @@ pixels, headings that outrank the body).
 distinction. Every category has had its three sweeps; with the first stage closed after sweep 25,
 the audit loop ends here. What may still be missing is listed at the end of UI-AUDIT.md.
 
+### The third stage — what was missing
+
+The audit loop found nothing more wrong with what exists; the second stage's closing list names
+what does not exist yet. These milestones build that list, in the order it was given, one release
+each, with the same rule as the loop: every item ships with a test that fails without it. Where
+the real installation (BigBox, 9 days at 1.7.1, a 204 MB database) said something different from
+the list, the milestone says so.
+
+### M35 — Retention (S)
+**Status (7 Nov 2026): done** (1.31.0). The four tables the list named (`ioc_hit_events`,
+`audit_log`, `jobs`, `checks`) grow for ever but slowly: BigBox had 471 audit rows after nine days.
+What was 134 of its 204 MB is the CVE mirror (108,078 CVEs back to 1997, kept because an old router
+has old CVEs), and 32 MB the blocklist versions, which already keep only the last two. So: a
+retention policy for the event tables (hits a year, audit, jobs and device events ninety days,
+finished checks a year), applied by a daily job, with the file compacted when a tenth of it is
+free; and a Database card on Activity that says how big the file is, which tables fill it, and
+when it was last trimmed. The mirror is bounded (NVD's size) and is said to be.
+
+### M36 — On a phone, and a second channel (S)
+A web manifest and icons so This device sits on a phone's home screen. A webhook alongside ntfy:
+a URL the owner gives, each alert and the weekly briefing POSTed as JSON with an HMAC signature
+in a header, so a Discord, Slack or Home Assistant relay can take it; delivery and retries as ntfy
+has them.
+
+### M37 — A read-only password for the household (S)
+A second password that opens the Overview, Checks, Fleet and the device pages, This device and
+the Briefing, and nothing that changes Pi-hole, the lists or the settings. The API refuses every
+write for that session (403, named), the sidebar hides what it cannot do, and the audit log says
+who looked.
+
+### M38 — IPv6 (M)
+Scan ranges, sweeps, the network table, `deviceByAddress` and the lookup attribution all take
+IPv6: a device is one device under its IPv4 and its IPv6 addresses (held on `device_addresses`),
+a lookup from an IPv6 address is credited to the device that holds it, and the local-address rules
+(`addresses.mjs`) already know the private ranges.
+
+### M39 — The minute around a hit (S)
+When a hit is recorded, the surrounding minute of that client's lookups (thirty seconds either
+side) is kept with it from the source's query log, capped, so the device page can show what it
+asked just before and after, without storing the log.
+
+### M40 — TLS of its own (M)
+A self-signed certificate made on first start (its fingerprint shown on Activity so a phone can
+pin it), HTTPS on a second port, and the plain-HTTP note on Activity replaced by the way to the
+secure one. ACME when a public name is set is left for later: BoxPilot already does that in front.
+
+### M41 — The agent on a schedule from TheySpy's side (S)
+The enrol page writes the schedule as well as the key: a cron line, a launchd plist or a Task
+Scheduler command, generated for the machine's platform, and the "last report overdue" check
+knows the interval it set.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
