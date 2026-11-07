@@ -9,6 +9,12 @@ import { parseRange, privateRanges } from "./fleet/addresses.mjs";
 export function readConfig(env = process.env) {
   const port = Number(env.TS_PORT ?? 8797);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`TS_PORT must be a port number, got "${env.TS_PORT}"`);
+  // HTTPS of its own (M40): a second port with a self-made certificate; "off" or 0 leaves only HTTP.
+  const tlsRaw = (env.TS_TLS_PORT ?? "8798").trim().toLowerCase();
+  const tlsPort = tlsRaw === "off" || tlsRaw === "0" || tlsRaw === "" ? 0 : Number(tlsRaw);
+  if (!Number.isInteger(tlsPort) || tlsPort < 0 || tlsPort > 65535) throw new Error(`TS_TLS_PORT must be a port number or "off", got "${env.TS_TLS_PORT}"`);
+  if (tlsPort && tlsPort === port) throw new Error(`TS_TLS_PORT must differ from TS_PORT (${port})`);
+  const tlsNames = env.TS_TLS_NAMES?.trim() ? env.TS_TLS_NAMES.split(/[\s,]+/).filter(Boolean).map((n) => n.toLowerCase()) : [];
   const scanRanges = env.TS_SCAN_RANGES?.trim() ? env.TS_SCAN_RANGES.split(/[\s,]+/).filter(Boolean) : [...privateRanges];
   for (const range of scanRanges) if (!parseRange(range)) throw new Error(`TS_SCAN_RANGES: "${range}" is not an IPv4 or IPv6 range such as 192.168.1.0/24 or fd00::/8`);
   return {
@@ -18,6 +24,8 @@ export function readConfig(env = process.env) {
     adminPassword: env.TS_ADMIN_PASSWORD?.trim() || null,
     sessionSecret: env.TS_SESSION_SECRET?.trim() || null,
     cookieSecure: env.TS_COOKIE_SECURE === "true",
+    tlsPort,
+    tlsNames,
     // Daily look for a newer indicator set (it is only offered for review, never applied).
     iocAutoCheck: env.TS_IOC_AUTOCHECK !== "false",
     // Look for new blocklists daily and update the enabled ones every 6 hours.

@@ -47,7 +47,9 @@ On BoxPilot, use the catalog entry in [boxpilot/theyspy.yaml](boxpilot/theyspy.y
 | `TS_LOOK` | `auto` | Default look: `auto`, `ops`, `light`, `pihole`, `evidence`, `paper`, `glass`. |
 | `TS_BRAND_NAME` / `TS_BRAND_TAGLINE` | `TheySpy` / empty | Name and tagline shown in the app. |
 | `TS_ACCENT` | empty | Accent colour such as `#39c6ff`. |
-| `TS_COOKIE_SECURE` | `false` | Set `true` when served over HTTPS. |
+| `TS_COOKIE_SECURE` | `false` | Set `true` when served over HTTPS by a proxy. A session set over TheySpy's own HTTPS port is Secure by itself. |
+| `TS_TLS_PORT` | `8798` | HTTPS with a certificate TheySpy makes on first start (`data/tls/`), beside plain HTTP on `TS_PORT`; its fingerprint is on Activity. `off` leaves HTTP only. |
+| `TS_TLS_NAMES` | empty | Extra host names to put on that certificate, comma-separated. |
 | `TS_PIHOLE_URL` / `TS_PIHOLE_PASSWORD` | empty | Pi-hole 6's address and an app password. Overrides the Pi-hole Sentinel screen. |
 | `TS_PIHOLE_DB` | empty | Path to a read-only `pihole-FTL.db` instead of the API (hunting and watching only). |
 | `TS_PIHOLE_WRITE` | unset | `false` forbids changing Pi-hole whatever the screen says; `true` allows it. Unset: the screen decides. |

@@ -3,10 +3,11 @@
 services:
   theyspy:
     build: .
-    image: ghcr.io/aes256afro/theyspy:1.35.0
+    image: ghcr.io/aes256afro/theyspy:1.36.0
     restart: unless-stopped
     ports:
       - "8797:8797"
+      - "8798:8798"
     env_file:
       - path: .env
         required: false

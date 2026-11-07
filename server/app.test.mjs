@@ -10,10 +10,10 @@ import { fakePihole, fakeWeb, testClock, testServices, vendored } from "./test-h
 const servers = [];
 afterEach(() => { for (const server of servers.splice(0)) server.close(); });
 
-async function start({ env = {}, staticDirectory, services: options = {} } = {}) {
+async function start({ env = {}, staticDirectory, services: options = {}, tls = null } = {}) {
   const services = testServices(options);
   const config = readConfig({ TS_DATA_DIR: tmpdir(), ...env });
-  const app = createApp({ config, ...services, ...(staticDirectory ? { staticDirectory } : { staticDirectory: path.join(tmpdir(), "theyspy-no-dist") }) });
+  const app = createApp({ config, ...services, tls, ...(staticDirectory ? { staticDirectory } : { staticDirectory: path.join(tmpdir(), "theyspy-no-dist") }) });
   const server = app.listen(0, "127.0.0.1");
   servers.push(server);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -607,5 +607,46 @@ describe("M37 household", () => {
       expect([url, r.status, r.body.error]).toEqual([url, 403, "The household password can look at this installation, not change it"]);
     }
     expect(auth.householdSet()).toBe(true);
+  });
+});
+
+describe("M40 TLS of its own", () => {
+  it("reports the certificate, and a session set over HTTPS is Secure while one over HTTP is not", async () => {
+    const { selfSignedCertificate } = await import("./tls.mjs");
+    const https = await import("node:https");
+    const made = selfSignedCertificate({ names: ["localhost"], addresses: ["127.0.0.1"] });
+    const tls = { port: 0, fingerprint: made.fingerprint, notAfter: made.notAfter, names: made.names, addresses: made.addresses };
+    const { request, config, ...services } = await start({ tls });
+    void config;
+    await request("POST", "/api/login", { password: "correct horse" });
+    expect((await request("GET", "/api/tls")).body).toEqual({ enabled: true, ...tls });
+
+    // Plain HTTP: no Secure flag (TS_COOKIE_SECURE is off).
+    const { request: plain } = await start();
+    const over = await plain("POST", "/api/login", { password: "correct horse" });
+    expect(over.headers.get("set-cookie")).not.toContain("Secure");
+
+    // The same app over HTTPS: the cookie is Secure by itself.
+    const app = createApp({ config: readConfig({ TS_DATA_DIR: tmpdir() }), ...testServices(), tls, staticDirectory: path.join(tmpdir(), "theyspy-no-dist") });
+    const server = https.createServer({ key: made.key, cert: made.cert }, app);
+    servers.push(server);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(null)));
+    const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
+    // node:https rather than fetch: the project's undici and Node's own differ, and a dispatcher from one is refused by the other.
+    const response = await new Promise((resolve, reject) => {
+      const body = JSON.stringify({ password: "correct horse" });
+      const req = https.request({ host: "127.0.0.1", port, path: "/api/login", method: "POST", rejectUnauthorized: false, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-theyspy": "1" } }, (res) => { res.resume(); res.on("end", () => resolve({ status: res.statusCode, cookie: String(res.headers["set-cookie"] ?? "") })); });
+      req.on("error", reject);
+      req.end(body);
+    });
+    expect(response.status).toBe(200);
+    expect(response.cookie).toContain("; Secure");
+    void services;
+  });
+
+  it("says HTTPS is off when there is no certificate", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    expect((await request("GET", "/api/tls")).body).toEqual({ enabled: false });
   });
 });

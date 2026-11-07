@@ -60,6 +60,7 @@ function readCookie(header, name) {
  *   cves: ReturnType<typeof import("./cves/store.mjs").createCveStore>,
  *   backup: ReturnType<typeof import("./backup.mjs").createBackup>,
  *   retention: ReturnType<typeof import("./retention.mjs").createRetention>,
+ *   tls?: { port: number, fingerprint: string, notAfter: string, names: string[], addresses: string[] } | null,
  *   netalertx: ReturnType<typeof import("./fleet/netalertx.mjs").createNetAlertX>,
  *   sites: ReturnType<typeof import("./sites.mjs").createSites>,
  *   protec: ReturnType<typeof import("./protec.mjs").createProtec>,
@@ -68,7 +69,7 @@ function readCookie(header, name) {
  *   staticDirectory?: string,
  * }} deps
  */
-export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup, retention, netalertx, sites, protec, netlogs, staticDirectory = distDirectory }) {
+export function createApp({ config, settings, audit, auth, jobs, iocStore, sentinel, library, baselines, fleet, discovery, checker, oui, cves, web, software, deviceCves, alerts, digest, read, tokens, advisories, agents, exposure, overview, backup, retention, netalertx, sites, protec, netlogs, tls = null, staticDirectory = distDirectory }) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -122,8 +123,9 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   const requireAnyone = (req, res, next) => (signedIn(req) ? next() : refuse(req, res));
   const householdReads = (req, res, next) => (roleOf(req) === "owner" || (roleOf(req) === "household" && req.method === "GET") ? next() : refuse(req, res));
 
-  const cookie = (value, maxAgeSeconds) =>
-    `${sessionCookie}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${config.cookieSecure ? "; Secure" : ""}`;
+  // A session set over HTTPS stays on HTTPS (M40): the cookie is Secure whenever the request was, not only when configured so.
+  const cookie = (req, value, maxAgeSeconds) =>
+    `${sessionCookie}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${config.cookieSecure || req.secure ? "; Secure" : ""}`;
 
   app.get("/api/session", (req, res) => res.json({ signedIn: signedIn(req), role: roleOf(req), version: productVersion }));
 
@@ -136,13 +138,13 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
       }
       return res.status(401).json({ error: "That password is not right." });
     }
-    res.set("Set-Cookie", cookie(result.token, Math.floor((result.expiresAt.getTime() - Date.now()) / 1000)));
+    res.set("Set-Cookie", cookie(req, result.token, Math.floor((result.expiresAt.getTime() - Date.now()) / 1000)));
     res.json({ signedIn: true, role: result.role });
   });
 
   app.post("/api/logout", (req, res) => {
     auth.logout(readCookie(req.headers.cookie, sessionCookie));
-    res.set("Set-Cookie", cookie("", 0));
+    res.set("Set-Cookie", cookie(req, "", 0));
     res.json({ signedIn: false });
   });
 
@@ -181,7 +183,7 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
         id: "session-over-plain-http",
         title: "Your sign-in is crossing the network unencrypted",
         detail: `This page was opened over plain HTTP from ${req.ip}, so anything between you and TheySpy can read the session cookie and sign in as you.`,
-        fix: "Reach TheySpy over HTTPS — a reverse proxy, or Tailscale — and set TS_COOKIE_SECURE=true. Or open it only from the machine it runs on.",
+        fix: tls ? `Open https://${req.hostname}:${tls.port} instead: TheySpy's own certificate (SHA-256 ${tls.fingerprint}; the browser asks once). Or a reverse proxy or Tailscale with TS_COOKIE_SECURE=true, or only from the machine it runs on.` : "Reach TheySpy over HTTPS — a reverse proxy, or Tailscale — and set TS_COOKIE_SECURE=true. Or open it only from the machine it runs on.",
       });
     }
     res.json({ notes });
@@ -248,6 +250,8 @@ export function createApp({ config, settings, audit, auth, jobs, iocStore, senti
   app.put("/api/protec", requireOwner, (req, res) => res.json(protec.configure(req.body ?? {}, "owner")));
   app.post("/api/protec/sync", requireOwner, async (_req, res) => { const r = await protec.sync("owner"); settings.delete("protec_last_error"); res.json(r); });
   app.post("/api/protec/link", requireOwner, (req, res) => { protec.link(String(req.body?.machineId ?? ""), intParam(req.body?.deviceId, "deviceId"), "owner"); res.json({ linked: true }); });
+  // HTTPS of its own (M40): the port and the certificate's fingerprint, so a phone can pin it.
+  app.get("/api/tls", requireOwner, (_req, res) => res.json(tls ? { enabled: true, ...tls } : { enabled: false }));
   // The household password (M37): set, replaced or cleared by the owner; the screen only learns whether one is set.
   app.get("/api/household", requireOwner, (_req, res) => res.json({ set: auth.householdSet() }));
   app.put("/api/household", requireOwner, (req, res) => res.json(auth.setHouseholdPassword(req.body?.password, "owner")));

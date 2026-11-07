@@ -295,7 +295,7 @@ Said plainly, in the order I would take them; none is a finding against what exi
 1. **Retention** (built: M35, 1.31.0). `ioc_hit_events`, `audit_log`, `jobs` and `checks` grow for ever. At a household's
    rate that is years, but nothing trims them and nothing says how big the database is. A retention
    setting (keep hits a year, audit and jobs ninety days) and a size line on Activity.
-2. **HTTPS of its own.** TheySpy relies on a reverse proxy or Tailscale for TLS and says so on
+2. **HTTPS of its own** (built: M40, 1.36.0). TheySpy relies on a reverse proxy or Tailscale for TLS and says so on
    Activity when it is reached in the clear. A self-signed certificate on first start, or ACME when
    a public name is set, would make the plain-HTTP warning rare.
 3. **IPv6** (built: M38, 1.34.0). Scan ranges, sweeps and the network table are IPv4; a dual-stack household's devices
