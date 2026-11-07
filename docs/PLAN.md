@@ -618,6 +618,25 @@ is the time-bounded attribution the data already supports.
 - **Exit:** a test per item, each failing before its fix. `npm run check` green, 1.12.0 tagged,
   the manifest bumped and pinned.
 
+### M17 — Fifth sweep's findings (S)
+**Status: planned.** Sweep 5 ([docs/AUDITS.md](AUDITS.md)) read every place another machine's data
+enters. Security found nothing for the third sweep running and leaves the loop. Two bugs, three
+pieces of hygiene, all reproduced.
+
+- **B25 — the network-log import attributes by time.** `importLogs()` credits each event to
+  `holderAt(fleet.addressHolders(), event.client, event.at)`; fingerprints are named the same way
+  by their last sighting. `/api/pihole/hits` carries a `device` per row (the holder at the row's
+  last sighting) and the Sentinel table shows it, falling back to Pi-hole's client name. Exit test:
+  a lookup made today by the device that now holds a reused address is that device's finding, and
+  a January lookup from the same address is the previous holder's.
+- **B24 — a site's "new since last reading" is computed against everything it got through,** not
+  the twenty kept for display: the snapshot keeps the keys (bounded at 500) beside the twenty rows.
+  Exit test: 25 pairs, three refreshes, one audit entry.
+- **C28–C30 — hygiene.** `listName()` falls back to the raw segment when it cannot be decoded;
+  the updater passes its 5 MB limit to `readCappedBytes`; `importMvt` bounds the module name.
+- **Exit:** a test per item, each failing before its fix. `npm run check` green, 1.13.0 tagged, the
+  manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
