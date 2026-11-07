@@ -298,7 +298,7 @@ Said plainly, in the order I would take them; none is a finding against what exi
 2. **HTTPS of its own.** TheySpy relies on a reverse proxy or Tailscale for TLS and says so on
    Activity when it is reached in the clear. A self-signed certificate on first start, or ACME when
    a public name is set, would make the plain-HTTP warning rare.
-3. **IPv6.** Scan ranges, sweeps and the network table are IPv4; a dual-stack household's devices
+3. **IPv6** (built: M38, 1.34.0). Scan ranges, sweeps and the network table are IPv4; a dual-stack household's devices
    are seen by their IPv4 only, and a lookup from an IPv6 address is credited to no device.
 4. **A second notification channel** (built: M36, 1.32.0). ntfy is the only one; e-mail or a webhook would cover the
    owner who will not run an ntfy client.
