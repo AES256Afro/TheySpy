@@ -95,3 +95,14 @@ describe("website check", () => {
     expect(requests.some((r) => r.includes(":6379"))).toBe(false);
   });
 });
+
+describe("M16", () => {
+  it("B23: a website check that cannot reach the site is recorded as failed, through the checker's website path", async () => {
+    const { checker, db } = testServices({ now: testClock("2026-11-07T12:00:00Z"), webFetch: async () => { throw Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } }); } });
+    await expect(checker.run({ query: "http://192.168.1.50" }, "owner")).rejects.toThrow(/Could not reach/);
+    const [row] = checker.recent(5);
+    expect(row).toMatchObject({ kind: "website", failed: true, error: expect.stringMatching(/ECONNREFUSED/) });
+    expect(row.finishedAt).not.toBeNull();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM checks WHERE finished_at IS NULL").get().n).toBe(0);
+  });
+});

@@ -40,3 +40,29 @@ describe("job runner", () => {
     expect(audit.list()[0].action).toBe("job.interrupted");
   });
 });
+
+describe("M16 C24: the runner survives its own failure", () => {
+  it("records a job whose failure could not be audited, without an unhandled rejection", async () => {
+    const { openDatabase } = await import("./db.mjs");
+    const { createAuditLog } = await import("./audit.mjs");
+    const { createJobRunner } = await import("./jobs.mjs");
+    const db = openDatabase(":memory:");
+    const real = createAuditLog(db);
+    let armed = true;
+    const audit = { ...real, record: (actor, action, ...rest) => { if (armed && action === "job.failed") { armed = false; throw new Error("disk full"); } return real.record(actor, action, ...rest); } };
+    const unhandled = [];
+    const listener = (reason) => unhandled.push(reason);
+    process.on("unhandledRejection", listener);
+    try {
+      const jobs = createJobRunner({ db, audit, kinds: { boom: { title: "Boom", direct: true, async run() { throw new Error("the job's own failure"); } } } });
+      const job = jobs.enqueue("boom", { actor: "owner" });
+      await jobs.idle();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(jobs.get(job.id).status).toBe("failed");
+      expect(unhandled).toEqual([]);
+      expect(real.list(20).some((e) => e.action === "job.runner_failed")).toBe(true);
+    } finally {
+      process.off("unhandledRejection", listener);
+    }
+  });
+});

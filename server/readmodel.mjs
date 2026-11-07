@@ -1,3 +1,4 @@
+import { holderAt } from "./fleet/attribution.mjs";
 import { matchSoftware } from "./cves/match.mjs";
 import { defang } from "./iocs/parse.mjs";
 
@@ -25,11 +26,9 @@ export function createReadModel({ fleet, sentinel, cves, deviceCves, digest, now
     for (const device of realDevices()) {
       for (const item of deviceCves.inventory(device.id)) {
         for (const [vendor, product] of item.cpes) {
-          for (const row of cves.list({ zeroDay: true, product: `${vendor}:${product}`, limit: 200 }).rows) {
+          for (const row of cves.exploitedFor(`${vendor}:${product}`)) {
             if (wanted && !wanted.has(row.cveId)) continue;
-            if (!row.products.includes(`${vendor}:${product}`)) continue;
-            const full = cves.get(row.cveId);
-            const hit = full?.cpeMatches?.length ? matchSoftware({ vendor, product, version: item.version }, full.cpeMatches) : { confidence: "product", fixed: null };
+            const hit = row.cpeMatches?.length ? matchSoftware({ vendor, product, version: item.version }, row.cpeMatches) : { confidence: "product", fixed: null };
             if (!hit) continue; // NVD's ranges say this version is not affected
             out.push({ cveId: row.cveId, name: row.kev?.name ?? row.description?.slice(0, 120) ?? null, kevAdded: row.kev?.added ?? null, due: row.kev?.due ?? null, ransomware: row.kev?.ransomware ?? false,
               reportedBy: row.zeroDaySources.map((s) => s.source),
@@ -48,9 +47,10 @@ export function createReadModel({ fleet, sentinel, cves, deviceCves, digest, now
     })),
     indicatorLookups(days = 30) {
       const since = new Date(now().getTime() - days * 86_400_000).toISOString();
-      const names = fleet.namesByIp();
+      const holders = fleet.addressHolders();
+      const names = new Map(fleet.list().map((d) => [d.id, d.name]));
       return sentinel.hits().filter((h) => h.lastSeen >= since).map((h) => ({
-        device: names[h.clientIp]?.name ?? h.clientName ?? h.clientIp, clientIp: h.clientIp, domain: defang(h.domain), indicator: defang(h.indicator),
+        device: names.get(holderAt(holders, h.clientIp, h.lastSeen)) ?? h.clientName ?? h.clientIp, clientIp: h.clientIp, domain: defang(h.domain), indicator: defang(h.indicator),
         lookups: h.lookups, blocked: h.blocked, firstSeen: h.firstSeen, lastSeen: h.lastSeen,
       }));
     },
