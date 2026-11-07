@@ -219,7 +219,9 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
 
   router.put("/pins", (req, res) => {
     if (!Array.isArray(req.body?.pins)) return res.status(400).json({ error: "pins must be a list of names" });
-    res.json({ pins: library.setPins(req.body.pins, "owner") });
+    // What was typed and is not a hostname is said back, not dropped in silence (B41).
+    const ignored = req.body.pins.map(String).filter((name) => name.trim() && !canonical(name)).slice(0, 20);
+    res.json({ pins: library.setPins(req.body.pins, "owner"), ignored });
   });
 
   return router;
