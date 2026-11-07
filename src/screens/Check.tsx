@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, lastLogLine, useStopped, waitForJob } from "../api.ts";
 
 type Service = { port: number; proto: string; service: string | null; product: string | null; version: string | null; banner: string | null; tls: { protocol: string; subject: string | null; issuer: string | null; validTo: string | null; selfSigned: boolean } | null; risk: string | null; lastSeen?: string };
-type Hit = { domain: string; indicator: string; lookups: number; lastAt: string; lastStatus: string; citation?: { label: string } | null };
+type Hit = { domain: string; indicator: string; lookups: number; blocked: number; lastSeen: string; lastStatus: string | null };
 type DeviceInfo = { id: number; name: string; ip: string | null; mac: string | null; hostname: string | null; vendor: string | null; owner: string | null; kind: string | null; tags: string[]; trusted: boolean; firstSeen: string; lastSeen: string; randomisedMac: boolean; events: { id: number; at: string; kind: string; detail: Record<string, unknown> }[] };
 type WebCve = { cveId: string; cvss: number | null; severity: string | null; description: string | null; kev: boolean; epss: number | null };
 type WebSoftware = { product: string; version: string | null; source: string; supportEnds?: string | null; supported?: boolean | null; cves?: WebCve[]; cvesError?: string };
@@ -136,7 +136,7 @@ function DeviceResult({ check }: { check: Check }) {
           {!check.dns?.connected ? <p className="small muted">Connect Pi-hole to see what this device looks up.</p> : check.dns.error ? <p className="small muted">{check.dns.error}</p> : (
             <>
               {check.dns.hits.length > 0 ? (
-                <div className="banner bad"><span className="small"><b>Indicator lookups.</b> {check.dns.hits.map((h) => `${h.domain} (${h.lookups}×, last ${when(h.lastAt)}, ${h.lastStatus.toLowerCase()})`).join("; ")}. A DNS record shows the device asked for the name; it does not prove infection. For a phone, run MVT with TheySpy’s STIX bundle (Indicators).</span></div>
+                <div className="banner bad"><span className="small"><b>Indicator lookups.</b> {check.dns.hits.map((h) => `${h.domain} (${h.lookups}×, last ${when(h.lastSeen)}, ${h.blocked < h.lookups ? `${h.lookups - h.blocked} not blocked` : "all blocked"})`).join("; ")}. A DNS record shows the device asked for the name; it does not prove infection. For a phone, run MVT with TheySpy’s STIX bundle (Indicators).</span></div>
               ) : <p className="small muted">No lookups of spyware or ad-intelligence indicators.</p>}
               <div className="list small">{check.dns.topDomains.map((t) => <div key={t.domain}><span className="grow mono">{t.domain}</span><span className="muted">{t.queries}{t.blocked ? ` · ${t.blocked} blocked` : ""}</span></div>)}</div>
             </>

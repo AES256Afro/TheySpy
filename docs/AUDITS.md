@@ -6,22 +6,25 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 13 | 1 | in the loop |
-| Bugs (correctness) | 13 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 14 | 2 | in the loop |
+| Bugs (correctness) | 14 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
 sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23);
-sweep 13's in 1.20.0 (M24). Security left the loop after sweep 5. Bugs found something in every
-sweep but 10; code came back clean for the first time in sweep 13.
+sweep 13's in 1.20.0 (M24); sweep 14's in 1.21.0 (M25). Security left the loop after sweep 5.
+Bugs found something in every sweep but 10; code has been clean since sweep 13 (two sweeps).
 
-Sweep 14 finishes the third pass: `agent-routes.mjs`, `auth.mjs`, `app.mjs` and `index.mjs`
-after M18–M23, `cves/devices.mjs`, `cves/lookup.mjs`, `cves/advisories.mjs` and `cves/match.mjs`,
-`fleet/targeted.mjs`, `fleet/explain.mjs` and `fleet/oui.mjs`, and the Check, Exposure, Activity
-and Indicators screens; it measures `deviceCves.inventory()` and the targeted check's history reads
-on the seeded database.
+Sweep 15 begins the fourth pass with what the third pass changed: `readmodel.mjs` (M23),
+`fleet/netalertx.mjs` (M24), `fleet/targeted.mjs` (M25), the Overview, Evidence and Check screens
+(M22, M23, M25), and the tests those milestones added; then the modules no sweep has read since the
+first pass: `jobs.mjs`, `audit.mjs`, `db.mjs`, `settings`, `secrets.mjs`, `config.mjs`,
+`ratelimit.mjs`, `egress.mjs`, `pacing.mjs`, `appearance.mjs`, `iocs/store.mjs`, `iocs/updater.mjs`,
+`iocs/parse.mjs`, `iocs/openpgp.mjs`, `pihole/client.mjs`, `pihole/sources.mjs`,
+`pihole/connectors.mjs`, `pihole/match.mjs`, `fleet/services.mjs`, `blocklists/baselines.mjs`,
+`blocklists/parse.mjs`, `blocklists/routes.mjs`, `cves/feeds.mjs` and `cves/routes.mjs`.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -767,3 +770,39 @@ None.
 | # | Fix |
 | --- | --- |
 | B34 | A present device is seen now; an absent one at NetAlertX's last-connection time (bounded by now); one that was never connected is not an observation; a record that says nothing about when (an older API) is taken at its word. `devFirstConnection` backdates the holding. A test: the printer NetAlertX last saw in September stays offline with September's time; the laptop in the last scan is online; a device that never connected is not added. |
+
+## Sweep 14 — 7 Nov 2026, at 1.20.0
+
+The third pass finished: `agent-routes.mjs`, `auth.mjs`, `app.mjs` and `index.mjs`, the CVE
+matching (`cves/devices.mjs`, `lookup.mjs`, `advisories.mjs`, `match.mjs`), `fleet/targeted.mjs`,
+`fleet/explain.mjs` and `fleet/oui.mjs`, and the Check, Exposure, Activity and Indicators screens.
+
+**Measured:** `deviceCves.inventory()` for 30 devices with 150 services, 0.3 ms;
+`checker.recent(15)` over 500 checks, 0.1 ms; `read.exploitedOnDevices()` with 150 services,
+0.7 ms (C21 holds).
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B35 | **The targeted check credits an address's whole indicator history to whoever holds it now.** `dnsView()` took `sentinel.hits()` for the address, and the domain result named each client after the device whose address it is today. Reproduced: a check of `192.168.1.30` names the laptop and lists the tablet's 500 July lookups under it. The Overview, the device page and the API attribute by time since M16 and M23; the check was the last place that did not. | `fleet/targeted.mjs` | medium |
+| B36 | **The Check screen's "last" time is never right.** The device result reads `h.lastAt`, a field the server never sends (`lastSeen`), so every indicator lookup is shown as "last Invalid Date". | `Check.tsx` | low |
+
+### Code
+
+None.
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `auth`'s failure map holds one entry per address that failed to sign in within 15 minutes and
+  drops an address on its next attempt; sign-in is reachable on the owner's network only.
+- `software.lookup()` runs one NVD request at a time, paced as NVD asks, cached a week per
+  product and version; the device page waits for the queue.
+- `/api/backup` removes its temporary directory when the download ends, however it ends.
+
+### What shipped (sweep 14) — 1.21.0, M25
+
+| # | Fix |
+| --- | --- |
+| B35 | `dnsView()` attributes the address's hit events with `attributeHits()` and shows a device its own; an address with no device known shows every holder's. The domain result names a client after the holder at its last lookup. Tests: the laptop sees its one blocked lookup and the tablet its three from July; a client that asked in the tablet's lease is "tablet". |
+| B36 | The screen reads `lastSeen` and says how many were not blocked. A test renders a check and finds the date, not "Invalid Date". |
