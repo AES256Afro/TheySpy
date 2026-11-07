@@ -60,7 +60,7 @@ describe("agents and evidence", () => {
 
   it("imports MVT results for a phone, keeps its profile, and exports a finding as STIX", () => {
     const { agents, fleet, deviceCves } = enrolled();
-    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:88:22:8d", seenAt: "2026-10-30T02:00:00.000Z" }], "pihole");
+    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:00:00:8d", seenAt: "2026-10-30T02:00:00.000Z" }], "pihole");
     const phone = fleet.list().find((d) => d.ip === "192.168.8.218").id;
     const detected = JSON.stringify([{ url: "https://fearevolve.com/x", matched_indicator: { value: "fearevolve.com", type: "domain" } }]);
     expect(agents.importMvt(phone, [{ name: "safari_history_detected.json", content: detected }], "owner")).toEqual({ findings: 1 });

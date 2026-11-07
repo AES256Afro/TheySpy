@@ -14,7 +14,7 @@ describe("alerts", () => {
     const box = ntfy();
     const now = testClock("2026-10-29T12:00:00.000Z");
     const first = testServices({ db, now, ntfyFetch: box.fetchImpl, ntfyEnv: { url: "https://ntfy.example", topic: "home-alerts", token: "tk_secret" } });
-    first.fleet.observe([{ ip: "192.168.8.1", mac: "94:83:c4:e5:70:cc", seenAt: now().toISOString() }], "pihole"); // the first inventory: no alert
+    first.fleet.observe([{ ip: "192.168.8.1", mac: "94:83:c4:00:00:cc", seenAt: now().toISOString() }], "pihole"); // the first inventory: no alert
     first.fleet.observe([{ ip: "192.168.8.88", mac: "3c:a9:f4:00:00:21", vendor: "Espressif Inc.", seenAt: now().toISOString() }], "sweep");
     await new Promise((r) => setTimeout(r, 0));
     expect(box.sent).toEqual([expect.objectContaining({ url: "https://ntfy.example/home-alerts", title: "New device on your network", auth: "Bearer tk_secret", body: expect.stringContaining("Espressif Inc. at 192.168.8.88") })]);
@@ -32,7 +32,7 @@ describe("alerts", () => {
     const now = testClock("2026-10-29T12:00:00.000Z");
     const pihole = fakePihole({ queries: [{ id: 1, time: Date.parse("2026-10-29T11:00:00Z") / 1000, type: "A", domain: "fearevolve.com", cname: null, status: "FORWARDED", client: { ip: "192.168.8.218", name: null } }] });
     const { sentinel, fleet, alerts } = testServices({ now, piholeFetch: pihole.fetchImpl, ntfyFetch: box.fetchImpl, ntfyEnv: { url: "https://ntfy.example", topic: "t" } });
-    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:88:22:8d", seenAt: now().toISOString() }], "pihole");
+    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:00:00:8d", seenAt: now().toISOString() }], "pihole");
     fleet.setNames(fleet.list()[0].id, { pihole: "iPhone" });
     sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
     await sentinel.hunt();
@@ -104,7 +104,7 @@ describe("M34, feature 6: an alert lands on the device", () => {
     const now = testClock("2026-11-07T12:00:00.000Z");
     const { fleet, audit, alerts, settings } = testServices({ now, ntfyEnv: { url: "https://ntfy.example", topic: "t" } });
     settings.set("lists_base_url", "https://home.example:8797");
-    fleet.observe([{ ip: "192.168.8.1", mac: "94:83:c4:e5:70:cc", seenAt: now().toISOString() }], "pihole"); // the inventory
+    fleet.observe([{ ip: "192.168.8.1", mac: "94:83:c4:00:00:cc", seenAt: now().toISOString() }], "pihole"); // the inventory
     fleet.observe([{ ip: "192.168.8.88", mac: "3c:a9:f4:00:00:21", vendor: "Espressif Inc.", seenAt: now().toISOString() }], "sweep");
     await new Promise((r) => setTimeout(r, 0));
     const device = fleet.list().find((d) => d.ip === "192.168.8.88");

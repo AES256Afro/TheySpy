@@ -19,13 +19,13 @@ describe("Fleet names and breadcrumbs", () => {
     expect(bestName({ label: "Kitchen iPad", names: { pihole: "iPad" }, ip: "x" })).toEqual({ name: "Kitchen iPad", from: "your label in TheySpy" });
     expect(bestName({ names: { router: "Mac.tail0000aa.ts.net", tailscale: "mac" }, ip: "x" })).toEqual({ name: "Mac", from: "your router" });
     expect(bestName({ names: {}, vendor: "Western Digital Corporation", ip: "192.168.8.165" })).toEqual({ name: "Network storage at 192.168.8.165", from: "a guess from the MAC's maker" });
-    expect(bestName({ names: {}, mac: "ea:f1:83:d3:a7:98", ip: "192.168.8.134" })).toMatchObject({ name: "Phone, tablet or laptop at 192.168.8.134" });
+    expect(bestName({ names: {}, mac: "ea:f1:83:00:00:98", ip: "192.168.8.134" })).toMatchObject({ name: "Phone, tablet or laptop at 192.168.8.134" });
     expect(guessKind({ names: ["iphone182.tail0000aa.ts.net"] })).toMatchObject({ kind: "phone", label: "iPhone" });
   });
 
   it("takes your Pi-hole client labels and asks the router and Tailscale for names", async () => {
-    const pihole = fakePihole({ gateway: "192.168.8.1", network: [net("30:c5:99:5e:fd:3a", "192.168.8.140"), net("ea:f1:83:d3:a7:98", "192.168.8.134"), net("ip-100.64.0.42", "100.64.0.42"), net("0a:9c:b4:8d:94:e0", "172.18.0.1")] });
-    pihole.state.clients.push({ client: "30:C5:99:5E:FD:3A", comment: "BlackBox", groups: [0] }, { client: "EA:F1:83:D3:A7:98", comment: "Apple Watch", groups: [0] });
+    const pihole = fakePihole({ gateway: "192.168.8.1", network: [net("30:c5:99:00:00:3a", "192.168.8.140"), net("ea:f1:83:00:00:98", "192.168.8.134"), net("ip-100.64.0.42", "100.64.0.42"), net("0a:9c:b4:00:00:e0", "172.18.0.1")] });
+    pihole.state.clients.push({ client: "30:c5:99:00:00:3a", comment: "BlackBox", groups: [0] }, { client: "ea:f1:83:00:00:98", comment: "Apple Watch", groups: [0] });
     const asked = [];
     const answers = { "192.168.8.1 192.168.8.140": "BlackBox.tail0000aa.ts.net", "100.100.100.100 100.64.0.42": "iphone182.tail0000aa.ts.net" };
     const { discovery, fleet, sentinel } = testServices({ piholeFetch: pihole.fetchImpl, scanRanges: ["192.168.0.0/16", "172.16.0.0/12", "100.64.0.0/10"], network: { reverseVia: async (server, ip) => { asked.push(`${server} ${ip}`); return answers[`${server} ${ip}`] ?? null; } } });
@@ -40,7 +40,7 @@ describe("Fleet names and breadcrumbs", () => {
     expect(fleet.namesByIp()["192.168.8.140"]).toMatchObject({ name: "BlackBox", network: "Your router's network" });
     // Clients listed in Pi-hole are flagged, and counted as yours at the next sync.
     pihole.state.clients.push({ client: "192.168.8.138", comment: "", groups: [0] });
-    pihole.state.network.push(net("92:04:c8:0e:66:c6", "192.168.8.138"));
+    pihole.state.network.push(net("92:04:c8:00:00:c6", "192.168.8.138"));
     await discovery.sync();
     expect(fleet.list().filter((d) => d.inPihole).map((d) => d.ip).sort()).toEqual(["192.168.8.134", "192.168.8.138", "192.168.8.140"]);
     // So is a device in the tailnet.
