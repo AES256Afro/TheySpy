@@ -60,3 +60,46 @@ describe("discovery", () => {
     expect(audit.list(20).find((e) => e.action === "fleet.new_device").detail).toMatchObject({ ip: "192.168.1.88", source: "sweep" });
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  it("B15: a MAC with three historical addresses in Pi-hole's network table does not change address every sync", async () => {
+    const { fromPiholeNetwork } = await import("./discovery.mjs");
+    const { testServices, testClock } = await import("../test-helpers.mjs");
+    const s = (iso) => Math.floor(Date.parse(iso) / 1000);
+    const table = [{ hwaddr: "AA:BB:CC:00:00:01", macVendor: "Apple", lastQuery: s("2026-11-05T11:59:00Z"), ips: [
+      { ip: "192.168.1.50", name: "phone", lastSeen: s("2026-11-05T11:58:00Z") }, { ip: "192.168.1.51", name: "phone", lastSeen: s("2026-09-01T10:00:00Z") }, { ip: "192.168.1.52", name: "phone", lastSeen: s("2026-07-04T10:00:00Z") },
+    ] }];
+    const seen = Object.fromEntries(fromPiholeNetwork(table).map((o) => [o.ip, o.seenAt]));
+    expect(seen["192.168.1.51"]).toBe(new Date("2026-09-01T10:00:00Z").toISOString());
+    const { fleet } = testServices({ now: testClock("2026-11-05T12:00:00Z") });
+    fleet.observe(fromPiholeNetwork(table), "pihole", { inventory: true });
+    fleet.observe(fromPiholeNetwork(table), "pihole");
+    const [d] = fleet.list();
+    expect(d.ip).toBe("192.168.1.50");
+    expect(fleet.events(d.id).map((e) => e.kind)).toEqual(["inventoried"]);
+    // An address with no sighting of its own still gets the device's last query.
+    expect(fromPiholeNetwork([{ hwaddr: "AA:BB:CC:00:00:02", lastQuery: s("2026-11-05T11:00:00Z"), ips: [{ ip: "192.168.1.60" }] }])[0].seenAt).toBe(new Date("2026-11-05T11:00:00Z").toISOString());
+  });
+});
+
+describe("sweep 3 hygiene (M14)", () => {
+  it("C14: stops asking MagicDNS for a day once it answered for nothing", async () => {
+    const { testServices } = await import("../test-helpers.mjs");
+    let clock = new Date("2026-11-05T12:00:00Z");
+    const asked = [];
+    const { discovery, fleet, settings } = testServices({ now: () => clock, network: { neighbours: async () => [{ ip: "192.168.1.20", mac: "f0:18:98:00:00:0c" }], reverseVia: async (server, ip) => { asked.push(`${server} ${ip}`); return null; } } });
+    await discovery.sync();
+    expect(asked.filter((a) => a.startsWith("100.100.100.100"))).toHaveLength(1);
+    expect(settings.get("fleet_magicdns_silent_at")).toBe(clock.toISOString());
+    // The names are stale again seven hours on; MagicDNS is still not asked within the day.
+    clock = new Date("2026-11-05T19:00:00Z");
+    fleet.setNames(fleet.list()[0].id, { checkedAt: null });
+    await discovery.sync();
+    expect(asked.filter((a) => a.startsWith("100.100.100.100"))).toHaveLength(1);
+    // A day later it is asked again, and an answer clears the memory.
+    clock = new Date("2026-11-06T13:00:00Z");
+    fleet.setNames(fleet.list()[0].id, { checkedAt: null });
+    await discovery.sync();
+    expect(asked.filter((a) => a.startsWith("100.100.100.100"))).toHaveLength(2);
+  });
+});

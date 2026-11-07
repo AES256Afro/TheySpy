@@ -216,3 +216,10 @@ describe("baselines", () => {
     await expect(baselines.apply({ baselineId: "balanced", client: phone, listsOrigin: "http://x" }, "owner")).rejects.toThrow(/turned off/);
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  it("B21: scopes() answers without Pi-hole: the network scope, no devices, and says so", async () => {
+    const { baselines } = testServices();
+    await expect(baselines.scopes()).resolves.toMatchObject({ pihole: false, devices: [], network: { key: "network" } });
+  });
+});

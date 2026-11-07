@@ -44,6 +44,9 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     FROM ioc_hit_events e LEFT JOIN iocs i ON i.value = e.indicator
     GROUP BY e.indicator, e.domain, e.via, e.client_ip
     ORDER BY lastSeen DESC`);
+  // The window's own lookups, for the briefing: what happened this week, not the history of every
+  // group that happened to recur this week.
+  const hitsSince = db.prepare("SELECT client_ip AS clientIp, COUNT(*) AS lookups, SUM(blocked) AS blocked FROM ioc_hit_events WHERE at >= ? GROUP BY client_ip");
 
   // --- configuration ---------------------------------------------------------------------------
 
@@ -210,6 +213,11 @@ export function createSentinel({ db, settings, audit, iocStore, secretBox, env =
     lastHunt() {
       const row = /** @type {any} */ (lastHunt.get());
       return row ? { mode: row.mode, from: row.from_at, until: row.until_at, indicators: Number(row.indicators), queriesSeen: Number(row.queries_seen), newHits: Number(row.new_hits), finishedAt: row.finished_at } : null;
+    },
+
+    /** Indicator lookups since `iso`, per client: how many, how many blocked. @param {string} iso */
+    hitsSince(iso) {
+      return hitsSince.all(iso).map((r) => { const row = /** @type {any} */ (r); return { clientIp: String(row.clientIp), lookups: Number(row.lookups), blocked: Number(row.blocked) }; });
     },
 
     hits() {

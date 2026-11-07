@@ -48,7 +48,18 @@ export function fleetRoutes({ fleet, discovery, checker, oui, web, deviceCves, s
     if (!device) return res.status(404).json({ error: "No such device" });
     if (!device.ip || !sentinel.effective().mode) return res.json({ connected: Boolean(sentinel.effective().mode), total: 0, top: [], blocked: [] });
     const until = Date.now() / 1000;
-    const { rows } = await sentinel.source().domainCounts({ client: device.ip, from: until - 86400, until });
+    // Every address it has held: after a lease change Pi-hole's last day is under two of them.
+    const addresses = [...new Set([device.ip, ...fleet.addressesOf(device.id)])];
+    const byDomain = new Map();
+    for (const client of addresses) {
+      for (const r of (await sentinel.source().domainCounts({ client, from: until - 86400, until })).rows) {
+        const e = byDomain.get(r.domain) ?? { domain: r.domain, queries: 0, blocked: 0 };
+        e.queries += r.queries;
+        e.blocked += r.blocked;
+        byDomain.set(r.domain, e);
+      }
+    }
+    const rows = [...byDomain.values()];
     const total = rows.reduce((n, r) => n + r.queries, 0);
     const blockedRows = rows.filter((r) => r.blocked > 0).sort((a, b) => b.blocked - a.blocked).slice(0, 15);
     const matches = library.matchNames(blockedRows.map((r) => r.domain));

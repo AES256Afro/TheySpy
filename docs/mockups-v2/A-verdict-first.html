@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheySpy · A · Verdict first</title><link rel="stylesheet" href="v2.css">
+<style>
+  .verdict { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 22px 24px; border-radius: 14px; border: 1px solid var(--crit); background: color-mix(in srgb, var(--crit) 9%, var(--panel)); }
+  .verdict h1 { font-size: 26px; }
+  .verdict .when { color: var(--muted); font-size: 12.5px; }
+  .q { display: grid; grid-template-columns: 56px 1fr auto; gap: 14px; align-items: center; padding: 16px; }
+  .q .mark { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; font-size: 26px; font-weight: 800; }
+  .q .mark.bad { background: color-mix(in srgb, var(--crit) 20%, var(--panel)); color: var(--crit); }
+  .q .mark.warn { background: color-mix(in srgb, var(--high) 20%, var(--panel)); color: var(--high); }
+  .q .mark.ok { background: color-mix(in srgb, var(--ok) 20%, var(--panel)); color: var(--ok); }
+  .q h2 { font-size: 16px; }
+  .q p { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .next { display: grid; grid-template-columns: 24px 1fr auto; gap: 12px; align-items: center; }
+  .next .k { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .quiet { color: var(--muted); font-size: 12.5px; padding: 10px 0; }
+  @media (max-width: 760px) { .q { grid-template-columns: 44px 1fr; } .q .btn { grid-column: 2; justify-self: start; } .q .mark { width: 44px; height: 44px; font-size: 20px; } }
+</style></head>
+<body><div class="app"><aside class="side" data-on="home"></aside>
+<main>
+  <div class="verdict">
+    <span class="when">Thursday 7 November · checked 2 minutes ago · Pi-hole watching · 23 of 27 devices online</span>
+    <h1>One device reached a spyware address last night. Everything else is as it should be.</h1>
+    <span class="small muted">Written from what TheySpy can see. A thing it could not check is said so, never shown as fine.</span>
+  </div>
+
+  <div class="stack" style="margin-top:14px">
+    <section class="card q">
+      <div class="mark bad">1</div>
+      <div><h2>Is anything talking to spyware?</h2><p><b>Kitchen Pixel</b> looked up <span class="mono">noas-edge[.]example</span> three times at 21:14 and Pi-hole did not block it. That domain is in the AdFection set (tier 1). A lookup is not proof of infection; what to do next is on the device.</p></div>
+      <a class="btn primary">Look at the device</a>
+    </section>
+    <section class="card q">
+      <div class="mark warn">4</div>
+      <div><h2>Is anything running a bug that is being exploited?</h2><p>Chrome on three computers and the NAS firmware. All four have fixes; Chrome's waits for a restart.</p></div>
+      <a class="btn">Patch list</a>
+    </section>
+    <section class="card q">
+      <div class="mark ok">0</div>
+      <div><h2>Has anything new joined the network?</h2><p>Nothing since Tuesday, when the Espressif board you labelled “porch sensor” appeared.</p></div>
+      <a class="btn">Devices</a>
+    </section>
+    <section class="card q">
+      <div class="mark ok">✓</div>
+      <div><h2>Is the network blocking what it should?</h2><p>Pi-hole blocks all 291 indicator domains and their subdomains; the live watch is on; the lists updated cleanly at 02:10.</p></div>
+      <a class="btn">DNS watch</a>
+    </section>
+  </div>
+
+  <div class="two-col" style="margin-top:14px">
+    <section class="card">
+      <header><h2>What TheySpy could not check</h2><span class="muted small">gaps, not passes</span></header>
+      <div class="list small">
+        <div><span class="dot"></span><span class="grow">Three phones have no on-device check: the Ad exposure list for them is incomplete.</span><a>Run MVT</a></div>
+        <div><span class="dot"></span><span class="grow">The work laptop's agent last reported 9 days ago.</span><a>Device</a></div>
+        <div><span class="dot"></span><span class="grow">Whether your public address is Starlink's has not been checked this month.</span><a>Check</a></div>
+      </div>
+      <p class="quiet">Nothing else is outstanding.</p>
+    </section>
+    <section class="card">
+      <header><h2>Since yesterday</h2><a class="small">Everything →</a></header>
+      <div class="list small">
+        <div class="next"><span class="k">21:14</span><span>Kitchen Pixel → indicator lookup, not blocked</span><span class="badge b-crit">hit</span></div>
+        <div class="next"><span class="k">06:00</span><span>CISA added CVE-2026-4127 (Chrome) · on 3 devices</span><span class="badge b-high">KEV</span></div>
+        <div class="next"><span class="k">02:10</span><span>Blocklists updated · 6 lists, nothing held</span><span class="badge b-ok">ok</span></div>
+        <div class="next"><span class="k">01:30</span><span>Agent reports from 4 computers · 0 findings · 2 gaps</span><span class="badge b-ok">ok</span></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">Mock-up A · Verdict first. The home screen answers four questions in order of harm and says what it could not check. Every other screen is one click from an answer. <a href="index.html">All five</a></p>
+</main></div><script src="nav.js"></script></body></html>

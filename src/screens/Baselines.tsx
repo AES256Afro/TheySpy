@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNames } from "../names.ts";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Baseline = { id: string; name: string; severity: number; categories: string[]; lists: string[]; summary: string; custom?: boolean };
 type Category = { id: string; group: string; name: string };
@@ -25,6 +25,7 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const n = (x: number) => x.toLocaleString();
 
 export function BaselinesScreen() {
+  const stopped = useStopped();
   const names = useNames();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -69,7 +70,7 @@ export function BaselinesScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       setPicked(null);
       await load();

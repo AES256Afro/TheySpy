@@ -69,3 +69,32 @@ describe("alerts", () => {
     expect(box.sent).toHaveLength(1);
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  const at = (iso) => new Date(iso).toISOString();
+  const hit = (db, i, when, blocked) => db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', ?, ?, 'adfection-c2.example', 'adfection-c2.example', 'query', '192.168.1.30', 'laptop', ?, ?, 'hunt', ?)").run(i, when, blocked ? "GRAVITY" : "FORWARDED", blocked ? 1 : 0, when);
+
+  it("B18: the briefing counts the week's lookups, not the groups they fall in", () => {
+    const { digest, db } = testServices({ now: testClock("2026-11-05T12:00:00Z"), piholeEnv: { url: "http://pihole.lan", password: "x", write: false } });
+    // 500 unblocked lookups of one C2 since July, then three this week - all blocked.
+    for (let i = 0; i < 500; i += 1) hit(db, i, at(new Date(Date.parse("2026-07-01T00:00:00Z") + i * 2 * 3600_000).toISOString()), false);
+    for (let i = 0; i < 3; i += 1) hit(db, 9000 + i, at(`2026-11-0${3 + i}T09:00:00Z`), true);
+    const spyware = digest.compose(7).sections[0];
+    expect(spyware.lines[0]).toBe("3 lookups of indicator addresses by 1 device; every one blocked.");
+    expect(spyware.tone).toBe("warn");
+    // Old unblocked history does not make this week "not fully blocked"; an unblocked one this week does.
+    hit(db, 9100, at("2026-11-04T10:00:00Z"), false);
+    const after = digest.compose(7).sections[0];
+    expect(after.tone).toBe("bad");
+    expect(after.lines[0]).toBe("4 lookups of indicator addresses by 1 device; 1 not blocked.");
+  });
+
+  it("B19: the briefing names every device on an exploited CVE, dots and all", async () => {
+    const { digest, alerts, audit } = testServices({ now: testClock("2026-11-05T12:00:00Z") });
+    // The matches an alert was raised with travel with it, not inside its prose.
+    await alerts.raise({ key: "exploited:CVE-2026-12345", kind: "kev_match", priority: "high", title: "Exploited vulnerability in software you run", message: "CVE-2026-12345 (on laptop.local, nas.lan). CISA lists it as exploited in the wild; update those devices.", detail: { matches: [{ cveId: "CVE-2026-12345", devices: ["laptop.local", "nas.lan"] }] } });
+    void audit;
+    const vulns = digest.compose(7).sections.find((s) => s.title === "Vulnerabilities");
+    expect(vulns.lines[1]).toBe("In software you run: CVE-2026-12345 on laptop.local, nas.lan.");
+  });
+});

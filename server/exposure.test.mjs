@@ -57,3 +57,20 @@ describe("ad exposure", () => {
     expect(exposure.overview().network.find((f) => f.id === "egress").state).toBe("fail");
   });
 });
+
+describe("sweep 3 (M14)", () => {
+  it("B13: a device keeps its evidence across a DHCP change", () => {
+    const now = testClock("2026-11-05T12:00:00Z");
+    const { exposure, fleet, db } = testServices({ now, piholeEnv: { url: "http://pihole.lan", password: "x", write: false } });
+    const at = (iso) => new Date(iso).toISOString();
+    fleet.observe([{ ip: "192.168.1.30", mac: "f0:18:98:00:00:aa", hostname: "laptop", seenAt: at("2026-11-01T10:00:00Z") }], "pihole");
+    // While it was .30 it reached an indicator address that Pi-hole did not block.
+    db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('pihole', 1, ?, 'adfection-c2.example', 'adfection-c2.example', 'query', '192.168.1.30', 'laptop', 'FORWARDED', 0, 'hunt', ?)").run(at("2026-11-01T10:05:00Z"), at("2026-11-01T10:06:00Z"));
+    const clean = () => exposure.overview().devices[0].factors.find((f) => f.id === "clean");
+    expect(clean().state).toBe("fail");
+    // An ordinary new lease. Same device, same database, same hit.
+    fleet.observe([{ ip: "192.168.1.31", mac: "f0:18:98:00:00:aa", seenAt: at("2026-11-05T11:55:00Z") }], "pihole");
+    expect(fleet.list()[0].ip).toBe("192.168.1.31");
+    expect(clean()).toMatchObject({ state: "fail", evidence: expect.stringMatching(/did not block/) });
+  });
+});

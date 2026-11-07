@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, lastLogLine, waitForJob, type Job } from "../api.ts";
+import { api, lastLogLine, useStopped, waitForJob, type Job } from "../api.ts";
 
 type Device = {
   id: number; mac: string | null; ip: string | null; hostname: string | null; vendor: string | null; label: string | null; owner: string | null; kind: string | null; notes: string | null;
@@ -22,6 +22,8 @@ type Overview = {
 
 const sourceLabel: Record<string, string> = { pihole: "PH", arp: "ARP", sweep: "SWEEP" };
 const sourceTitle: Record<string, string> = { pihole: "Pi-hole network table", arp: "neighbour (ARP) table", sweep: "network sweep" };
+/** A table's own entry, never one inherited from Object.prototype ("constructor"). */
+const own = <T,>(table: Record<string, T>, key: string): T | undefined => (Object.hasOwn(table, key) ? table[key] : undefined);
 const eventText: Record<string, (d: Record<string, unknown>) => string> = {
   new: (d) => `New device at ${d.ip}`,
   inventoried: () => "Found in the first inventory",
@@ -48,6 +50,7 @@ function ago(iso: string) {
 const shortMac = (mac: string) => `${mac.slice(0, 8)}:…:${mac.slice(-2)}`;
 
 export function FleetScreen() {
+  const stopped = useStopped();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "online" | "offline" | "untrusted" | "pihole">("all");
   const [query, setQuery] = useState("");
@@ -73,7 +76,7 @@ export function FleetScreen() {
     setBusy(label);
     setMessage(null);
     try {
-      const done = await waitForJob((await start()).job.id);
+      const done = await waitForJob((await start()).job.id, stopped);
       setMessage({ tone: done.status === "succeeded" ? "good" : "bad", text: lastLogLine(done) || done.status });
       await load();
     } catch (error) {
@@ -175,10 +178,10 @@ export function FleetScreen() {
                   {d.trusted && <span className="badge b-ok" style={{ marginLeft: 6 }}>trusted</span>}
                   {d.inPihole && <span className="badge b-info" style={{ marginLeft: 6 }} title="You set this device up as a client in Pi-hole (Group management → Clients)">in Pi-hole</span>}
                   <div className="muted small" title={`Name from ${d.nameFrom}`}>{[d.kind ?? d.guess?.label, d.vendor, d.owner].filter(Boolean).join(" · ") || "not identified yet"}{d.tags.length ? ` · ${d.tags.join(", ")}` : ""}</div>
-                  {d.network && <div className="small" title={d.network.detail}><span className={`badge ${networkBadge[d.network.kind] ?? "b-info"}`}>{d.network.label}</span></div>}
+                  {d.network && <div className="small" title={d.network.detail}><span className={`badge ${own(networkBadge, d.network.kind) ?? "b-info"}`}>{d.network.label}</span></div>}
                 </td>
                 <td className="mono small">{d.homeIp ?? d.tailscaleIp ?? d.ip ?? "—"}{d.homeIp && d.tailscaleIp && <div title="Its Tailscale address">{d.tailscaleIp} <span className="muted">tailscale</span></div>}<div className="muted">{d.mac ? (d.randomisedMac ? "private MAC" : shortMac(d.mac)) : "no MAC yet"}</div></td>
-                <td><span className="src">{Object.keys(d.sources).map((s) => <i key={s} title={`${sourceTitle[s] ?? s}: ${new Date(d.sources[s]).toLocaleString()}`}>{sourceLabel[s] ?? s}</i>)}</span></td>
+                <td><span className="src">{Object.keys(d.sources).map((s) => <i key={s} title={`${own(sourceTitle, s) ?? s}: ${new Date(d.sources[s]).toLocaleString()}`}>{own(sourceLabel, s) ?? s}</i>)}</span></td>
                 <td className="small">{new Date(d.firstSeen).toLocaleDateString()}</td>
                 <td className="small">{ago(d.lastSeen)}</td>
               </tr>
@@ -195,7 +198,7 @@ export function FleetScreen() {
               <h3>Recent changes</h3>
               {overview.events.length === 0 ? <p className="small muted">Nothing yet.</p> : (
                 <div className="list small">{overview.events.map((e) => (
-                  <div key={e.id}><span className="grow"><b>{e.device}</b> <span className="muted">{(eventText[e.kind] ?? (() => e.kind))(e.detail)}</span></span><span className="muted">{ago(e.at)}</span></div>
+                  <div key={e.id}><span className="grow"><b>{e.device}</b> <span className="muted">{(own(eventText, e.kind) ?? (() => e.kind))(e.detail)}</span></span><span className="muted">{ago(e.at)}</span></div>
                 ))}</div>
               )}
             </section>
@@ -236,13 +239,15 @@ function NetAlertXCard({ onChanged }: { onChanged: () => void }) {
   const [token, setToken] = useState("");
   const [fills, setFills] = useState<Fill[] | null>(null);
   const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const [failed, setFailed] = useState("");
   const load = useCallback(async () => { const c = await api<NetAlertXConfig>("GET", "/api/fleet/netalertx"); setConfig(c); setUrl((u) => u || c.url || ""); }, []);
-  useEffect(() => { void load().catch(() => {}); }, [load]);
+  // A card that cannot load says so; one that vanishes looks like an integration that was never set up.
+  useEffect(() => { void load().catch((e: Error) => setFailed(e.message)); }, [load]);
   const step = async (fn: () => Promise<string>) => {
     setNote(null);
     try { setNote({ tone: "good", text: await fn() }); await load(); onChanged(); } catch (e) { setNote({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
   };
-  if (!config) return null;
+  if (!config) return failed ? <section className="card stack"><h3>NetAlertX</h3><div className="banner bad"><span className="small">Could not read the NetAlertX settings: {failed}</span></div></section> : null;
   return (
     <section className="card stack">
       <h3>NetAlertX</h3>
@@ -279,14 +284,15 @@ function ProtecCard({ devices, onChanged }: { devices: Device[]; onChanged: () =
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const [failed, setFailed] = useState("");
   const load = useCallback(async () => { const s = await api<ProtecState>("GET", "/api/protec"); setState(s); setUrl((u) => u || s.url || ""); }, []);
-  useEffect(() => { void load().catch(() => {}); }, [load]);
+  useEffect(() => { void load().catch((e: Error) => setFailed(e.message)); }, [load]);
   const step = async (fn: () => Promise<string>) => {
     setNote(null);
     try { setNote({ tone: "good", text: await fn() }); await load(); onChanged(); } catch (e) { setNote({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
   };
   const sync = async () => { const r = await api<{ machines: number; matched: number; packages: number; unmatched: unknown[] }>("POST", "/api/protec/sync"); return `Read ${r.machines} machine(s): ${r.matched} matched to Fleet devices, ${r.packages} package(s) to check for CVEs${r.unmatched.length ? `, ${r.unmatched.length} to link below` : ""}.`; };
-  if (!state) return null;
+  if (!state) return failed ? <section className="card stack"><h3>Protec</h3><div className="banner bad"><span className="small">Could not read the Protec settings: {failed}</span></div></section> : null;
   return (
     <section className="card stack">
       <h3>Protec</h3>
@@ -357,7 +363,7 @@ function DeviceCard({ device, others, onMerge, onSave, onClose, onForget }: { de
       {device.addressHistory.length > 1 && (
         <div><h3>Addresses</h3><div className="list small">{device.addressHistory.map((a) => <div key={a.ip}><span className="grow mono">{a.ip}</span><span className="muted">{ago(a.lastSeen)}</span></div>)}</div></div>
       )}
-      <div><h3>History</h3><div className="list small">{device.events.map((e) => <div key={e.id}><span className="grow">{(eventText[e.kind] ?? (() => e.kind))(e.detail)}</span><span className="muted">{new Date(e.at).toLocaleString()}</span></div>)}</div></div>
+      <div><h3>History</h3><div className="list small">{device.events.map((e) => <div key={e.id}><span className="grow">{(own(eventText, e.kind) ?? (() => e.kind))(e.detail)}</span><span className="muted">{new Date(e.at).toLocaleString()}</span></div>)}</div></div>
     </section>
   );
 }

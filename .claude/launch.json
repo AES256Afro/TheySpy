@@ -12,6 +12,20 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["TS_HOST=127.0.0.1", "TS_PORT=8798", "TS_DATA_DIR=data", "node", "server/index.mjs"],
       "port": 8798
+    },
+    {
+      "name": "theyspy-review",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["TS_HOST=127.0.0.1", "TS_PORT=8801", "TS_DATA_DIR=/private/tmp/claude-501/-Users-chris-Projects-TheySpy/a5606d09-ca63-4f86-af49-8cace2e72d78/scratchpad/review-data", "TS_IOC_AUTOCHECK=false", "node", "server/index.mjs"],
+      "port": 8801,
+      "autoPort": false
+    },
+    {
+      "name": "mockups-v2",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8802", "--bind", "127.0.0.1", "--directory", "docs/mockups-v2"],
+      "port": 8802,
+      "autoPort": false
     }
   ]
 }
