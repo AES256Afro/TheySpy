@@ -381,6 +381,9 @@ export const migrations = [
      is_new INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (client_ip, ja4)
    );`,
+  // M14: an alert carries what it was raised from (the CVE matches and their devices) as data, so
+  // the briefing renders it instead of recovering names from the alert's prose.
+  `ALTER TABLE alerts ADD COLUMN detail TEXT;`,
 ];
 
 /**
