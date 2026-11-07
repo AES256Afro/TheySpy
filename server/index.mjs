@@ -29,6 +29,7 @@ import { createReadModel } from "./readmodel.mjs";
 import { createAgents } from "./agents.mjs";
 import { createExposure } from "./exposure.mjs";
 import { createOverview } from "./overview.mjs";
+import { createQuietRunner } from "./quietly.mjs";
 import { createTargetedCheck, targetedJobKinds } from "./fleet/targeted.mjs";
 import { createSecretBox } from "./secrets.mjs";
 import { createBackup } from "./backup.mjs";
@@ -130,14 +131,7 @@ setTimeout(() => library.counts(), 5000).unref();
 // networks the owner chose every 30 minutes. Nothing is swept until the owner picks networks. These
 // run quietly, outside the job log (which would fill with them); new devices are still audited.
 if (config.fleetAuto) {
-  const quietly = (name, work) => {
-    let running = false;
-    return () => {
-      if (running) return;
-      running = true;
-      work().catch((error) => settings.set(`fleet_last_${name}_error`, { at: new Date().toISOString(), error: error.message })).finally(() => { running = false; });
-    };
-  };
+  const quietly = (name, work) => createQuietRunner({ settings, prefix: "fleet" }).wrap(name, work);
   const sync = quietly("sync", async () => { if (sentinel.effective().mode) await discovery.sync(); });
   const sweep = quietly("sweep", async () => { if (discovery.targets().length) await discovery.sweep(); });
   // MAC vendor names from the IEEE registry: shortly after the first start, then monthly. Checked
