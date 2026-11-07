@@ -10,10 +10,11 @@ const dirs = [];
 /** A GET over HTTPS that accepts the self-signed certificate and reports its fingerprint (node:https, not fetch: the project's undici and Node's own differ). */
 const get = (port) => new Promise((resolve, reject) => {
   const req = https.request({ host: "127.0.0.1", port, path: "/", rejectUnauthorized: false }, (res) => {
+    const fingerprint = /** @type {import("node:tls").TLSSocket} */ (res.socket).getPeerCertificate().fingerprint256; // read now: the socket is gone by "end"
     let body = "";
     res.setEncoding("utf8");
     res.on("data", (c) => { body += c; });
-    res.on("end", () => resolve({ status: res.statusCode, body, fingerprint: /** @type {import("node:tls").TLSSocket} */ (res.socket).getPeerCertificate().fingerprint256 }));
+    res.on("end", () => resolve({ status: res.statusCode, body, fingerprint }));
   });
   req.on("error", reject);
   req.end();
