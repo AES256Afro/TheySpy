@@ -531,6 +531,16 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
   });
 });
 
+describe("M30 B41", () => {
+  it("says which never-block names it did not keep", async () => {
+    const { request } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    const r = await request("PUT", "/api/blocklists/pins", { pins: ["keep.example", "not a name!!", "Also.Example."] });
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ pins: ["keep.example", "also.example"], ignored: ["not a name!!"] });
+  });
+});
+
 describe("M28 B39", () => {
   it("answers 409, not 500, when a baseline preview is asked for before Pi-hole is connected", async () => {
     const { request } = await start();
