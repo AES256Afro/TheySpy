@@ -36,3 +36,23 @@ describe("the Check screen", () => {
     expect(calls.filter((c) => c.endsWith("/api/jobs/7")).length).toBeLessThanOrEqual(polled + 1);
   });
 });
+
+describe("M25 B36", () => {
+  it("shows when an indicator lookup last happened, from the field the server sends", async () => {
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).endsWith("/api/fleet/checks")) return json({ checks: [{ id: 9, query: "192.168.1.30", kind: "ip", profile: "dns", startedAt: "2026-11-07T12:00:00.000Z", finishedAt: "2026-11-07T12:00:01.000Z" }], profiles: [{ id: "dns", label: "DNS only", ports: 0 }], scanRanges: ["192.168.0.0/16"] });
+      if (String(url).endsWith("/api/fleet/checks/9")) return json({ check: { id: 9, query: "192.168.1.30", kind: "device", profile: "dns", durationMs: 1000, ip: "192.168.1.30", up: null, open: null, services: [], device: null,
+        dns: { connected: true, totalLookups: 2, topDomains: [], hits: [{ domain: "c2.example", indicator: "c2.example", lookups: 2, blocked: 1, lastSeen: "2026-11-07T09:00:00.000Z", lastStatus: "GRAVITY" }] } } });
+      return json({});
+    }) as typeof fetch;
+    const screen = render(<CheckScreen />);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    fireEvent.click(screen.getByText("192.168.1.30"));
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    const banner = screen.getByText(/Indicator lookups\./).parentElement!.textContent ?? "";
+    expect(banner).not.toContain("Invalid Date");
+    expect(banner).toContain(new Date("2026-11-07T09:00:00.000Z").toLocaleString());
+    expect(banner).toContain("1 not blocked");
+  });
+});

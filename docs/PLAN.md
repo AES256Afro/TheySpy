@@ -689,6 +689,11 @@ import did.
 NetAlertX pull marked every device NetAlertX knows as seen now. A pull now records when NetAlertX
 saw each device. Code came back clean for the first time.
 
+### M25 — Fourteenth sweep's fixes (XS)
+**Status (7 Nov 2026): done** (1.21.0). Sweep 14 ([docs/AUDITS.md](AUDITS.md)) finished the third
+pass: the targeted check was the last place that credited an address's history to its current
+holder, and the Check screen read a time field the server never sends.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 
