@@ -6,20 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 6 | 0 | in the loop |
-| Bugs (correctness) | 6 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 7 | 0 | in the loop |
+| Bugs (correctness) | 7 | **1** | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
-sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18). Security left the
-loop after sweep 5. Code and bugs both found things again in sweep 6 and stay at 0.
+sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's in 1.15.0
+(M19). Security left the loop after sweep 5. **Bugs came back clean in sweep 7** (streak 1 of 3);
+code found one thing and stays at 0.
 
-Sweep 7 has read every module and screen at least once. It goes round again from the top, reading
-for what the fixes since sweep 1 have changed: `app.mjs`, `agents.mjs`, `pihole/sentinel.mjs`,
-`blocklists/library.mjs`, `fleet/registry.mjs`, `exposure.mjs`, `overview.mjs`, `netlogs.mjs`,
-and the screens that were rewritten (`Overview`, `Device`, `Fleet`, `Pihole`). It should also
-measure rather than read: the Overview, Fleet, Exposure and Blocklists endpoints on a seeded
-database of realistic size, since the two sweeps that measured something found the largest things.
+Sweep 8 continues the second pass: `blocklists/routes.mjs` and `baselines.mjs` after M18, `iocs/`
+routes, `cves/routes.mjs` and `feeds.mjs`, `egress.mjs`, `pacing.mjs`, `ratelimit.mjs`, `secrets.mjs`,
+`db.mjs`'s migrations as a set, `backup.mjs`'s restore path (`scripts/e2e-restore.sh`), the agent
+script, and the Evidence and Blocklists screens after M18. It measures again on the seeded database
+(the probe is in sweep 7's notes) and adds the per-device endpoints and `/api/pihole/hits`.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -473,3 +473,50 @@ table rather than loading it.
 | B28 | `server/quietly.mjs`: one run at a time, the failure recorded, cleared on the next success; `GET /api/fleet` carries `errors` and the Fleet screen shows each as a banner. |
 | C31 | `matchNames()` remembers up to 2,000 answers until the lists change. |
 | C32 | This device points at the Ad exposure check. A source test refuses "coming in a later version" and milestone words on any screen. |
+
+## Sweep 7 — 7 Nov 2026, at 1.14.0
+
+The first sweep of the second pass: every module had been read once, so this one read what the
+fixes since sweep 1 had changed — `pihole/sentinel.mjs`, `app.mjs`, `agents.mjs`'s enrol and
+report paths, `overview.mjs`, the M16–M17 attribution code and the rewritten screens — and
+**measured** instead of reading where the two sweeps that measured had found the largest things.
+
+**Measured** on a seeded in-memory database of realistic size (60 devices each with two addresses
+over time and five recognised services, 40,000 CVEs with products, 3,000 indicator hits across 20
+devices, 900,000 enabled list names): `overview.compose()` 37 ms; `exposure.overview()` 28 ms;
+`GET /api/fleet`'s list and merge suggestions 2 ms; `read.indicatorLookups(30)` 3 ms; the
+time-bounded attribution of every hit 5 ms; the library's cold `counts()` 985 ms (precomputed
+five seconds after start, by design) and a cold `matchNames()` 165 ms (then remembered, M18). The
+first fetch of 900,000 names took 916 ms. Nothing of C21's order remains on the screens' paths.
+
+**Baseline:** `npm run check` green at 298 tests. `agents.verify()` is unchanged and sound (HMAC
+over the exact bytes, a ten-minute window, a constant-time compare, replays refused for reports).
+The error handler, the CSRF rule and the cookie are as sweep 1 found them.
+
+### Bugs
+
+Nothing. The attribution code behaves as M16 and M17 say, on every path that was re-read.
+Bugs' streak is 1.
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C33 | The live watch's timer fires `poll()` every 30 s with nothing to stop a new poll starting while the last one is still reading Pi-hole. A Pi-hole that takes a minute to answer (a hunt on a Raspberry Pi, a full long-term database) gets a second poll at 30 s, a third at 60 s, each re-reading the same overlap and each delivering the same queries to the shadow-mode observers (which deduplicate, at a cost). By construction: `setInterval(() => { void poll(); })` and no flag. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `app.set("trust proxy", "loopback")` means sign-in failures behind a reverse proxy on *another*
+  host are counted against the proxy's address, so five wrong passwords from anyone lock everyone
+  out for fifteen minutes. BoxPilot's proxy is on the same host (loopback), which is the deployment
+  this is built for; a remote proxy is not supported and the setting says so.
+- `backup.snapshot()` runs `VACUUM INTO` synchronously; on the 17 MB seeded database that is
+  tens of milliseconds, on a year-old install perhaps a second, once per download.
+- `overview.compose()` attributes the hits twice (all time for the checklist, seven days for the
+  questions); at 5 ms each that is not worth a shared pass.
+
+### What shipped (sweep 7) — 1.15.0, M19
+
+| # | Fix |
+| --- | --- |
+| C33 | `poll()` runs one at a time; a tick that finds the last poll still reading does nothing. A test holds Pi-hole's answer and fires two polls. |
