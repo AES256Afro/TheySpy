@@ -52,7 +52,7 @@ export function ThisDeviceScreen() {
   return (
     <div className="stack">
       <div className="top">
-        <div><h1>This device</h1><p className="muted small">What applies to the browser you are reading this in. Nothing is saved.</p></div>
+        <div><h1>This device</h1><p className="muted small">Checks run from this browser. Nothing is stored.</p></div>
         <div className="grow" />
         <button className="btn primary" type="button" disabled={Boolean(step)} onClick={() => void run(confirm || undefined)}>{step ? "Checking…" : "Check again"}</button>
       </div>

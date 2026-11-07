@@ -67,7 +67,7 @@ export function CheckScreen() {
 
   return (
     <div className="stack">
-      <div className="top"><div><h1>Targeted check</h1><p className="muted small">An address, MAC, hostname, network or domain. Active checks stay inside {ranges.join(", ") || "your scan ranges"}; a domain is only looked up in Pi-hole’s history.</p></div></div>
+      <div className="top"><div><h1>Targeted check</h1><p className="muted small">Address, MAC, hostname, network or domain. Active probes stay inside {ranges.join(", ") || "the scan ranges"}; a domain is read from DNS history only.</p></div></div>
       <form className="card stack" onSubmit={submit}>
         <div className="row">
           <input className="input grow" style={{ minWidth: 220 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="192.168.1.42 · a4:c1:38:… · nas · 192.168.1.0/24 · example.com · https://your-site" aria-label="What to check" required />

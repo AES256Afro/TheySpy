@@ -552,6 +552,38 @@ That is the one promise this product cannot break, so it is item one.
   error; the briefing reports 501 lookups as 501. `npm run check` green, 1.10.0 tagged, the BoxPilot
   manifest bumped and pinned.
 
+### M15 — Layouts (M)
+**Status (7 Nov 2026): done** (1.11.0). Built as planned; the source test that guards the copy lives in `server/copy.test.mjs`. **Originally:** From the interface audit ([docs/UI-AUDIT.md](UI-AUDIT.md)) and its five
+mock-ups ([docs/mockups-v2](mockups-v2/index.html)). The owner chooses the layout; TheySpy does not
+choose for them. Copy is technical and short: a screen gets a title and at most one line that
+carries information, no quotations, no slogans.
+
+- **Layout is a setting** (Appearance → Layout), stored like the rest of appearance: a server-wide
+  default and a per-browser override. Two axes: the home layout — `verdict` (mock-up A), `ledger`
+  (C) or `console` (E) — and the sidebar — `full` (every screen, grouped) or `short` (five places
+  and More).
+- **Overview exists.** `GET /api/overview` composes what the three home layouts need from what is
+  already computed: the four questions and their counts (indicator contacts not blocked, exploited
+  CVEs on devices, devices new since the last visit, network checks), the list of checks that could
+  not run, and the last day's events (audit, hits, KEV additions, pushes, list updates) as one feed.
+  The screen renders it in whichever of the three layouts is set. The placeholder goes.
+- **A device page** (mock-up B): `/fleet/devices/:id` with tabs — evidence, exposure, bugs, DNS
+  activity, ports, history — over the endpoints each screen already uses. Every device name on every
+  screen links there. The per-device tables on Exposure and Evidence become lists of links.
+- **Empty states** follow mock-up D where a screen has checks: failing, unknown, passing, each with
+  the action that changes it. Elsewhere an empty state is one line and one action, never a zero in
+  alarm colour.
+- **Removed:** the BoxPilot screen (BoxPilot draws its own from `/api/v1/summary`); `milestone` and
+  `mockup` from the shipped screen list (they stay in docs); the `PlaceholderScreen`; "Per screen"
+  as the default look (it stays as an option; the default is one look).
+- **Copy:** every screen's title line rewritten (done first, in this milestone's first commit); the
+  mock-ups' own captions likewise.
+- **Exit:** a fresh database renders Overview in all three layouts without an error; the device
+  page for a device with an unblocked indicator hit shows it under Evidence; the layout setting
+  round-trips through the server and the browser override; a source test fails if any screen's
+  title paragraph exceeds 160 characters or contains a quotation mark; `npm run check` green,
+  1.11.0 tagged, the manifest bumped and pinned.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 

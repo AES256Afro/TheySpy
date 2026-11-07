@@ -62,7 +62,7 @@ export function EvidenceScreen() {
 
   return (
     <div className="stack">
-      <div className="top"><div><h1>Evidence locker</h1><p className="muted small">What the agent, MVT and your network logs found: contacts with spyware and ad-intelligence indicators, new TLS fingerprints, and every check that could not run. A gap is never counted as clean.</p></div></div>
+      <div className="top"><div><h1>Evidence locker</h1><p className="muted small">Findings from the agent, MVT imports and network logs; TLS fingerprints; checks that could not run.</p></div></div>
       {message && <div className={`banner ${message.tone}`} role="status"><span className="small">{message.text}</span></div>}
       {!data.scanner.verified && <div className="banner bad"><span className="small">zero-breach’s scanner failed its signature check ({data.scanner.error}); agents will not run it.</span></div>}
 
