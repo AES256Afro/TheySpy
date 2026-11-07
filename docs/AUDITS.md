@@ -6,21 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 9 | 0 | in the loop |
-| Bugs (correctness) | 9 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 10 | 0 | in the loop |
+| Bugs (correctness) | 10 | 1 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
-in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20).
-Security left the loop after sweep 5. Bugs found one thing in each of sweeps 8 and 9; code too.
+in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
+sweep 10's in 1.17.0 (M21). Security left the loop after sweep 5. Bugs found one thing in each of
+sweeps 8 and 9 and nothing in sweep 10; code found something in every sweep so far.
 
-Sweep 10 is the last of the second pass: `scripts/` (the checks the build runs and the e2e
-drivers), `src/looks/looks.test.ts`'s coverage of the looks, `src/router.tsx`, `src/Sidebar.tsx`,
-`src/SignIn.tsx`, the Appearance and Sites screens, and `third_party/` as vendored (what is checked
-at start and what is not). It measures what sweeps 7–9 did not: `library.update()` with HTTP
-304s, `discover()` against the real directory shapes, and `backup.snapshot()` on the seeded
-database.
+Sweep 11 begins the third pass, by what changed since the second: `agents.mjs` after M20, `quietly.mjs`
+and its callers after M18, `fleet/attribution.mjs` and `netlogs.mjs` after M16, `overview.mjs` and
+`exposure.mjs` after M17, the Overview, Device and Fleet screens after M15; then the first pass's
+tests for what they no longer cover (a fix whose test asserts the old shape).
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -605,3 +604,45 @@ checks the declared length and then counts; the alert and digest fixes from M14 
 | --- | --- |
 | B30 | The MVT import parses every file first, writes in one transaction, deduplicates within the import in memory, and `findings_contact (device_id, source, indicator)` indexes the existence check. A test: a malformed second file records nothing; the same file twice records each pair once. |
 | C37 | `Object.hasOwn` in `exports.mjs` and `taxonomy.mjs`. |
+
+## Sweep 10 — 7 Nov 2026, at 1.16.0
+
+The last of the second pass: `scripts/` (the three build checks and the seven e2e drivers), the
+router, sidebar and sign-in, the Appearance and Sites screens, the looks test, and `third_party/`
+as vendored. Measured what sweeps 7–9 had not.
+
+**Measured:** six lists of 200,000 names update in 987 ms the first time and **0 ms** the second
+(six `If-None-Match` requests, six 304s, nothing parsed); a shrunken list then a 304 leaves exactly
+one held version. `discover()` upserts 400 directory entries in 4 ms. `backup.snapshot()` of the
+168 MB seeded database takes **436 ms**, during which the server answers nothing (`VACUUM INTO`
+is synchronous, like every node:sqlite call): a backup is an owner's click, once, so that stands,
+and the number is here for when it does not.
+
+**Baseline:** the scanner is verified against zero-breach's signed `SHA256SUMS` before it is handed
+out and in the release check; the bundled indicator file against its published hash and signature
+at seed time; the `dist/` and `build/` files are read by the exports and the tests only. The
+release check reads every tracked file for token, key and password shapes; the manifest check ties
+the manifest, compose file and looks together.
+
+### Bugs
+
+None.
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C38 | The looks check strips `//` to the end of the line before looking for colour literals, so a colour after a URL on the same line (`{ url: "https://…", color: "#ff0000" }`) is never seen. Reproduced. The check exists to catch exactly that. |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `router.tsx` compares the path only, so a link to the current path with a different query is
+  ignored; nothing in the app links with a query.
+- The Appearance screen resets an emptied name to the default rather than allowing an empty brand.
+- The Sites screen's "this week" is the remote's `indicator-lookups?days=7`.
+
+### What shipped (sweep 10) — 1.17.0, M21
+
+| # | Fix |
+| --- | --- |
+| C38 | The stripper leaves a `//` that follows `:` alone; a test with a colour after a URL on one line. |
