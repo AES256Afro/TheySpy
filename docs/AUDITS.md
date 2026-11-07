@@ -6,21 +6,20 @@ swept again unless something changes that area.
 
 | Category | Sweeps | Clean sweeps in a row | State |
 | --- | --- | --- | --- |
-| Code (structure, hygiene, dead weight) | 11 | 0 | in the loop |
-| Bugs (correctness) | 11 | 0 | in the loop |
+| Code (structure, hygiene, dead weight) | 12 | 0 | in the loop |
+| Bugs (correctness) | 12 | 0 | in the loop |
 | Security | 5 | 3 | out of the loop (left after sweep 5) |
 
 Sweep 1's findings are fixed in 1.8.0 (M12); sweep 2's in 1.9.0 (M13); sweep 3's in 1.10.0 (M14);
 sweep 4's in 1.12.0 (M16); sweep 5's in 1.13.0 (M17); sweep 6's in 1.14.0 (M18); sweep 7's and sweep 8's
 in 1.15.0 (M19, which took both because sweep 8 ran before M19 shipped); sweep 9's in 1.16.0 (M20);
-sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22). Security left the loop after sweep 5. Bugs
-found one thing in each of sweeps 8, 9 and 11 and nothing in sweep 10; code found something in every
-sweep so far.
+sweep 10's in 1.17.0 (M21); sweep 11's in 1.18.0 (M22); sweep 12's in 1.19.0 (M23). Security left
+the loop after sweep 5. Bugs found something in every sweep but 10; code in every sweep so far.
 
-Sweep 12 continues the third pass: `blocklists/library.mjs`, `pihole/sentinel.mjs` and
-`pihole/routes.mjs` after M19, `sites.mjs` and `web/scan.mjs` after M18, `readmodel.mjs` and
-`cves/store.mjs` after M19 (C21's product index), and the Pi-hole, This device and Evidence screens;
-it measures the Overview endpoint on the seeded database again now that `findings` has M20's index.
+Sweep 13 continues the third pass: `integrations.mjs`, `summary.mjs`, `alerts.mjs` and `digest.mjs`
+after M14 and M23, `fleet/registry.mjs` and `fleet/discovery.mjs` after M16, `thisdevice.mjs`,
+`netalertx.mjs` and `protec.mjs`, and the Intel, Blocklists and Briefing screens; it measures
+`summarize()` and the MCP's tools on the seeded database.
 
 Stage 2 categories (readability, usability, visual, quality-of-life, platform features,
 optimisation) start once Stage 1's categories have all left the loop.
@@ -685,3 +684,44 @@ about a dozen job rows. The five Python-only agent tests are `skipIf(!python)`, 
 | --- | --- |
 | B31 | The inspector falls back to the row's own count ("1 not blocked (see device page)"); a test renders the Console with a sixth device. |
 | C39 | Keys carry the domain and the route; a test renders two subdomains of one indicator and asserts React does not complain. |
+
+## Sweep 12 — 7 Nov 2026, at 1.18.0
+
+The third pass continued: `blocklists/library.mjs`, `pihole/sentinel.mjs` and `pihole/routes.mjs`
+after M19, `sites.mjs` and `web/scan.mjs` after M18, `readmodel.mjs` and `cves/store.mjs` after
+M19, and the Pi-hole, This device and Evidence screens.
+
+**Measured:** the Overview endpoint on the seeded database is 36 ms after M20's index (31 ms warm),
+as in sweep 8; `library.counts()` cold is 979 ms and runs once after each list change, off the
+request path.
+
+### Bugs
+
+| # | Finding | Where | Severity |
+| --- | --- | --- | --- |
+| B32 | **The API's `indicator-lookups?days=N` reports a group's whole history as this window's, credited to the current holder.** `readmodel.indicatorLookups()` filtered `sentinel.hits()` (all-time groups per address) by `lastSeen` and named each after the holder at `lastSeen`. Reproduced: a tablet's 500 unblocked lookups in July and the laptop's one blocked lookup this week, from the same address, come back as **the laptop, 501 lookups, 1 blocked, this week**. B18 fixed this for the briefing; the API, the MCP's `list_indicator_lookups`, `summarize()` and other sites (which read `days=7` and raise "got past blocking" alerts from it) still had it. | `readmodel.mjs` | medium |
+| B33 | **The Evidence screen's import result is never shown.** `act()` sets its own "Imported." after the action, so the message the MVT and network-log imports set first ("2 new finding(s) from MVT.", or the red one for new findings and fingerprints) was overwritten at once. | `Evidence.tsx` | low |
+
+### Code
+
+| # | Finding | Where |
+| --- | --- | --- |
+| C40 | `verdictBadge[a.verdict.status]` and `verdictWord[…]` on the Evidence screen are keyed by the status string the agent reports, which `agents.mjs` stores as it came. `Object.hasOwn`. (The Pi-hole screen's `tierBadge[h.tier]` is fine: tiers are validated when an indicator file is parsed.) |
+
+### Not findings, recorded so a later sweep does not re-litigate them
+
+- `hitGroups`' `lastStatus` subquery does not correlate on `via`, but `via` is a function of
+  (indicator, domain), so the group and the subquery see the same rows.
+- `sites.mjs` keeps at most 200 lookup rows per reading, so "of N indicator lookups this week"
+  stops at 200; a site with more distinct (device, name) pairs in a week has larger problems.
+- `cves.list()` does not escape `%` and `_` in the free-text search; it is a search box.
+- The web check pins its connections to the addresses it verified, follows same-origin redirects
+  only, and records a check that could not run as failed (B23).
+
+### What shipped (sweep 12) — 1.19.0, M23
+
+| # | Fix |
+| --- | --- |
+| B32 | `indicatorLookups(days)` is built from the window's own events, attributed by `attributeHits()` like the Overview. A test: the tablet's July and the laptop's November lookups, apart, in the week and in the year. |
+| B33 | `act()` keeps a message the action returns; both imports return theirs. A test imports an MVT file and reads "2 new finding(s) from MVT.". |
+| C40 | `Object.hasOwn` for the verdict tables; the same test renders an agent whose status is "constructor". |
