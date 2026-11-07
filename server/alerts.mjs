@@ -7,6 +7,7 @@ import { productVersion } from "./shared.mjs";
 
 const day = 86_400_000;
 const priorities = { urgent: "5", high: "4", default: "3", low: "2" };
+const tags = { new_device: "computer", indicator_lookup: "rotating_light", kev_match: "warning", pihole_down: "x", blocklist_held: "hourglass", digest: "newspaper" };
 
 /**
  * @param {{
@@ -97,8 +98,8 @@ export function createAlerts({ db, settings, audit, secretBox, env = {}, names =
       const response = await fetchImpl(`${t.url}/${encodeURIComponent(t.topic)}`, {
         method: "POST",
         headers: {
-          "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: priorities[row.priority] ?? "3",
-          Tags: { new_device: "computer", indicator_lookup: "rotating_light", kev_match: "warning", pihole_down: "x", blocklist_held: "hourglass", digest: "newspaper" }[row.kind] ?? "bell",
+          "user-agent": `TheySpy/${productVersion}`, Title: row.title, Priority: Object.hasOwn(priorities, row.priority) ? priorities[row.priority] : "3",
+          Tags: Object.hasOwn(tags, row.kind) ? tags[row.kind] : "bell",
           ...(row.link ? { Click: row.link } : {}), ...(t.token ? { Authorization: `Bearer ${t.token}` } : {}),
         },
         body: row.message,

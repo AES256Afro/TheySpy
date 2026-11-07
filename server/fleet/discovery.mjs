@@ -119,16 +119,24 @@ export function createDiscovery({ fleet, sentinel, settings, audit, scanRanges, 
     }
     const stale = (d) => !d.names.checkedAt || now().getTime() - Date.parse(d.names.checkedAt) > 6 * 3_600_000;
     const queue = devices.filter((d) => d.ip && stale(d) && d.network?.kind !== "docker" && d.network?.kind !== "local");
+    // Tailscale's MagicDNS answers only where Tailscale runs. A run in which it answered for nothing
+    // is remembered for a day, so a network without Tailscale does not wait 1.5 s per device per sync.
+    const magicSilentAt = settings.get("fleet_magicdns_silent_at");
+    const askMagic = !magicSilentAt || now().getTime() - Date.parse(magicSilentAt) > 24 * 3_600_000;
+    let magicAnswered = false;
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(8, queue.length) }, async () => {
       while (next < queue.length) {
         const d = queue[next++];
         const tailnet = inCidr(d.ip, "100.64.0.0/10");
         const router = !tailnet && gateway ? await askServer(gateway, d.ip) : null;
-        const tailscale = await askServer("100.100.100.100", d.ip);
+        const tailscale = askMagic ? await askServer("100.100.100.100", d.ip) : null;
+        if (tailscale) magicAnswered = true;
         fleet.setNames(d.id, { router: router && !/\.ts\.net\.?$/.test(router) ? router : null, tailscale: tailscale ?? (router && /\.ts\.net\.?$/.test(router) ? router : null), checkedAt: now().toISOString() });
       }
     }));
+    if (askMagic && queue.length && !magicAnswered) settings.set("fleet_magicdns_silent_at", now().toISOString());
+    else if (magicAnswered) settings.set("fleet_magicdns_silent_at", null);
     if (named || queue.length) log(`Names: ${named} from your Pi-hole labels; asked ${gateway ? "the router and " : ""}Tailscale about ${queue.length} addresses.`);
   }
 
