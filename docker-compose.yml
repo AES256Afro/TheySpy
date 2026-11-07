@@ -3,7 +3,7 @@
 services:
   theyspy:
     build: .
-    image: ghcr.io/aes256afro/theyspy:1.21.0
+    image: ghcr.io/aes256afro/theyspy:1.22.0
     restart: unless-stopped
     ports:
       - "8797:8797"
