@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakePihole, testServices } from "../test-helpers.mjs";
+import { fakePihole, testClock, testServices } from "../test-helpers.mjs";
 import { classify } from "./targeted.mjs";
 
 const at = Date.parse("2026-10-28T21:14:02Z") / 1000;
@@ -82,5 +82,37 @@ describe("sweep 3 (M14)", () => {
     expect(recent).toMatchObject({ query: "8.8.8.8", failed: true, error: expect.stringMatching(/outside the ranges/) });
     expect(recent.finishedAt).toBeTruthy();
     expect(checker.get(recent.id)).toMatchObject({ kind: "failed", error: expect.stringMatching(/outside the ranges/) });
+  });
+});
+
+describe("M25 B35: the check credits an address's lookups to who held it at the time", () => {
+  const holders = (fleet) => {
+    // The tablet held .30 from July to 20 October; the laptop has had it since 6 November.
+    fleet.observe([{ ip: "192.168.1.30", mac: "a4:c1:38:00:00:01", hostname: "tablet", seenAt: "2026-10-20T10:00:00.000Z", firstSeenAt: "2026-07-01T10:00:00.000Z" }], "pihole", { inventory: true });
+    fleet.observe([{ ip: "192.168.1.30", mac: "a4:c1:38:00:00:02", hostname: "laptop", seenAt: "2026-11-06T10:00:00.000Z" }], "pihole");
+  };
+
+  it("shows a device its own indicator lookups, not a previous holder's at the same address", async () => {
+    const { db, checker, fleet } = testServices({ now: testClock("2026-11-07T12:00:00Z") });
+    holders(fleet);
+    const hit = db.prepare("INSERT INTO ioc_hit_events (source, query_id, at, indicator, domain, via, client_ip, client_name, status, blocked, found_by, found_at) VALUES ('api', ?, ?, 'c2.example', 'c2.example', 'query', '192.168.1.30', NULL, ?, ?, 'hunt', ?)");
+    for (let i = 0; i < 3; i += 1) hit.run(100 + i, `2026-07-0${2 + i}T00:00:00.000Z`, "FORWARDED", 0, "2026-07-05T00:00:00.000Z");
+    hit.run(999, "2026-11-07T09:00:00.000Z", "GRAVITY", 1, "2026-11-07T09:00:30.000Z");
+    const laptop = await checker.run({ query: "192.168.1.30", profile: "dns" }, "owner");
+    expect(laptop.device.name).toBe("laptop");
+    expect(laptop.dns.hits).toEqual([expect.objectContaining({ domain: "c2.example", lookups: 1, blocked: 1, lastSeen: "2026-11-07T09:00:00.000Z" })]);
+    const tablet = await checker.run({ query: "a4:c1:38:00:00:01", profile: "dns" }, "owner");
+    expect(tablet.device.name).toBe("tablet");
+    expect(tablet.dns.hits).toEqual([expect.objectContaining({ lookups: 3, blocked: 0, lastSeen: "2026-07-04T00:00:00.000Z" })]);
+  });
+
+  it("names a domain's clients after who held the address when they asked", async () => {
+    const asked = Date.parse("2026-10-25T12:00:00Z") / 1000; // the tablet's lease, inside the 30 days the check reads
+    const queries = [{ id: 1, time: asked, type: "A", domain: "noas-edge.example", cname: null, status: "FORWARDED", client: { ip: "192.168.1.30", name: null } }];
+    const { checker, fleet, sentinel } = testServices({ now: testClock("2026-11-07T12:00:00Z"), piholeFetch: fakePihole({ queries }).fetchImpl, network: { probeHost: async () => null } });
+    holders(fleet);
+    sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
+    const r = await checker.run({ query: "noas-edge.example", profile: "standard" }, "owner");
+    expect(r.clients).toEqual([expect.objectContaining({ ip: "192.168.1.30", device: "tablet", lookups: 1 })]);
   });
 });
