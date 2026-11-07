@@ -211,7 +211,7 @@ export function BlocklistsScreen() {
           </section>
           <section className="card stack">
             <header><h2>Never block</h2></header>
-            <p className="small muted">Names no list may take away, on top of TheySpy’s own (connectivity checks, certificates, time and updates) and the sites your network uses most. One per line.</p>
+            <p className="small muted">Names no list may take away, on top of TheySpy’s own (connectivity checks, certificates, time and updates). An update that newly blocks a name this network looks up most is held for review instead. One per line.</p>
             <textarea className="input mono" rows={5} value={pins} onChange={(e) => setPins(e.target.value)} aria-label="Never-block names" />
             <div><button className="btn" type="button" onClick={() => act(() => api("PUT", "/api/blocklists/pins", { pins: pins.split(/\s+/).filter(Boolean) }), "Saved.")}>Save</button></div>
           </section>

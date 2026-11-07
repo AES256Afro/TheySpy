@@ -637,6 +637,21 @@ pieces of hygiene, all reproduced.
 - **Exit:** a test per item, each failing before its fix. `npm run check` green, 1.13.0 tagged, the
   manifest bumped and pinned.
 
+### M18 — Sixth sweep's findings (S)
+**Status (7 Nov 2026): done** (1.14.0). Sweep 6 ([docs/AUDITS.md](AUDITS.md)) finished the first
+reading of every module and screen. Three bugs, two pieces of hygiene, all reproduced; every item
+shipped with a test that fails without its fix.
+
+- **B27 — a busy name is a reason to review, not a hole.** `compile()` excepts the built-in
+  never-block names and the owner's pins only; an update that newly blocks a name the network looks
+  up most is held for review, a first version too, with the reason.
+- **B26 — one held version per list.** A fetch whose digest matches an already-held version inserts
+  nothing; a newer held version supersedes the older.
+- **B28 — a failing schedule is shown.** `server/quietly.mjs` records a failure and clears it on
+  success; `GET /api/fleet` carries `errors`; the Fleet screen shows them.
+- **C31 — `matchNames()` remembers** up to 2,000 answers until the lists change.
+- **C32 —** the stale line on This device points at the Ad exposure check.
+
 ### Later
 ~~AdGuard Home / Technitium / OPNsense (Unbound) connectors~~ (1.4.0: read-only sources behind the same interface as Pi-hole; AdGuard Home and Technitium checked end to end against the real servers in CI, OPNsense against its documented API) · ~~Zeek/Suricata import~~ · ~~JA4 fingerprints~~ (1.5.0: Evidence locker → Network logs reads Zeek dns/ssl/http logs (ASCII or JSON) and Suricata eve.json; indicator names, TLS server names and HTTP hosts become findings on the device, and each device's JA4 fingerprints are kept with new ones flagged after its first import. Tested on real Suricata 8 and Zeek 9 output from one capture; Zeek's ja4 column comes from FoxIO's package, which does not build on Zeek 9.0 yet) · ~~NetAlertX two-way sync~~ (1.6.0: its devices, names, owners and types come into the Fleet every 30 minutes; TheySpy fills only empty NetAlertX fields, previewed, with the owner's permission, one field at a time through `update-column` (NetAlertX's `POST /device/<mac>` resets every field it is not given). Checked end to end against a real NetAlertX in CI) · ~~Protec inventory import~~ (1.6.0: each enrolled machine's dpkg or Homebrew packages, read with a Protec viewer credential every hour, become its Fleet device's inventory for CVE matching; machines are matched by hostname or linked by hand. Debian's patched-but-same-version packages are labelled as such. Checked against Protec's published image in CI) · ~~multi-site~~ (1.6.0: the Sites screen reads other TheySpy installations through their read-only API every 15 minutes, with each site's lookups that got past blocking alerting here once; the token cannot change anything at the site. Checked against a real second TheySpy in CI).
 

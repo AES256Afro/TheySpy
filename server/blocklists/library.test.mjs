@@ -91,11 +91,15 @@ describe("blocklist library", () => {
     expect(results.find((r) => r.id === lib.sources().find((s) => s.key === "adguard:phishing_army").id)).toMatchObject({ outcome: "failed", error: "the list has no usable domain entries" });
   });
 
-  it("keeps the network's most-used sites off every list", async () => {
+  it("holds for review a list that newly blocks one of the network's most-used names, rather than leaving a hole (M18, B27)", async () => {
     const { library: lib } = library({ popular: async () => ["ads-7.example"] });
-    await lib.update();
-    expect(lib.compile(["ads"]).domains).not.toContain("ads-7.example");
-    expect(lib.compile(["ads"]).domains).toHaveLength(199);
+    const { results } = await lib.update();
+    const normal = results.find((r) => r.reasons?.some((x) => /looks up most/.test(x)));
+    expect(normal).toMatchObject({ outcome: "quarantined" });
+    expect(lib.compile(["ads"]).domains).not.toContain("ads-7.example"); // held, not active yet
+    lib.decide(lib.quarantined()[0].id, true, "owner");
+    expect(lib.compile(["ads"]).domains).toContain("ads-7.example"); // the owner chose to block it
+    expect(lib.compile(["ads"]).domains).toHaveLength(200);
   });
 
   it("discovers lists from the three directories, skipping allowlists and duplicates", async () => {
