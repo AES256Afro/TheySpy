@@ -516,4 +516,14 @@ describe("sweep 3, found by the Stage 2 sweep (M14)", () => {
     const { body } = await request("GET", "/api/fleet");
     expect(body.errors).toEqual({ sync: { at: "2026-11-07T11:55:00.000Z", error: "Pi-hole refused the password" } });
   });
+
+  it("M19: an export format named through the prototype is 404, and a baseline exception must be a domain", async () => {
+    const { request, db } = await start();
+    await request("POST", "/api/login", { password: "correct horse" });
+    expect((await request("GET", "/api/iocs/export/constructor")).status).toBe(404);
+    expect((await request("GET", "/api/iocs/export/__proto__")).status).toBe(404);
+    expect((await request("PUT", "/api/blocklists/baselines/exceptions", { scope: "network", site: "not a domain!", keep: true })).status).toBe(400);
+    expect((await request("PUT", "/api/blocklists/baselines/exceptions", { scope: "network", site: "Example[.]COM.", keep: true })).body).toEqual({ exceptions: ["example.com"] });
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ioc_hit_events_at'").get()).toBeTruthy();
+  });
 });

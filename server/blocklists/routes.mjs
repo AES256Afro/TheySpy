@@ -6,6 +6,7 @@ import { scopeKey } from "./baselines.mjs";
 import { compiledLists } from "./library.mjs";
 import { categories, categoryIds, groups, securityCategories } from "./taxonomy.mjs";
 import { defang } from "../iocs/parse.mjs";
+import { canonical } from "./parse.mjs";
 import { intParam, intQuery } from "../params.mjs";
 
 // `line` blocks a name. `except` lets one back through, for the formats whose rules cover
@@ -190,7 +191,9 @@ export function blocklistRoutes({ library, jobs, settings, sentinel, baselines }
   router.put("/baselines/exceptions", (req, res) => {
     const { scope, site, keep } = req.body ?? {};
     if (typeof scope !== "string" || !/^(network|device-[0-9a-f-]+)$/i.test(scope) || typeof site !== "string" || !site) return res.status(400).json({ error: "scope and site are required" });
-    res.json({ exceptions: baselines.setException(scope, site.toLowerCase().replaceAll("[.]", "."), keep !== false, "owner") });
+    const name = canonical(String(site).replaceAll("[.]", "."));
+    if (!name) return res.status(400).json({ error: "site must be a domain name, e.g. example.com" });
+    res.json({ exceptions: baselines.setException(scope, name, keep !== false, "owner") });
   });
   router.post("/baselines/apply", (req, res) => {
     const { baselineId, client } = req.body ?? {};
