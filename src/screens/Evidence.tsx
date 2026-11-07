@@ -12,6 +12,7 @@ const tierLabel: Record<string, string> = { cc: "command & control", delivery: "
 const verdictBadge: Record<string, string> = { INDICATORS_FOUND: "b-crit", NO_KNOWN_INDICATORS: "b-ok", NO_KNOWN_INDICATORS_WITH_GAPS: "b-med", NOT_RUN: "b-high" };
 const verdictWord: Record<string, string> = { INDICATORS_FOUND: "indicators found", NO_KNOWN_INDICATORS: "nothing found", NO_KNOWN_INDICATORS_WITH_GAPS: "nothing found, with gaps", NOT_RUN: "scan did not run" };
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "never");
+type Message = { tone: "good" | "bad"; text: string };
 
 export function EvidenceScreen() {
   const [data, setData] = useState<Data | null>(null);
@@ -22,7 +23,7 @@ export function EvidenceScreen() {
   const [phone, setPhone] = useState<number | "">("");
   const [profile, setProfile] = useState({ os: "ios", osVersion: "", browser: "safari", browserVersion: "", adId: "unknown" });
   const [showDismissed, setShowDismissed] = useState(false);
-  const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
 
   const load = useCallback(async () => {
     setData(await api<Data>("GET", "/api/evidence"));
@@ -30,8 +31,11 @@ export function EvidenceScreen() {
     setDevices((await api<{ devices: (Device & { network: { kind: string } | null })[] }>("GET", "/api/fleet")).devices.filter((d) => d.network?.kind !== "docker"));
   }, []);
   useEffect(() => { load().catch((e: Error) => setMessage({ tone: "bad", text: e.message })); }, [load]);
+  // What an action says when it is done: `done`, unless the action returned a message of its own
+  // (an import says how many findings it made, and in what tone).
+  const isMessage = (v: unknown): v is Message => typeof v === "object" && v !== null && "tone" in v && "text" in v;
   const act = async (fn: () => Promise<unknown>, done: string) => {
-    try { await fn(); setMessage({ tone: "good", text: done }); await load(); } catch (e) { setMessage({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
+    try { const said = await fn(); setMessage(isMessage(said) ? said : { tone: "good", text: done }); await load(); } catch (e) { setMessage({ tone: "bad", text: e instanceof Error ? e.message : String(e) }); }
   };
   const loadProfile = async (id: number) => {
     const p = (await api<{ profile: Record<string, string> }>("GET", `/api/evidence/devices/${id}/profile`)).profile;
@@ -41,16 +45,16 @@ export function EvidenceScreen() {
     if (!phone || !e.target.files?.length) return;
     const files = await Promise.all([...e.target.files].map(async (f) => ({ name: f.name, content: await f.text() })));
     e.target.value = "";
-    await act(async () => { const r = await api<{ findings: number }>("POST", `/api/evidence/devices/${phone}/mvt`, { files }); setMessage({ tone: "good", text: `${r.findings} new finding(s) from MVT.` }); }, "Imported.");
+    await act(async (): Promise<Message> => { const r = await api<{ findings: number }>("POST", `/api/evidence/devices/${phone}/mvt`, { files }); return { tone: "good", text: `${r.findings} new finding(s) from MVT.` }; }, "Imported.");
   };
 
   const importNetworkLogs = async (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const files = await Promise.all([...e.target.files].map(async (f) => ({ name: f.name, content: await f.text() })));
     e.target.value = "";
-    await act(async () => {
+    await act(async (): Promise<Message> => {
       const r = await api<{ events: number; findings: number; fingerprints: number; newFingerprints: unknown[] }>("POST", "/api/evidence/network-logs", { files });
-      setMessage({ tone: r.findings || r.newFingerprints.length ? "bad" : "good", text: `Read ${r.events.toLocaleString()} DNS, TLS and HTTP records: ${r.findings} new finding(s), ${r.fingerprints} TLS fingerprint(s)${r.newFingerprints.length ? `, ${r.newFingerprints.length} new since the last import` : ""}.` });
+      return { tone: r.findings || r.newFingerprints.length ? "bad" : "good", text: `Read ${r.events.toLocaleString()} DNS, TLS and HTTP records: ${r.findings} new finding(s), ${r.fingerprints} TLS fingerprint(s)${r.newFingerprints.length ? `, ${r.newFingerprints.length} new since the last import` : ""}.` };
     }, "Imported.");
   };
 
@@ -132,7 +136,7 @@ export function EvidenceScreen() {
             <div className="list small">{data.agents.map((a) => (
               <div key={a.id} style={{ opacity: a.revoked ? 0.5 : 1 }}>
                 <span className="grow"><b>{a.device ?? a.name}</b> <span className="muted">{a.platform ?? ""}</span><br /><span className="muted">last report {when(a.lastReportAt)}</span></span>
-                {a.verdict && <span className={`badge ${verdictBadge[a.verdict.status] ?? "b-info"}`}>{verdictWord[a.verdict.status] ?? a.verdict.status}</span>}
+                {a.verdict && <span className={`badge ${Object.hasOwn(verdictBadge, a.verdict.status) ? verdictBadge[a.verdict.status] : "b-info"}`}>{Object.hasOwn(verdictWord, a.verdict.status) ? verdictWord[a.verdict.status] : a.verdict.status}</span>}
                 {!a.revoked && <button className="btn small danger" type="button" onClick={() => act(() => api("DELETE", `/api/evidence/agents/${a.id}`), "Revoked.")}>Revoke</button>}
               </div>
             ))}</div>

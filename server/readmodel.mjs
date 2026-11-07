@@ -1,4 +1,4 @@
-import { holderAt } from "./fleet/attribution.mjs";
+import { attributeHits } from "./fleet/attribution.mjs";
 import { matchSoftware } from "./cves/match.mjs";
 import { defang } from "./iocs/parse.mjs";
 
@@ -45,14 +45,22 @@ export function createReadModel({ fleet, sentinel, cves, deviceCves, digest, now
       name: d.name, nameFrom: d.nameFrom, ip: d.ip, mac: d.mac, vendor: d.vendor, kind: d.kind ?? d.guess?.label ?? null, network: d.network?.label ?? null,
       online: d.online, trusted: d.trusted, isNew: d.isNew, inPihole: d.inPihole, firstSeen: d.firstSeen, lastSeen: d.lastSeen,
     })),
+    /**
+     * The window's own lookups, each credited to the device that held its address at the time
+     * (M16): a group's history before the window is not this window's, and not the current
+     * holder's (B18 for the briefing; here B32 for the API, the MCP, the summary and other sites).
+     */
     indicatorLookups(days = 30) {
       const since = new Date(now().getTime() - days * 86_400_000).toISOString();
-      const holders = fleet.addressHolders();
       const names = new Map(fleet.list().map((d) => [d.id, d.name]));
-      return sentinel.hits().filter((h) => h.lastSeen >= since).map((h) => ({
-        device: names.get(holderAt(holders, h.clientIp, h.lastSeen)) ?? h.clientName ?? h.clientIp, clientIp: h.clientIp, domain: defang(h.domain), indicator: defang(h.indicator),
-        lookups: h.lookups, blocked: h.blocked, firstSeen: h.firstSeen, lastSeen: h.lastSeen,
-      }));
+      const out = [];
+      for (const [deviceId, groups] of attributeHits(sentinel.hitEvents(since), fleet.addressHolders())) {
+        for (const g of groups) out.push({
+          device: (deviceId !== null && names.get(deviceId)) || g.clientName || g.clientIp, clientIp: g.clientIp, domain: defang(g.domain), indicator: defang(g.indicator),
+          lookups: g.lookups, blocked: g.blocked, firstSeen: g.firstSeen, lastSeen: g.lastSeen,
+        });
+      }
+      return out.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : a.lastSeen > b.lastSeen ? -1 : 0));
     },
     exploitedOnDevices: () => exploited(),
     kevMatches(ids) {
