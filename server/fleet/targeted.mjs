@@ -1,6 +1,7 @@
 import { promises as dnsPromises } from "node:dns";
 import net from "node:net";
 import { inCidr, normaliseMac, parseCidr } from "./addresses.mjs";
+import { attributeHits, holderAt } from "./attribution.mjs";
 import { checkPorts, profiles } from "./services.mjs";
 
 // The targeted check (docs/PLAN.md M4, mockup 03): one address, MAC, hostname, network or domain.
@@ -67,9 +68,16 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
     return { port: r.port, proto: r.proto, service: r.service, product: r.product, version: r.version, banner: r.banner, tls: r.tls ? JSON.parse(r.tls) : null, risk: r.risk, firstSeen: r.first_seen, lastSeen: r.last_seen };
   });
 
-  /** Pi-hole's view of one client: its indicator lookups and the names it looks up most. */
-  async function dnsView(ip, days = 7) {
-    const hits = sentinel.hits().filter((h) => h.clientIp === ip);
+  /**
+   * Pi-hole's view of one client: its indicator lookups and the names it looks up most. The
+   * lookups are credited to the device that held the address at the time (M16): a device is shown
+   * its own, not a previous holder's (B35); an address with no device known is shown every
+   * holder's, as the address's.
+   * @param {string} ip @param {number} [days] @param {{ id: number } | null} [device]
+   */
+  async function dnsView(ip, days = 7, device = null) {
+    const byDevice = attributeHits(sentinel.hitEvents().filter((e) => e.clientIp === ip), fleet.addressHolders());
+    const hits = device ? byDevice.get(device.id) ?? [] : [...byDevice.values()].flat();
     if (!sentinel.effective().mode) return { connected: false, hits, topDomains: [], totalLookups: 0 };
     const until = now().getTime() / 1000;
     const { rows } = await sentinel.source().domainCounts({ client: ip, from: until - days * 86400, until });
@@ -145,11 +153,13 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
             e.names.add(l.domain);
             byClient.set(l.clientIp, e);
           }
-          const devices = fleet.list();
+          // Each client named after the device that held its address when it last asked (M16, B35).
+          const holders = fleet.addressHolders();
+          const names = new Map(fleet.list().map((d) => [d.id, d.name]));
           result = {
             kind: "domain", domain: value, days: 30, lookups: lookups.length,
             indicator: sentinel.hits().some((h) => h.domain === value || h.indicator === value),
-            clients: [...byClient.values()].sort((a, b) => b.lookups - a.lookups).map((c) => ({ ...c, names: [...c.names].slice(0, 6), device: devices.find((d) => d.ip === c.ip)?.name ?? c.name ?? null })),
+            clients: [...byClient.values()].sort((a, b) => b.lookups - a.lookups).map((c) => ({ ...c, names: [...c.names].slice(0, 6), device: names.get(holderAt(holders, c.ip, c.last)) ?? c.name ?? null })),
           };
           log(`${value}: ${lookups.length} lookups from ${byClient.size} devices in 30 days.`);
         } else {
@@ -183,7 +193,7 @@ export function createTargetedCheck({ db, fleet, discovery, sentinel, audit, sca
           deviceId = device?.id ?? null;
           result.device = device ? fleet.get(device.id) : null;
           result.services = device ? servicesOf(device.id) : [];
-          result.dns = await dnsView(ip).catch((error) => ({ connected: true, error: error.message, hits: [], topDomains: [], totalLookups: 0 }));
+          result.dns = await dnsView(ip, 7, device).catch((error) => ({ connected: true, error: error.message, hits: [], topDomains: [], totalLookups: 0 }));
         }
       }
       const finished = now();
