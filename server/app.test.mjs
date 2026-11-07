@@ -236,7 +236,7 @@ describe("HTTP API", () => {
 
   it("answers an MCP client with a token: devices, indicator lookups and exploited CVEs on devices (M9 exit criterion)", async () => {
     const { request, fleet, cves, checker } = await start({ services: { network: { probeHost: async () => ({ port: 22, answer: "open" }), checkPortsImpl: async () => [{ port: 22, proto: "tcp", service: "ssh", banner: "SSH-2.0-OpenSSH_9.6p1", product: "OpenSSH", version: "9.6p1", tls: null, risk: null }] } } });
-    fleet.observe([{ ip: "192.168.8.140", mac: "30:c5:99:5e:fd:3a", seenAt: "2026-10-29T11:59:00.000Z" }], "pihole");
+    fleet.observe([{ ip: "192.168.8.140", mac: "30:c5:99:00:00:3a", seenAt: "2026-10-29T11:59:00.000Z" }], "pihole");
     await checker.run({ query: "192.168.8.140", profile: "standard" }, "owner");
     cves.applyKev({ version: "1", entries: [{ cveId: "CVE-2024-6387", added: "2024-07-01", due: "2024-07-22", ransomware: false, name: "OpenSSH regreSSHion", description: "x", action: "x", product: "openbsd:openssh", cwes: [] }] });
 

@@ -20,7 +20,7 @@ describe("ad exposure", () => {
     const now = testClock("2026-10-30T12:00:00.000Z");
     const { exposure, fleet, agents, sentinel } = testServices({ now, piholeFetch: fakePihole().fetchImpl });
     sentinel.configure({ mode: "api", url: "http://192.0.2.5", password: "pihole-pass" }, "owner");
-    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:88:22:8d", hostname: "iphone", seenAt: "2026-10-28T09:00:00.000Z" }], "arp");
+    fleet.observe([{ ip: "192.168.8.218", mac: "c4:5b:ac:00:00:8d", hostname: "iphone", seenAt: "2026-10-28T09:00:00.000Z" }], "arp");
     const id = fleet.list()[0].id;
     fleet.edit(id, { label: "iPhone", kind: "phone" }, "owner");
     // Before: the phone skips Pi-hole, loads ads, has its ad ID on, sends no GPC, and its browser has an exploited bug.

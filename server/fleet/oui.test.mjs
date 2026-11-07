@@ -18,10 +18,10 @@ describe("MAC vendors", () => {
   it("loads the registry, names devices that had no vendor, and skips private MACs", async () => {
     const web = fakeWeb({ [ouiUrl]: { body: header + real + filler, etag: '"v1"' } });
     const { oui, fleet } = testServices({ webFetch: web.fetchImpl });
-    fleet.observe([{ ip: "192.168.8.10", mac: "a0:ad:9f:87:ad:ee", seenAt: "2026-10-29T11:00:00.000Z" }, { ip: "192.168.8.22", mac: "6a:5d:c7:7d:f3:b0", seenAt: "2026-10-29T11:00:00.000Z" }], "arp");
+    fleet.observe([{ ip: "192.168.8.10", mac: "a0:ad:9f:00:00:ee", seenAt: "2026-10-29T11:00:00.000Z" }, { ip: "192.168.8.22", mac: "6a:5d:c7:00:00:b0", seenAt: "2026-10-29T11:00:00.000Z" }], "arp");
     expect(await oui.update()).toMatchObject({ changed: true, named: 1, prefixes: 10_002 });
     expect(fleet.list().find((d) => d.ip === "192.168.8.10").vendor).toBe("ASUSTek COMPUTER INC.");
-    expect(oui.vendorOf("6a:5d:c7:7d:f3:b0")).toBeNull();
+    expect(oui.vendorOf("6a:5d:c7:00:00:b0")).toBeNull();
     // New devices are named as they are seen; an unchanged registry is not downloaded again.
     fleet.observe([{ ip: "192.168.8.30", mac: "28:6f:b9:00:00:01", seenAt: "2026-10-29T11:01:00.000Z" }], "arp");
     expect(fleet.list().find((d) => d.ip === "192.168.8.30").vendor).toBe("Nokia Shanghai Bell Co., Ltd.");
