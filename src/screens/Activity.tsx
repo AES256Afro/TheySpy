@@ -18,6 +18,23 @@ export function sizeText(bytes: number | null): string {
 /** Which tables are the mirrors and libraries (bounded by their sources), as against what grows with use. */
 const bounded: Record<string, string> = { cves: "the CVE mirror (every CVE NVD lists, kept because an old router has old CVEs)", blocklist_versions: "the blocklist library (the last two versions of each list)", oui: "the MAC vendor registry", cves_published: "the CVE mirror's index", cves_epss: "exploit-likelihood scores", cves_kev: "known-exploited entries" };
 
+type Tls = { enabled: false } | { enabled: true; port: number; fingerprint: string; notAfter: string; names: string[]; addresses: string[] };
+
+/** HTTPS of its own (M40): where it is and how to know it is TheySpy's. */
+function TlsCard({ tls }: { tls: Tls | null }) {
+  if (!tls) return null;
+  if (!tls.enabled) return <section className="card" aria-labelledby="tls-heading"><header><h2 id="tls-heading">HTTPS</h2><span className="muted small">off (TS_TLS_PORT)</span></header><p className="small">TheySpy serves plain HTTP only. Set <code>TS_TLS_PORT</code> (8798 by default) to add HTTPS with a certificate it makes itself, or put a reverse proxy or Tailscale in front.</p></section>;
+  const here = `https://${window.location.hostname}:${tls.port}/`;
+  return (
+    <section className="card" aria-labelledby="tls-heading">
+      <header><h2 id="tls-heading">HTTPS</h2><span className="muted small">port {tls.port} · TheySpy’s own certificate</span></header>
+      <p className="small">Open <a href={here}>{here}</a>. The browser warns once, because nobody vouches for this certificate but TheySpy: check that the fingerprint it shows is this one, then trust it. On a phone, open the address and accept it the same way.</p>
+      <p className="small"><span className="muted">SHA-256 </span><code className="mono" style={{ wordBreak: "break-all" }}>{tls.fingerprint}</code></p>
+      <p className="small muted">For {[...tls.names, ...tls.addresses].join(", ")} · until {new Date(tls.notAfter).toLocaleDateString()}. A reverse proxy or Tailscale in front still works as before.</p>
+    </section>
+  );
+}
+
 function HouseholdCard() {
   const [set, setSet] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
@@ -96,15 +113,17 @@ export function ActivityScreen() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [notes, setNotes] = useState<SecurityNote[]>([]);
   const [retention, setRetention] = useState<Retention | null>(null);
+  const [tls, setTls] = useState<Tls | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [j, a, s, r] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit"), api<{ notes: SecurityNote[] }>("GET", "/api/security"), api<Retention>("GET", "/api/retention")]);
+      const [j, a, s, r, t] = await Promise.all([api<{ jobs: Job[] }>("GET", "/api/jobs"), api<{ entries: AuditEntry[] }>("GET", "/api/audit"), api<{ notes: SecurityNote[] }>("GET", "/api/security"), api<Retention>("GET", "/api/retention"), api<Tls>("GET", "/api/tls").catch(() => null)]);
       setJobs(j.jobs);
       setAudit(a.entries);
       setNotes(s.notes);
       setRetention(r);
+      setTls(t);
       setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -140,6 +159,7 @@ export function ActivityScreen() {
           <p className="small">{note.fix}</p>
         </div>
       ))}
+      <TlsCard tls={tls} />
       <HouseholdCard />
       <DatabaseCard retention={retention} onChange={load} />
       <section className="card">

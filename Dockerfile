@@ -32,7 +32,7 @@ COPY --from=build /app/dist ./dist
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME ["/data"]
-EXPOSE 8797
+EXPOSE 8797 8798
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${TS_PORT}/healthz" >/dev/null || exit 1
